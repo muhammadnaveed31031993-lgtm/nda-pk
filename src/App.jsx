@@ -254,7 +254,7 @@ export default function App() {
       <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
         <div style={{ backgroundColor: '#1e293b', padding: '40px', borderRadius: '12px', width: '100%', maxWidth: '400px', border: '1px solid #334155' }}>
           <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-            <h1 style={{ color: '#f8fafc', fontSize: '24px', margin: 0 }}>NDA-PK ERP Portal</h1>
+            <h1 style={{ color: '#f8fafc', fontSize: '24px', margin: 0 }}>NDA-PK SYSTEM</h1>
             <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '5px' }}>HR, Timekeeping & Documents System</p>
           </div>
           <form onSubmit={handleLogin}>
@@ -281,7 +281,7 @@ export default function App() {
       {/* Sidebar Navigation */}
       <aside style={{ width: '260px', backgroundColor: '#0f172a', color: '#fff', padding: '20px 0', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '0 20px 20px', borderBottom: '1px solid #1e293b' }}>
-          <h2 style={{ fontSize: '18px', margin: 0, color: '#38bdf8' }}>NDA-PK Management</h2>
+          <h2 style={{ fontSize: '18px', margin: 0, color: '#38bdf8' }}>NDA-PK SYSTEM</h2>
           <span style={{ fontSize: '12px', color: '#94a3b8' }}>User: {session.user.email}</span>
         </div>
         <nav style={{ flex: 1, marginTop: '20px' }}>
@@ -303,7 +303,7 @@ export default function App() {
         {/* Header Bar */}
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', backgroundColor: '#fff', padding: '15px 25px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: '20px', color: '#0f172a' }}>HR ERP & Timekeeping System</h1>
+            <h1 style={{ margin: 0, fontSize: '20px', color: '#0f172a' }}>NDA-PK SYSTEM</h1>
           </div>
           <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
             <label style={{ fontSize: '13px', fontWeight: 'bold' }}>Currency:</label>
