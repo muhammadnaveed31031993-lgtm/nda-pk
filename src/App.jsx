@@ -90,9 +90,32 @@ export default function App() {
   });
 
   const presentTodayCount = Object.values(latestAttendanceMap).filter(a => a.status === 'Present').length;
-  
-  // Total overtime hours marked today
   const totalOvertimeToday = Object.values(latestAttendanceMap).reduce((acc, curr) => acc + Number(curr.overtime_hours || 0), 0);
+
+  // Worker Salary Calculations
+  const salaryData = workers.map(worker => {
+    const workerRecords = attendance.filter(a => a.worker_id === worker.id && a.status === 'Present');
+    const presentDays = workerRecords.length;
+    const totalOT = workerRecords.reduce((acc, curr) => acc + Number(curr.overtime_hours || 0), 0);
+    
+    const dailyRateNum = Number(worker.daily_rate || 0);
+    const hourlyRate = dailyRateNum / 8; // Assuming 8-hour workday
+    
+    const baseSalary = presentDays * dailyRateNum;
+    const otSalary = totalOT * hourlyRate;
+    const totalPayable = baseSalary + otSalary;
+
+    return {
+      ...worker,
+      presentDays,
+      totalOT,
+      baseSalary,
+      otSalary,
+      totalPayable
+    };
+  });
+
+  const grandTotalPayroll = salaryData.reduce((acc, curr) => acc + curr.totalPayable, 0);
 
   return (
     <div style={{ backgroundColor: '#f8fafc', minHeight: '100vh', fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", padding: '30px 20px', color: '#1e293b' }}>
@@ -102,7 +125,7 @@ export default function App() {
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', borderBottom: '2px solid #e2e8f0', paddingBottom: '15px' }}>
           <div>
             <h1 style={{ margin: 0, fontSize: '26px', color: '#0f172a', fontWeight: '700' }}>NDA-PK HR & Timekeeping System</h1>
-            <p style={{ margin: '5px 0 0', color: '#64748b', fontSize: '14px' }}>Worker Database, Attendance & Overtime Tracker</p>
+            <p style={{ margin: '5px 0 0', color: '#64748b', fontSize: '14px' }}>Worker Database, Attendance, Overtime & Payroll System</p>
           </div>
           <div style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '8px 16px', borderRadius: '20px', fontWeight: '600', fontSize: '14px' }}>
             📅 {today}
@@ -127,9 +150,9 @@ export default function App() {
           </div>
 
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #0891b2' }}>
-            <span style={{ color: '#64748b', fontSize: '14px', fontWeight: '600' }}>Total Daily Payroll</span>
+            <span style={{ color: '#64748b', fontSize: '14px', fontWeight: '600' }}>Total Accumulated Payroll</span>
             <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#0f172a', marginTop: '5px' }}>
-              PKR {workers.reduce((acc, curr) => acc + Number(curr.daily_rate || 0), 0).toLocaleString()}
+              PKR {Math.round(grandTotalPayroll).toLocaleString()}
             </div>
           </div>
         </div>
@@ -171,8 +194,8 @@ export default function App() {
         </div>
 
         {/* Workers List & Attendance Table */}
-        <div style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h2 style={{ marginTop: 0, fontSize: '18px', color: '#334155', marginBottom: '20px' }}>📋 Workers & Attendance Log</h2>
+        <div style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '30px' }}>
+          <h2 style={{ marginTop: 0, fontSize: '18px', color: '#334155', marginBottom: '20px' }}>📋 Today's Attendance & Overtime Tracker</h2>
           
           {loading ? (
             <p style={{ color: '#64748b' }}>Loading dashboard data...</p>
@@ -253,6 +276,46 @@ export default function App() {
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Salary Payroll Summary Table */}
+        <div style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <h2 style={{ marginTop: 0, fontSize: '18px', color: '#334155', marginBottom: '20px' }}>💵 Accumulated Payroll & Salary Report</h2>
+          
+          {salaryData.length === 0 ? (
+            <p style={{ color: '#64748b' }}>No salary data to display.</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f1f5f9', color: '#475569' }}>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Worker</th>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Daily Rate</th>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Present Days</th>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Base Pay</th>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Total OT (Hrs)</th>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>OT Pay</th>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0', color: '#0f172a', fontWeight: 'bold' }}>Total Payable</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salaryData.map((s) => (
+                    <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '12px', fontWeight: '600' }}>{s.name} <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'normal' }}>({s.designation})</span></td>
+                      <td style={{ padding: '12px' }}>PKR {s.daily_rate}</td>
+                      <td style={{ padding: '12px', fontWeight: '600', color: '#16a34a' }}>{s.presentDays} days</td>
+                      <td style={{ padding: '12px' }}>PKR {Math.round(s.baseSalary).toLocaleString()}</td>
+                      <td style={{ padding: '12px', color: '#d97706', fontWeight: '600' }}>{s.totalOT} hrs</td>
+                      <td style={{ padding: '12px' }}>PKR {Math.round(s.otSalary).toLocaleString()}</td>
+                      <td style={{ padding: '12px', fontWeight: 'bold', color: '#2563eb', fontSize: '15px' }}>
+                        PKR {Math.round(s.totalPayable).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
