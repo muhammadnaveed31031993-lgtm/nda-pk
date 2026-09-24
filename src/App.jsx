@@ -11,6 +11,9 @@ export default function App() {
   const [designation, setDesignation] = useState('');
   const [dailyRate, setDailyRate] = useState('');
 
+  // Overtime state per worker: { [workerId]: hours }
+  const [overtimeInputs, setOvertimeInputs] = useState({});
+
   const today = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
@@ -55,12 +58,17 @@ export default function App() {
   }
 
   async function handleMarkAttendance(workerId, status) {
+    const otHours = Number(overtimeInputs[workerId] || 0);
+
     const { error } = await supabase.from('attendance').insert([
-      { worker_id: workerId, date: today, status, overtime_hours: 0 }
+      { worker_id: workerId, date: today, status, overtime_hours: otHours }
     ]);
 
-    if (error) alert('Error logging attendance: ' + error.message);
-    else fetchAttendance();
+    if (error) {
+      alert('Error logging attendance: ' + error.message);
+    } else {
+      fetchAttendance();
+    }
   }
 
   async function handleDeleteWorker(id) {
@@ -75,13 +83,16 @@ export default function App() {
   const activeWorkerIds = new Set(workers.map(w => w.id));
   const todayAttendance = attendance.filter(a => a.date === today && activeWorkerIds.has(a.worker_id));
   
-  // Latest attendance per worker today
+  // Latest attendance record per worker today
   const latestAttendanceMap = {};
   todayAttendance.forEach(a => {
-    latestAttendanceMap[a.worker_id] = a.status;
+    latestAttendanceMap[a.worker_id] = a;
   });
 
-  const presentTodayCount = Object.values(latestAttendanceMap).filter(status => status === 'Present').length;
+  const presentTodayCount = Object.values(latestAttendanceMap).filter(a => a.status === 'Present').length;
+  
+  // Total overtime hours marked today
+  const totalOvertimeToday = Object.values(latestAttendanceMap).reduce((acc, curr) => acc + Number(curr.overtime_hours || 0), 0);
 
   return (
     <div style={{ backgroundColor: '#f8fafc', minHeight: '100vh', fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", padding: '30px 20px', color: '#1e293b' }}>
@@ -91,7 +102,7 @@ export default function App() {
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', borderBottom: '2px solid #e2e8f0', paddingBottom: '15px' }}>
           <div>
             <h1 style={{ margin: 0, fontSize: '26px', color: '#0f172a', fontWeight: '700' }}>NDA-PK HR & Timekeeping System</h1>
-            <p style={{ margin: '5px 0 0', color: '#64748b', fontSize: '14px' }}>Worker Database & Attendance Dashboard</p>
+            <p style={{ margin: '5px 0 0', color: '#64748b', fontSize: '14px' }}>Worker Database, Attendance & Overtime Tracker</p>
           </div>
           <div style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '8px 16px', borderRadius: '20px', fontWeight: '600', fontSize: '14px' }}>
             📅 {today}
@@ -99,7 +110,7 @@ export default function App() {
         </header>
 
         {/* Stats Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '30px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '30px' }}>
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #2563eb' }}>
             <span style={{ color: '#64748b', fontSize: '14px', fontWeight: '600' }}>Total Workers</span>
             <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#0f172a', marginTop: '5px' }}>{workers.length}</div>
@@ -108,6 +119,11 @@ export default function App() {
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #16a34a' }}>
             <span style={{ color: '#64748b', fontSize: '14px', fontWeight: '600' }}>Present Today</span>
             <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#16a34a', marginTop: '5px' }}>{presentTodayCount}</div>
+          </div>
+
+          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #d97706' }}>
+            <span style={{ color: '#64748b', fontSize: '14px', fontWeight: '600' }}>Today's Overtime</span>
+            <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#d97706', marginTop: '5px' }}>{totalOvertimeToday} hrs</div>
           </div>
 
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #0891b2' }}>
@@ -154,9 +170,9 @@ export default function App() {
           </form>
         </div>
 
-        {/* Workers List Section */}
+        {/* Workers List & Attendance Table */}
         <div style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h2 style={{ marginTop: 0, fontSize: '18px', color: '#334155', marginBottom: '20px' }}>📋 Workers & Attendance</h2>
+          <h2 style={{ marginTop: 0, fontSize: '18px', color: '#334155', marginBottom: '20px' }}>📋 Workers & Attendance Log</h2>
           
           {loading ? (
             <p style={{ color: '#64748b' }}>Loading dashboard data...</p>
@@ -172,13 +188,16 @@ export default function App() {
                     <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Designation</th>
                     <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Daily Rate</th>
                     <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Today's Status</th>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Overtime (Hrs)</th>
                     <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0', textAlign: 'center' }}>Mark Attendance</th>
                     <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0', textAlign: 'center' }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {workers.map((worker) => {
-                    const currentStatus = latestAttendanceMap[worker.id] || 'Not Marked';
+                    const record = latestAttendanceMap[worker.id];
+                    const currentStatus = record ? record.status : 'Not Marked';
+                    const currentOT = record ? record.overtime_hours : 0;
 
                     return (
                       <tr key={worker.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
@@ -195,8 +214,19 @@ export default function App() {
                             backgroundColor: currentStatus === 'Present' ? '#dcfce7' : currentStatus === 'Absent' ? '#fee2e2' : '#f1f5f9',
                             color: currentStatus === 'Present' ? '#166534' : currentStatus === 'Absent' ? '#991b1b' : '#475569'
                           }}>
-                            {currentStatus}
+                            {currentStatus} {currentStatus === 'Present' && currentOT > 0 ? `(+${currentOT}h OT)` : ''}
                           </span>
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="24"
+                            placeholder="0"
+                            value={overtimeInputs[worker.id] ?? ''}
+                            onChange={(e) => setOvertimeInputs({ ...overtimeInputs, [worker.id]: e.target.value })}
+                            style={{ width: '60px', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                          />
                         </td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>
                           <button
