@@ -1,5 +1,8 @@
 import './index.css'
 import React, { useState, useEffect } from 'react';
+// Baaki poora system code niche waisa hi rehne dein...
+import './index.css'
+import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
   Users, Calendar, FileText, Settings, LogOut, Plus, Search, 
