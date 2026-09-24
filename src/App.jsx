@@ -11,7 +11,8 @@ export default function App() {
   const [designation, setDesignation] = useState('');
   const [dailyRate, setDailyRate] = useState('');
 
-  // Fetch initial data
+  const today = new Date().toISOString().split('T')[0];
+
   useEffect(() => {
     fetchWorkers();
     fetchAttendance();
@@ -35,7 +36,6 @@ export default function App() {
     e.preventDefault();
     if (!name.trim() || !dailyRate) return alert('Name and Daily Rate are required!');
 
-    // Clean data before sending to Supabase
     const newWorker = {
       name: name.trim(),
       designation: designation.trim() || 'Worker',
@@ -55,7 +55,6 @@ export default function App() {
   }
 
   async function handleMarkAttendance(workerId, status) {
-    const today = new Date().toISOString().split('T')[0];
     const { error } = await supabase.from('attendance').insert([
       { worker_id: workerId, date: today, status, overtime_hours: 0 }
     ]);
@@ -64,88 +63,149 @@ export default function App() {
     else fetchAttendance();
   }
 
+  // Dashboard calculations
+  const todayAttendance = attendance.filter(a => a.date === today);
+  const presentTodayCount = todayAttendance.filter(a => a.status === 'Present').length;
+
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '1000px', margin: '0 auto' }}>
-      <h1>NDA-PK HR & Timekeeping System</h1>
+    <div style={{ backgroundColor: '#f8fafc', minHeight: '100vh', fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", padding: '30px 20px', color: '#1e293b' }}>
+      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+        
+        {/* Header */}
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', borderBottom: '2px solid #e2e8f0', paddingBottom: '15px' }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '26px', color: '#0f172a', fontWeight: '700' }}>NDA-PK HR & Timekeeping System</h1>
+            <p style={{ margin: '5px 0 0', color: '#64748b', fontSize: '14px' }}>Worker Database & Attendance Dashboard</p>
+          </div>
+          <div style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '8px 16px', borderRadius: '20px', fontWeight: '600', fontSize: '14px' }}>
+            📅 {today}
+          </div>
+        </header>
 
-      {/* Add Worker Form */}
-      <section style={{ background: '#f4f4f4', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
-        <h2>Add New Worker</h2>
-        <form onSubmit={handleAddWorker} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <input
-            type="text"
-            placeholder="Worker Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            style={{ padding: '8px', flex: '1' }}
-            required
-          />
-          <input
-            type="text"
-            placeholder="Designation"
-            value={designation}
-            onChange={(e) => setDesignation(e.target.value)}
-            style={{ padding: '8px', flex: '1' }}
-          />
-          <input
-            type="number"
-            placeholder="Daily Rate (PKR)"
-            value={dailyRate}
-            onChange={(e) => setDailyRate(e.target.value)}
-            style={{ padding: '8px', flex: '1' }}
-            required
-          />
-          <button type="submit" style={{ padding: '8px 16px', backgroundColor: '#0070f3', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-            Add Worker
-          </button>
-        </form>
-      </section>
+        {/* Stats Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '30px' }}>
+          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #2563eb' }}>
+            <span style={{ color: '#64748b', fontSize: '14px', fontWeight: '600' }}>Total Workers</span>
+            <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#0f172a', marginTop: '5px' }}>{workers.length}</div>
+          </div>
 
-      {/* Workers & Attendance Management */}
-      <section>
-        <h2>Workers List & Today's Attendance</h2>
-        {loading ? (
-          <p>Loading workers data...</p>
-        ) : workers.length === 0 ? (
-          <p>No workers added yet.</p>
-        ) : (
-          <table border="1" cellPadding="10" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ background: '#eaeaea' }}>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Designation</th>
-                <th>Daily Rate</th>
-                <th>Mark Today's Attendance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {workers.map((worker) => (
-                <tr key={worker.id}>
-                  <td>{worker.id}</td>
-                  <td>{worker.name}</td>
-                  <td>{worker.designation || 'N/A'}</td>
-                  <td>PKR {worker.daily_rate}</td>
-                  <td>
-                    <button
-                      onClick={() => handleMarkAttendance(worker.id, 'Present')}
-                      style={{ marginRight: '5px', backgroundColor: '#28a745', color: '#fff', border: 'none', padding: '5px 10px', cursor: 'pointer' }}
-                    >
-                      Present
-                    </button>
-                    <button
-                      onClick={() => handleMarkAttendance(worker.id, 'Absent')}
-                      style={{ backgroundColor: '#dc3545', color: '#fff', border: 'none', padding: '5px 10px', cursor: 'pointer' }}
-                    >
-                      Absent
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #16a34a' }}>
+            <span style={{ color: '#64748b', fontSize: '14px', fontWeight: '600' }}>Present Today</span>
+            <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#16a34a', marginTop: '5px' }}>{presentTodayCount}</div>
+          </div>
+
+          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #0891b2' }}>
+            <span style={{ color: '#64748b', fontSize: '14px', fontWeight: '600' }}>Total Daily Payroll</span>
+            <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#0f172a', marginTop: '5px' }}>
+              PKR {workers.reduce((acc, curr) => acc + Number(curr.daily_rate || 0), 0).toLocaleString()}
+            </div>
+          </div>
+        </div>
+
+        {/* Add Worker Form Section */}
+        <div style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '30px' }}>
+          <h2 style={{ marginTop: 0, fontSize: '18px', color: '#334155', marginBottom: '20px' }}>➕ Register New Worker</h2>
+          <form onSubmit={handleAddWorker} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+            <input
+              type="text"
+              placeholder="Full Name *"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={{ padding: '10px 14px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px', outline: 'none' }}
+              required
+            />
+            <input
+              type="text"
+              placeholder="Designation (e.g., Mason, Helper)"
+              value={designation}
+              onChange={(e) => setDesignation(e.target.value)}
+              style={{ padding: '10px 14px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px', outline: 'none' }}
+            />
+            <input
+              type="number"
+              placeholder="Daily Rate (PKR) *"
+              value={dailyRate}
+              onChange={(e) => setDailyRate(e.target.value)}
+              style={{ padding: '10px 14px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px', outline: 'none' }}
+              required
+            />
+            <button
+              type="submit"
+              style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', padding: '10px 20px', fontWeight: '600', cursor: 'pointer', fontSize: '14px', transition: 'background-color 0.2s' }}
+            >
+              Add Worker
+            </button>
+          </form>
+        </div>
+
+        {/* Workers List Section */}
+        <div style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <h2 style={{ marginTop: 0, fontSize: '18px', color: '#334155', marginBottom: '20px' }}>📋 Workers & Attendance</h2>
+          
+          {loading ? (
+            <p style={{ color: '#64748b' }}>Loading dashboard data...</p>
+          ) : workers.length === 0 ? (
+            <p style={{ color: '#64748b' }}>No workers registered yet. Add a worker above to get started.</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f1f5f9', color: '#475569' }}>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>ID</th>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Name</th>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Designation</th>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Daily Rate</th>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Today's Status</th>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0', textAlign: 'center' }}>Mark Attendance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {workers.map((worker) => {
+                    const statusRecord = todayAttendance.find(a => a.worker_id === worker.id);
+                    const currentStatus = statusRecord ? statusRecord.status : 'Not Marked';
+
+                    return (
+                      <tr key={worker.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '12px', color: '#64748b' }}>#{worker.id}</td>
+                        <td style={{ padding: '12px', fontWeight: '600', color: '#0f172a' }}>{worker.name}</td>
+                        <td style={{ padding: '12px', color: '#475569' }}>{worker.designation || 'Worker'}</td>
+                        <td style={{ padding: '12px', fontWeight: '500' }}>PKR {worker.daily_rate}</td>
+                        <td style={{ padding: '12px' }}>
+                          <span style={{
+                            padding: '4px 10px',
+                            borderRadius: '12px',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            backgroundColor: currentStatus === 'Present' ? '#dcfce7' : currentStatus === 'Absent' ? '#fee2e2' : '#f1f5f9',
+                            color: currentStatus === 'Present' ? '#166534' : currentStatus === 'Absent' ? '#991b1b' : '#475569'
+                          }}>
+                            {currentStatus}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'center' }}>
+                          <button
+                            onClick={() => handleMarkAttendance(worker.id, 'Present')}
+                            style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', marginRight: '6px', fontSize: '12px', fontWeight: '600' }}
+                          >
+                            Present
+                          </button>
+                          <button
+                            onClick={() => handleMarkAttendance(worker.id, 'Absent')}
+                            style={{ backgroundColor: '#dc2626', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
+                          >
+                            Absent
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+      </div>
     </div>
   );
 }
