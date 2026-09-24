@@ -63,9 +63,25 @@ export default function App() {
     else fetchAttendance();
   }
 
-  // Dashboard calculations
-  const todayAttendance = attendance.filter(a => a.date === today);
-  const presentTodayCount = todayAttendance.filter(a => a.status === 'Present').length;
+  async function handleDeleteWorker(id) {
+    if (window.confirm('Kya aap is worker ko delete karna chahte hain?')) {
+      const { error } = await supabase.from('workers').delete().eq('id', id);
+      if (error) alert('Error deleting worker: ' + error.message);
+      else fetchWorkers();
+    }
+  }
+
+  // Exact calculations for active workers today
+  const activeWorkerIds = new Set(workers.map(w => w.id));
+  const todayAttendance = attendance.filter(a => a.date === today && activeWorkerIds.has(a.worker_id));
+  
+  // Latest attendance per worker today
+  const latestAttendanceMap = {};
+  todayAttendance.forEach(a => {
+    latestAttendanceMap[a.worker_id] = a.status;
+  });
+
+  const presentTodayCount = Object.values(latestAttendanceMap).filter(status => status === 'Present').length;
 
   return (
     <div style={{ backgroundColor: '#f8fafc', minHeight: '100vh', fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", padding: '30px 20px', color: '#1e293b' }}>
@@ -102,7 +118,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Add Worker Form Section */}
+        {/* Add Worker Form */}
         <div style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '30px' }}>
           <h2 style={{ marginTop: 0, fontSize: '18px', color: '#334155', marginBottom: '20px' }}>➕ Register New Worker</h2>
           <form onSubmit={handleAddWorker} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
@@ -131,7 +147,7 @@ export default function App() {
             />
             <button
               type="submit"
-              style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', padding: '10px 20px', fontWeight: '600', cursor: 'pointer', fontSize: '14px', transition: 'background-color 0.2s' }}
+              style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', padding: '10px 20px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}
             >
               Add Worker
             </button>
@@ -145,7 +161,7 @@ export default function App() {
           {loading ? (
             <p style={{ color: '#64748b' }}>Loading dashboard data...</p>
           ) : workers.length === 0 ? (
-            <p style={{ color: '#64748b' }}>No workers registered yet. Add a worker above to get started.</p>
+            <p style={{ color: '#64748b' }}>No workers registered yet.</p>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
@@ -157,12 +173,12 @@ export default function App() {
                     <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Daily Rate</th>
                     <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Today's Status</th>
                     <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0', textAlign: 'center' }}>Mark Attendance</th>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0', textAlign: 'center' }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {workers.map((worker) => {
-                    const statusRecord = todayAttendance.find(a => a.worker_id === worker.id);
-                    const currentStatus = statusRecord ? statusRecord.status : 'Not Marked';
+                    const currentStatus = latestAttendanceMap[worker.id] || 'Not Marked';
 
                     return (
                       <tr key={worker.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
@@ -194,6 +210,14 @@ export default function App() {
                             style={{ backgroundColor: '#dc2626', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
                           >
                             Absent
+                          </button>
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'center' }}>
+                          <button
+                            onClick={() => handleDeleteWorker(worker.id)}
+                            style={{ backgroundColor: 'transparent', color: '#ef4444', border: '1px solid #fca5a5', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
+                          >
+                            🗑️ Delete
                           </button>
                         </td>
                       </tr>
