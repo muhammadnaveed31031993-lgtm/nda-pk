@@ -31,15 +31,15 @@ export default function App() {
     else setAttendance(data || []);
   }
 
- async function handleAddWorker(e) {
+  async function handleAddWorker(e) {
     e.preventDefault();
-    if (!name || !dailyRate) return alert('Name and Daily Rate are required!');
+    if (!name.trim() || !dailyRate) return alert('Name and Daily Rate are required!');
 
     // Clean data before sending to Supabase
     const newWorker = {
       name: name.trim(),
-      designation: designation.trim() || 'N/A', // Empty ho toh default 'N/A' set ho ga
-      daily_rate: parseFloat(dailyRate)
+      designation: designation.trim() || 'Worker',
+      daily_rate: Number(dailyRate)
     };
 
     const { error } = await supabase.from('workers').insert([newWorker]);
@@ -53,6 +53,7 @@ export default function App() {
       fetchWorkers();
     }
   }
+
   async function handleMarkAttendance(workerId, status) {
     const today = new Date().toISOString().split('T')[0];
     const { error } = await supabase.from('attendance').insert([
