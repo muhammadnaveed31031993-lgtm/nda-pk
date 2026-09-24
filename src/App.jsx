@@ -7,6 +7,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   // Form states
+  const [workerIdInput, setWorkerIdInput] = useState('');
   const [name, setName] = useState('');
   const [designation, setDesignation] = useState('');
   const [dailyRate, setDailyRate] = useState('');
@@ -37,9 +38,12 @@ export default function App() {
 
   async function handleAddWorker(e) {
     e.preventDefault();
-    if (!name.trim() || !dailyRate) return alert('Name and Daily Rate are required!');
+    if (!workerIdInput || !name.trim() || !dailyRate) {
+      return alert('Worker ID, Name, aur Daily Rate zaroori hain!');
+    }
 
     const newWorker = {
+      id: Number(workerIdInput),
       name: name.trim(),
       designation: designation.trim() || 'Worker',
       daily_rate: Number(dailyRate)
@@ -50,6 +54,7 @@ export default function App() {
     if (error) {
       alert('Error adding worker: ' + error.message);
     } else {
+      setWorkerIdInput('');
       setName('');
       setDesignation('');
       setDailyRate('');
@@ -160,7 +165,15 @@ export default function App() {
         {/* Add Worker Form */}
         <div style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '30px' }}>
           <h2 style={{ marginTop: 0, fontSize: '18px', color: '#334155', marginBottom: '20px' }}>➕ Register New Worker</h2>
-          <form onSubmit={handleAddWorker} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+          <form onSubmit={handleAddWorker} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
+            <input
+              type="number"
+              placeholder="Worker ID No. *"
+              value={workerIdInput}
+              onChange={(e) => setWorkerIdInput(e.target.value)}
+              style={{ padding: '10px 14px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '14px', outline: 'none' }}
+              required
+            />
             <input
               type="text"
               placeholder="Full Name *"
@@ -206,7 +219,7 @@ export default function App() {
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f1f5f9', color: '#475569' }}>
-                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>ID</th>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Worker ID</th>
                     <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Name</th>
                     <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Designation</th>
                     <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Daily Rate</th>
@@ -224,7 +237,7 @@ export default function App() {
 
                     return (
                       <tr key={worker.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '12px', color: '#64748b' }}>#{worker.id}</td>
+                        <td style={{ padding: '12px', fontWeight: 'bold', color: '#2563eb' }}>#{worker.id}</td>
                         <td style={{ padding: '12px', fontWeight: '600', color: '#0f172a' }}>{worker.name}</td>
                         <td style={{ padding: '12px', color: '#475569' }}>{worker.designation || 'Worker'}</td>
                         <td style={{ padding: '12px', fontWeight: '500' }}>PKR {worker.daily_rate}</td>
@@ -293,6 +306,7 @@ export default function App() {
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f1f5f9', color: '#475569' }}>
+                    <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Worker ID</th>
                     <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Worker</th>
                     <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Daily Rate</th>
                     <th style={{ padding: '12px', borderBottom: '2px solid #e2e8f0' }}>Present Days</th>
@@ -305,6 +319,7 @@ export default function App() {
                 <tbody>
                   {salaryData.map((s) => (
                     <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '12px', fontWeight: 'bold', color: '#2563eb' }}>#{s.id}</td>
                       <td style={{ padding: '12px', fontWeight: '600' }}>{s.name} <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'normal' }}>({s.designation})</span></td>
                       <td style={{ padding: '12px' }}>PKR {s.daily_rate}</td>
                       <td style={{ padding: '12px', fontWeight: '600', color: '#16a34a' }}>{s.presentDays} days</td>
