@@ -252,23 +252,23 @@ export default function App() {
   }
 
   // AUTOMATIC USER CREATION & ACCESS PERMISSION (Bina Verification Ke Direct Active)
+  // USER CREATION & ACCESS PERMISSION LOGIC
   async function handleSavePermission(e) {
     e.preventDefault();
     if (!targetEmail || !targetPassword) return alert('Email aur Password dono enter karein!');
 
     try {
-      // 1. Direct Auth User Create karein (Email Auto-Confirmed)
-      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      // 1. Direct Normal Sign Up Request Send Karein
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email: targetEmail.trim(),
         password: targetPassword.trim(),
-        email_confirm: true
       });
 
-      if (authError && !authError.message.includes('already exists') && !authError.message.includes('already registered')) {
+      if (authError && !authError.message.includes('already registered') && !authError.message.includes('already exists')) {
         return alert('Auth Error: ' + authError.message);
       }
 
-      // 2. Department aur Permissions save karein
+      // 2. Department aur Permissions Save Karein Database Table Mein
       const permData = {
         user_email: targetEmail.trim(),
         user_password: targetPassword.trim(),
@@ -283,7 +283,7 @@ export default function App() {
       if (permError) {
         alert('Permission Save Error: ' + permError.message);
       } else {
-        alert(`User ${targetEmail} ka account active ho gaya hai! Ab yeh direct login kar sakta hai.`);
+        alert(`User ${targetEmail} ka account add ho gaya hai!`);
         setTargetEmail('');
         setTargetPassword('');
         fetchPermissionsList();
@@ -292,7 +292,6 @@ export default function App() {
       alert('System Error: ' + err.message);
     }
   }
-
   // Filtered Workers according to Department Selection / User Scope
   const filteredWorkers = workers.filter(w => {
     const userDeptScope = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
