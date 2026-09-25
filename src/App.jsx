@@ -261,7 +261,8 @@ export default function App() {
     try {
       // 1. Ek isolated temporary Supabase instance banayein taa ke current admin session disturb na ho
       const { createClient } = await import('@supabase/supabase-js');
-      const tempAuthClient = createClient(SUPABASE_URL, 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...', {
+      const tempAuthClient = createClient(SUPABASE_URL, 'sb_publishable_7Mbn7QdW0dSb6gpEOM9Eww_L2si0vGS'
+, {
         auth: { persistSession: false }
       });
 
