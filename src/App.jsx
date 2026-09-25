@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 
 // Supabase Configuration & Admin Client Initialization
-const SUPABASE_URL = "https://aogwksalhyevskcuyxuu.supabase.co"; // Aap ka Supabase URL
+const SUPABASE_URL = "https://aogwksalhyevskcuyxuu.supabase.co";
 const SUPABASE_SERVICE_ROLE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
