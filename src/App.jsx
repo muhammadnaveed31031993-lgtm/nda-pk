@@ -4,8 +4,7 @@ import { supabase } from './supabaseClient';
 
 // Supabase Configuration & Admin Client Initialization
 const SUPABASE_URL = "https://aogwksalhyevskcuyxuu.supabase.co"; // Aap ka Supabase URL
-const SUPABASE_SERVICE_ROLE_KEY = "sb_secret_l5IgRzKw5P5sYcqvnyq8Bw_12q4Ka4o";
-
+const SUPABASE_SERVICE_ROLE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
     autoRefreshToken: false,
