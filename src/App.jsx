@@ -4,14 +4,14 @@ import { supabase } from './supabaseClient';
 
 // Supabase Configuration & Admin Client Initialization
 const SUPABASE_URL = "https://aogwksalhyevskcuyxuu.supabase.co";
-const SUPABASE_SERVICE_ROLE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || "sb_secret_l5IgRzKw5P5sYcqvnyq8Bw_12q4Ka4o";
+
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
     autoRefreshToken: false,
     persistSession: false
   }
 });
-
 export default function App() {
   // Authentication & Permission States
   const [session, setSession] = useState(null);
