@@ -252,6 +252,17 @@ export default function App() {
     e.preventDefault();
     if (!targetEmail || !targetPassword) return alert('Email aur Password dono enter karein!');
 
+    // Step 1: Supabase Auth mein account create karein
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: targetEmail.trim(),
+      password: targetPassword.trim(),
+    });
+
+    if (authError && !authError.message.includes('already registered')) {
+      return alert('Auth User Creation Error: ' + authError.message);
+    }
+
+    // Step 2: Permissions aur Department Scope Save Karein
     const permData = {
       user_email: targetEmail.trim(),
       user_password: targetPassword.trim(),
@@ -261,10 +272,10 @@ export default function App() {
       is_admin: false
     };
 
-    const { error } = await supabase.from('user_permissions').upsert([permData]);
-    if (error) alert('Error: ' + error.message);
+    const { error: permError } = await supabase.from('user_permissions').upsert([permData]);
+    if (permError) alert('Permission Error: ' + permError.message);
     else {
-      alert(`User ${targetEmail} ko department '${targetDept}' ka access de diya gaya hai!`);
+      alert(`User ${targetEmail} ka Auth Account aur Department '${targetDept}' Permission successfully create ho gayi hai!`);
       setTargetEmail('');
       setTargetPassword('');
       fetchPermissionsList();
