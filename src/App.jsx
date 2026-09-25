@@ -1,10 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 
-// Supabase Client Initialization
-const SUPABASE_URL = "https://aogwksalhyevskcuyxuu.supabase.co";
-import { supabase } from './supabaseClient';
 export default function App() {
   // Authentication & Permission States
   const [session, setSession] = useState(null);
@@ -67,11 +63,15 @@ export default function App() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+      if (session) {
+        setSession(session);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+      if (session) {
+        setSession(session);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -122,16 +122,48 @@ export default function App() {
     setAttendance(data || []);
   }
 
+  // LOGIN HANDLER (Admin via Supabase Auth + Staff via Permissions Table)
   async function handleLogin(e) {
     e.preventDefault();
     setAuthLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) alert('Login Failed: ' + error.message);
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
+
+    // 1. Primary Admin Login Check via Supabase Auth
+    if (cleanEmail === 'admin@nda.pk') {
+      const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password: cleanPassword });
+      if (error) {
+        alert('Admin Login Failed: ' + error.message);
+      }
+      setAuthLoading(false);
+      return;
+    }
+
+    // 2. Staff / Departmental User Login Check
+    const { data: userPerm } = await supabase
+      .from('user_permissions')
+      .select('*')
+      .eq('user_email', cleanEmail)
+      .eq('user_password', cleanPassword)
+      .single();
+
+    if (userPerm) {
+      setSession({ user: { email: cleanEmail } });
+      setUserRole(userPerm);
+      if (userPerm.assigned_department && userPerm.assigned_department !== 'All') {
+        setSelectedDeptFilter(userPerm.assigned_department);
+      }
+    } else {
+      alert('Invalid Email or Password!');
+    }
+
     setAuthLoading(false);
   }
 
   async function handleLogout() {
     await supabase.auth.signOut();
+    setSession(null);
   }
 
   // Delete Actions
@@ -251,34 +283,14 @@ export default function App() {
     else fetchAttendance();
   }
 
-  // AUTOMATIC USER CREATION & ACCESS PERMISSION (Bina Verification Ke Direct Active)
-  // USER CREATION & ACCESS PERMISSION LOGIC
-  // ISOLATED USER CREATION LOGIC (No Session Hijack / No Auth Errors)
+  // DIRECT USER & ACCESS PERMISSION CREATION LOGIC
   async function handleSavePermission(e) {
     e.preventDefault();
     if (!targetEmail || !targetPassword) return alert('Email aur Password dono enter karein!');
 
     try {
-      // 1. Ek isolated temporary Supabase instance banayein taa ke current admin session disturb na ho
-      const { createClient } = await import('@supabase/supabase-js');
-      const tempAuthClient = createClient(SUPABASE_URL, 'sb_publishable_7Mbn7QdW0dSb6gpEOM9Eww_L2si0vGS'
-, {
-        auth: { persistSession: false }
-      });
-
-      // Note: Standalone Client sign-up execution
-      const { data: authData, error: authError } = await tempAuthClient.auth.signUp({
-        email: targetEmail.trim(),
-        password: targetPassword.trim(),
-      });
-
-      if (authError && !authError.message.includes('already registered') && !authError.message.includes('already exists')) {
-        return alert('Auth Registration Error: ' + authError.message);
-      }
-
-      // 2. Main Supabase DB Client ke zariye Permission record save karein
       const permData = {
-        user_email: targetEmail.trim(),
+        user_email: targetEmail.trim().toLowerCase(),
         user_password: targetPassword.trim(),
         can_view_timesheet: permTimesheet,
         can_view_salary: permSalary,
@@ -286,7 +298,9 @@ export default function App() {
         is_admin: false
       };
 
-      const { error: permError } = await supabase.from('user_permissions').upsert([permData]);
+      const { error: permError } = await supabase
+        .from('user_permissions')
+        .upsert([permData], { onConflict: 'user_email' });
 
       if (permError) {
         alert('Permission Save Error: ' + permError.message);
@@ -300,6 +314,7 @@ export default function App() {
       alert('System Error: ' + err.message);
     }
   }
+
   // Filtered Workers according to Department Selection / User Scope
   const filteredWorkers = workers.filter(w => {
     const userDeptScope = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
@@ -370,7 +385,7 @@ export default function App() {
       <aside style={{ width: '260px', backgroundColor: '#0f172a', color: '#fff', padding: '20px 0', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '0 20px 20px', borderBottom: '1px solid #1e293b' }}>
           <h2 style={{ fontSize: '18px', margin: 0, color: '#38bdf8' }}>NDA-PK SYSTEM</h2>
-          <span style={{ fontSize: '12px', color: '#94a3b8' }}>Admin: Naveed ({session.user.email})</span>
+          <span style={{ fontSize: '12px', color: '#94a3b8' }}>User: {session.user.email}</span>
         </div>
         <nav style={{ flex: 1, marginTop: '20px' }}>
           <button onClick={() => setActiveTab('dashboard')} style={{ width: '100%', textAlign: 'left', padding: '12px 20px', backgroundColor: activeTab === 'dashboard' ? '#1e293b' : 'transparent', color: '#cbd5e1', border: 'none', cursor: 'pointer' }}>📊 Dashboard Summary</button>
