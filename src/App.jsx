@@ -1,5 +1,17 @@
 import React, { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
+
+// Supabase Configuration & Admin Client Initialization
+const SUPABASE_URL = "https://aogwksalhyevskcuyxuu.supabase.co"; // Aap ka Supabase URL
+const SUPABASE_SERVICE_ROLE_KEY = "sb_secret_l5IgRzKw5P5sYcqvnyq8Bw_12q4Ka4o";
+
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+});
 
 export default function App() {
   // Authentication & Permission States
@@ -247,38 +259,45 @@ export default function App() {
     else fetchAttendance();
   }
 
-  // Add / Update User Access Permission with Password & Department Scope
+  // AUTOMATIC USER CREATION & ACCESS PERMISSION (Bina Verification Ke Direct Active)
   async function handleSavePermission(e) {
     e.preventDefault();
     if (!targetEmail || !targetPassword) return alert('Email aur Password dono enter karein!');
 
-    // Step 1: Supabase Auth mein account create karein
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: targetEmail.trim(),
-      password: targetPassword.trim(),
-    });
+    try {
+      // 1. Direct Auth User Create karein (Email Auto-Confirmed)
+      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email: targetEmail.trim(),
+        password: targetPassword.trim(),
+        email_confirm: true
+      });
 
-    if (authError && !authError.message.includes('already registered')) {
-      return alert('Auth User Creation Error: ' + authError.message);
-    }
+      if (authError && !authError.message.includes('already exists') && !authError.message.includes('already registered')) {
+        return alert('Auth Error: ' + authError.message);
+      }
 
-    // Step 2: Permissions aur Department Scope Save Karein
-    const permData = {
-      user_email: targetEmail.trim(),
-      user_password: targetPassword.trim(),
-      can_view_timesheet: permTimesheet,
-      can_view_salary: permSalary,
-      assigned_department: targetDept,
-      is_admin: false
-    };
+      // 2. Department aur Permissions save karein
+      const permData = {
+        user_email: targetEmail.trim(),
+        user_password: targetPassword.trim(),
+        can_view_timesheet: permTimesheet,
+        can_view_salary: permSalary,
+        assigned_department: targetDept,
+        is_admin: false
+      };
 
-    const { error: permError } = await supabase.from('user_permissions').upsert([permData]);
-    if (permError) alert('Permission Error: ' + permError.message);
-    else {
-      alert(`User ${targetEmail} ka Auth Account aur Department '${targetDept}' Permission successfully create ho gayi hai!`);
-      setTargetEmail('');
-      setTargetPassword('');
-      fetchPermissionsList();
+      const { error: permError } = await supabase.from('user_permissions').upsert([permData]);
+
+      if (permError) {
+        alert('Permission Save Error: ' + permError.message);
+      } else {
+        alert(`User ${targetEmail} ka account active ho gaya hai! Ab yeh direct login kar sakta hai.`);
+        setTargetEmail('');
+        setTargetPassword('');
+        fetchPermissionsList();
+      }
+    } catch (err) {
+      alert('System Error: ' + err.message);
     }
   }
 
