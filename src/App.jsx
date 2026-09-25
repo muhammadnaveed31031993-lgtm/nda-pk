@@ -253,22 +253,29 @@ export default function App() {
 
   // AUTOMATIC USER CREATION & ACCESS PERMISSION (Bina Verification Ke Direct Active)
   // USER CREATION & ACCESS PERMISSION LOGIC
+  // ISOLATED USER CREATION LOGIC (No Session Hijack / No Auth Errors)
   async function handleSavePermission(e) {
     e.preventDefault();
     if (!targetEmail || !targetPassword) return alert('Email aur Password dono enter karein!');
 
     try {
-      // 1. Direct Normal Sign Up Request Send Karein
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      // 1. Ek isolated temporary Supabase instance banayein taa ke current admin session disturb na ho
+      const { createClient } = await import('@supabase/supabase-js');
+      const tempAuthClient = createClient(SUPABASE_URL, 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...', {
+        auth: { persistSession: false }
+      });
+
+      // Note: Standalone Client sign-up execution
+      const { data: authData, error: authError } = await tempAuthClient.auth.signUp({
         email: targetEmail.trim(),
         password: targetPassword.trim(),
       });
 
       if (authError && !authError.message.includes('already registered') && !authError.message.includes('already exists')) {
-        return alert('Auth Error: ' + authError.message);
+        return alert('Auth Registration Error: ' + authError.message);
       }
 
-      // 2. Department aur Permissions Save Karein Database Table Mein
+      // 2. Main Supabase DB Client ke zariye Permission record save karein
       const permData = {
         user_email: targetEmail.trim(),
         user_password: targetPassword.trim(),
@@ -283,7 +290,7 @@ export default function App() {
       if (permError) {
         alert('Permission Save Error: ' + permError.message);
       } else {
-        alert(`User ${targetEmail} ka account add ho gaya hai!`);
+        alert(`User ${targetEmail} ka account ('${targetDept}' Dept) successfully create ho gaya hai!`);
         setTargetEmail('');
         setTargetPassword('');
         fetchPermissionsList();
