@@ -54,6 +54,10 @@ export default function App() {
   const [personalDocCategory, setPersonalDocCategory] = useState('Visa');
   const [personalFileUrl, setPersonalFileUrl] = useState('');
 
+  // OCR Photo Scanner States
+  const [scanning, setScanning] = useState(false);
+  const [scanStatus, setScanStatus] = useState('');
+
   // Permission / User Creation & Editing States
   const [editingEmail, setEditingEmail] = useState(null);
   const [targetEmail, setTargetEmail] = useState('');
@@ -123,6 +127,86 @@ export default function App() {
   async function fetchAttendance() {
     const { data } = await supabase.from('attendance').select('*').order('date', { ascending: false });
     setAttendance(data || []);
+  }
+
+  // OCR PAPER TIMESHEET PHOTO SCANNER HANDLER (GPT-4o)
+  async function handleScanPaperSheet(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    setScanning(true);
+    setScanStatus('Sheet ki photo scan ho rahi hai, please wait...');
+
+    try {
+      const base64Image = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = (err) => reject(err);
+      });
+
+      const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+      if (!apiKey) {
+        throw new Error("OpenAI API Key nahi mili! Vercel environment variables check karein.");
+      }
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Extract table data from this daily attendance sheet. Return ONLY a valid JSON object with key 'rows' containing an array of objects. Each object must have: 'id_no' (number from ID No column), 'working_days' (number: 1 if Working Days is 'ONE' or marked present, 0 if absent), and 'overtime' (number from Total Overtime column, if empty then 0). Ignore blank rows."
+                },
+                {
+                  type: "image_url",
+                  image_url: { url: base64Image }
+                }
+              ]
+            }
+          ],
+          response_format: { type: "json_object" }
+        })
+      });
+
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
+
+      const parsedContent = JSON.parse(data.choices[0].message.content);
+      const rows = parsedContent.rows || parsedContent;
+
+      setScanStatus('Data extract ho gaya, Database mein save ho raha hai...');
+
+      const recordsToInsert = rows.map((item) => ({
+        worker_id: Number(item.id_no),
+        date: today,
+        status: item.working_days > 0 ? 'Present' : 'Absent',
+        overtime_hours: Number(item.overtime || 0)
+      }));
+
+      const { error } = await supabase
+        .from('attendance')
+        .upsert(recordsToInsert, { onConflict: 'worker_id,date' });
+
+      if (error) throw error;
+
+      setScanStatus(`Zabardast! Total ${recordsToInsert.length} workers ka data auto save ho gaya.`);
+      fetchAttendance();
+
+    } catch (err) {
+      console.error(err);
+      setScanStatus('Error: ' + err.message);
+    } finally {
+      setScanning(false);
+    }
   }
 
   // DIRECT FILE UPLOAD HANDLER (JPG, PNG, PDF)
@@ -796,7 +880,6 @@ export default function App() {
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <h3>📂 Naveed Personal Documents Vault</h3>
             
-            {/* Document Upload Form */}
             <form onSubmit={handleSavePersonalDoc} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '25px', backgroundColor: '#f0f9ff', padding: '15px', borderRadius: '8px', border: '1px solid #bae6fd' }}>
               <div>
                 <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Document Title *</label>
@@ -828,7 +911,6 @@ export default function App() {
               </div>
             </form>
 
-            {/* Saved Personal Documents Table */}
             <h4>Saved Documents Vault</h4>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
               <thead>
@@ -863,9 +945,29 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 5: TIMESHEET & EDIT ATTENDANCE */}
+        {/* TAB 5: TIMESHEET & EDIT ATTENDANCE + AI PHOTO SCANNER */}
         {activeTab === 'attendance' && (userRole.is_admin || userRole.can_view_timesheet) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
+            
+            {/* AUTOMATIC PAPER SHEET SCANNER BOX */}
+            <div style={{ backgroundColor: '#eff6ff', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '2px dashed #3b82f6' }}>
+              <h4 style={{ margin: '0 0 5px 0', color: '#1e40af' }}>📷 Automatic Daily Paper Sheet Scanner (AI)</h4>
+              <p style={{ fontSize: '12px', margin: '0 0 10px 0', color: '#1e3a8a' }}>
+                Handwritten paper sheet ki picture le kar upload karein. System automatic ID No aur Overtime read kar ke Database mein add kar dega.
+              </p>
+              
+              <input 
+                type="file" 
+                accept="image/*" 
+                capture="environment"
+                onChange={handleScanPaperSheet} 
+                disabled={scanning}
+              />
+
+              {scanning && <p style={{ color: '#d97706', fontWeight: 'bold', fontSize: '12px', marginTop: '8px' }}>⌛ {scanStatus}</p>}
+              {!scanning && scanStatus && <p style={{ color: '#16a34a', fontWeight: 'bold', fontSize: '12px', marginTop: '8px' }}>{scanStatus}</p>}
+            </div>
+
             <h3>📅 Daily Timesheet & Attendance Logs</h3>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
               <thead>
