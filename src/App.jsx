@@ -30,6 +30,7 @@ export default function App() {
   const [workers, setWorkers] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [permissionsList, setPermissionsList] = useState([]);
+  const [personalDocs, setPersonalDocs] = useState([]);
 
   // Edit / Add Worker Form States
   const [editingWorkerId, setEditingWorkerId] = useState(null);
@@ -47,6 +48,11 @@ export default function App() {
   const [visaFileUrl, setVisaFileUrl] = useState('');
   const [labourCardFileUrl, setLabourCardFileUrl] = useState('');
   const [uploadingFile, setUploadingFile] = useState(false);
+
+  // Personal Documents Module States
+  const [personalDocTitle, setPersonalDocTitle] = useState('');
+  const [personalDocCategory, setPersonalDocCategory] = useState('Visa');
+  const [personalFileUrl, setPersonalFileUrl] = useState('');
 
   // Permission / User Creation & Editing States
   const [editingEmail, setEditingEmail] = useState(null);
@@ -93,8 +99,14 @@ export default function App() {
       fetchWorkers();
       fetchAttendance();
       fetchPermissionsList();
+      fetchPersonalDocs();
     }
   }, [session]);
+
+  async function fetchPersonalDocs() {
+    const { data } = await supabase.from('personal_docs').select('*').order('id', { ascending: false });
+    setPersonalDocs(data || []);
+  }
 
   async function fetchPermissionsList() {
     const { data } = await supabase.from('user_permissions').select('*');
@@ -139,6 +151,39 @@ export default function App() {
       alert('Upload Error: ' + err.message);
     } finally {
       setUploadingFile(false);
+    }
+  }
+
+  // SAVE NAVEED PERSONAL DOC
+  async function handleSavePersonalDoc(e) {
+    e.preventDefault();
+    if (!personalDocTitle.trim() || !personalFileUrl) {
+      return alert('Document Title aur File Upload dono zaroori hain!');
+    }
+
+    const newDoc = {
+      doc_title: personalDocTitle.trim(),
+      doc_category: personalDocCategory,
+      file_url: personalFileUrl,
+      file_type: personalFileUrl.endsWith('.pdf') ? 'PDF' : 'Image'
+    };
+
+    const { error } = await supabase.from('personal_docs').insert([newDoc]);
+    if (error) {
+      alert('Error: ' + error.message);
+    } else {
+      alert('Naveed Personal Document saved successfully!');
+      setPersonalDocTitle('');
+      setPersonalFileUrl('');
+      fetchPersonalDocs();
+    }
+  }
+
+  async function handleDeletePersonalDoc(id) {
+    if (window.confirm('Kya aap yeh personal document delete karna chahte hain?')) {
+      const { error } = await supabase.from('personal_docs').delete().eq('id', id);
+      if (error) alert('Error: ' + error.message);
+      else fetchPersonalDocs();
     }
   }
 
@@ -285,7 +330,6 @@ export default function App() {
     };
 
     if (editingWorkerId) {
-      // UPDATE EXISTING WORKER
       const { error } = await supabase.from('workers').update(workerData).eq('id', editingWorkerId);
       if (error) alert('Error: ' + error.message);
       else {
@@ -294,7 +338,6 @@ export default function App() {
         fetchWorkers();
       }
     } else {
-      // INSERT NEW WORKER
       if (workerIdInput) {
         const existing = workers.find(w => Number(w.id) === Number(workerIdInput));
         if (existing) {
@@ -539,6 +582,9 @@ export default function App() {
           <button onClick={() => setActiveTab('payroll')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'payroll' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>💵 Payroll</button>
         )}
         {userRole.is_admin && (
+          <button onClick={() => setActiveTab('personal_docs')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'personal_docs' ? '#0284c7' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📂 Naveed Personal Docs</button>
+        )}
+        {userRole.is_admin && (
           <button onClick={() => setActiveTab('permissions')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'permissions' ? '#d97706' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🔐 User Permissions</button>
         )}
       </div>
@@ -745,11 +791,82 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 4: TIMESHEET & EDIT ATTENDANCE */}
+        {/* TAB 4: NAVEED PERSONAL DOCS */}
+        {activeTab === 'personal_docs' && userRole.is_admin && (
+          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <h3>📂 Naveed Personal Documents Vault</h3>
+            
+            {/* Document Upload Form */}
+            <form onSubmit={handleSavePersonalDoc} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '25px', backgroundColor: '#f0f9ff', padding: '15px', borderRadius: '8px', border: '1px solid #bae6fd' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Document Title *</label>
+                <input type="text" placeholder="e.g. Naveed Visa 2026 / Passport" value={personalDocTitle} onChange={e => setPersonalDocTitle(e.target.value)} required style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Category</label>
+                <select value={personalDocCategory} onChange={e => setPersonalDocCategory(e.target.value)} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box' }}>
+                  <option value="Visa">Visa Copy</option>
+                  <option value="Passport">Passport Copy</option>
+                  <option value="Emirates ID">Emirates / National ID</option>
+                  <option value="Licence">Driving License</option>
+                  <option value="Contract">Agreement / Contract</option>
+                  <option value="General">Other Personal File</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Upload File (JPG / PNG / PDF)</label>
+                <input type="file" accept="image/*,application/pdf" onChange={e => handleFileUpload(e.target.files[0], setPersonalFileUrl)} style={{ width: '100%', fontSize: '12px' }} />
+                {personalFileUrl && <span style={{ color: '#16a34a', fontSize: '11px', display: 'block', marginTop: '2px' }}>✅ File attached!</span>}
+              </div>
+
+              <div style={{ gridColumn: '1 / -1' }}>
+                <button type="submit" disabled={uploadingFile} style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', padding: '10px 20px' }}>
+                  {uploadingFile ? 'Uploading...' : '💾 Save Personal Document'}
+                </button>
+              </div>
+            </form>
+
+            {/* Saved Personal Documents Table */}
+            <h4>Saved Documents Vault</h4>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f1f5f9' }}>
+                  <th style={{ padding: '8px' }}>Title</th>
+                  <th style={{ padding: '8px' }}>Category</th>
+                  <th style={{ padding: '8px' }}>Uploaded Date</th>
+                  <th style={{ padding: '8px' }}>File Link</th>
+                  <th style={{ padding: '8px', textAlign: 'center' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {personalDocs.map(doc => (
+                  <tr key={doc.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '8px', fontWeight: 'bold', color: '#0369a1' }}>{doc.doc_title}</td>
+                    <td style={{ padding: '8px' }}>
+                      <span style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' }}>{doc.doc_category}</span>
+                    </td>
+                    <td style={{ padding: '8px', color: '#64748b' }}>{doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : 'N/A'}</td>
+                    <td style={{ padding: '8px' }}>
+                      <a href={doc.file_url} target="_blank" rel="noreferrer" style={{ backgroundColor: '#2563eb', color: '#fff', padding: '4px 10px', borderRadius: '4px', textDecoration: 'none', fontSize: '12px', fontWeight: 'bold' }}>
+                        📄 Open / View File
+                      </a>
+                    </td>
+                    <td style={{ padding: '8px', textAlign: 'center' }}>
+                      <button onClick={() => handleDeletePersonalDoc(doc.id)} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}>🗑️ Delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* TAB 5: TIMESHEET & EDIT ATTENDANCE */}
         {activeTab === 'attendance' && (userRole.is_admin || userRole.can_view_timesheet) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
             <h3>📅 Daily Timesheet & Attendance Logs</h3>
-            
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
               <thead>
                 <tr style={{ backgroundColor: '#f1f5f9' }}>
@@ -855,7 +972,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 5: PAYROLL */}
+        {/* TAB 6: PAYROLL */}
         {activeTab === 'payroll' && (userRole.is_admin || userRole.can_view_payroll) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
             <h3>💵 Payroll Report ({selectedCurrency})</h3>
@@ -886,7 +1003,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 6: USER CREATION & EDIT PERMISSIONS */}
+        {/* TAB 7: USER CREATION & EDIT PERMISSIONS */}
         {activeTab === 'permissions' && userRole.is_admin && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <h3>🔐 {editingEmail ? `Edit User Permissions (${editingEmail})` : 'Create New User Account'}</h3>
