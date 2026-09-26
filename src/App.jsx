@@ -31,22 +31,22 @@ export default function App() {
   const [attendance, setAttendance] = useState([]);
   const [permissionsList, setPermissionsList] = useState([]);
 
-  // Form States for Worker Registration
+  // Edit / Add Worker Form States
+  const [editingWorkerId, setEditingWorkerId] = useState(null);
   const [workerIdInput, setWorkerIdInput] = useState('');
   const [name, setName] = useState('');
   const [department, setDepartment] = useState('Plumbing');
   const [designation, setDesignation] = useState('Plumber');
   const [dailyRate, setDailyRate] = useState('');
   const [religion, setReligion] = useState('Muslim');
-  const [lastVacationReturn, setLastVacationReturn] = useState('');
-  const [securityDeposit, setSecurityDeposit] = useState('0');
 
-  // Document Link States
-  const [passportDoc, setPassportDoc] = useState('');
-  const [idCardDoc, setIdCardDoc] = useState('');
-  const [medicalCardDoc, setMedicalCardDoc] = useState('');
-  const [visaDoc, setVisaDoc] = useState('');
-  const [labourCardDoc, setLabourCardDoc] = useState('');
+  // File Upload URL States (JPG / PNG / PDF)
+  const [passportFileUrl, setPassportFileUrl] = useState('');
+  const [idCardFileUrl, setIdCardFileUrl] = useState('');
+  const [medicalCardFileUrl, setMedicalCardFileUrl] = useState('');
+  const [visaFileUrl, setVisaFileUrl] = useState('');
+  const [labourCardFileUrl, setLabourCardFileUrl] = useState('');
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   // Permission / User Creation & Editing States
   const [editingEmail, setEditingEmail] = useState(null);
@@ -59,6 +59,11 @@ export default function App() {
   const [permAddWorkers, setPermAddWorkers] = useState(false);
   const [permTimesheet, setPermTimesheet] = useState(true);
   const [permPayroll, setPermPayroll] = useState(false);
+
+  // Edit Attendance State
+  const [editingAttendanceId, setEditingAttendanceId] = useState(null);
+  const [editAttStatus, setEditAttStatus] = useState('Present');
+  const [editAttOT, setEditAttOT] = useState('0');
 
   // Bulk Operations State
   const [bulkDepartment, setBulkDepartment] = useState('Plumbing');
@@ -108,7 +113,36 @@ export default function App() {
     setAttendance(data || []);
   }
 
-  // UNIFIED DIRECT LOGIN HANDLER
+  // DIRECT FILE UPLOAD HANDLER (JPG, PNG, PDF)
+  async function handleFileUpload(file, docTypeSetter) {
+    if (!file) return;
+    try {
+      setUploadingFile(true);
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `documents/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('worker-documents')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        alert('File Upload Error: ' + uploadError.message);
+        setUploadingFile(false);
+        return;
+      }
+
+      const { data } = supabase.storage.from('worker-documents').getPublicUrl(filePath);
+      docTypeSetter(data.publicUrl);
+      alert('Document uploaded successfully!');
+    } catch (err) {
+      alert('Upload Error: ' + err.message);
+    } finally {
+      setUploadingFile(false);
+    }
+  }
+
+  // UNIFIED LOGIN HANDLER
   async function handleLogin(e) {
     e.preventDefault();
     setAuthLoading(true);
@@ -116,7 +150,6 @@ export default function App() {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
 
-    // 1. Primary Admin Check
     if (cleanEmail === 'admin@nda.pk' && cleanPassword === '123456') {
       const adminRole = {
         is_admin: true,
@@ -136,7 +169,6 @@ export default function App() {
       return;
     }
 
-    // 2. Staff Member / Department User Check
     const { data: userPerm } = await supabase
       .from('user_permissions')
       .select('*')
@@ -164,7 +196,6 @@ export default function App() {
         setSelectedDeptFilter(staffRole.assigned_department);
       }
 
-      // Auto set first accessible active tab
       if (staffRole.can_view_dashboard) setActiveTab('dashboard');
       else if (staffRole.can_use_bulk) setActiveTab('bulk');
       else if (staffRole.can_view_workers) setActiveTab('workers');
@@ -184,7 +215,7 @@ export default function App() {
     setSession(null);
   }
 
-  // Delete Actions
+  // DELETE WORKER
   async function handleDeleteWorker(id) {
     if (!userRole.is_admin && !userRole.can_add_workers) {
       return alert('Aap ke paas worker delete karne ki permission nahi hai!');
@@ -199,73 +230,115 @@ export default function App() {
     }
   }
 
-  async function handleDeleteUserPermission(userEmail) {
-    if (window.confirm(`Kya aap User ${userEmail} ka access delete karna chahte hain?`)) {
-      const { error } = await supabase.from('user_permissions').delete().eq('user_email', userEmail);
-      if (error) alert('Error: ' + error.message);
-      else {
-        alert('User delete ho gaya!');
-        fetchPermissionsList();
-        if (editingEmail === userEmail) resetPermForm();
-      }
-    }
+  // EDIT WORKER POPULATE FORM
+  function handleStartEditWorker(worker) {
+    setEditingWorkerId(worker.id);
+    setWorkerIdInput(worker.id);
+    setName(worker.name);
+    setDepartment(worker.department || 'Plumbing');
+    setDesignation(worker.designation || 'Worker');
+    setDailyRate(worker.daily_rate || '');
+    setReligion(worker.religion || 'Muslim');
+    setPassportFileUrl(worker.passport_file_url || '');
+    setIdCardFileUrl(worker.id_card_file_url || '');
+    setMedicalCardFileUrl(worker.medical_card_file_url || '');
+    setVisaFileUrl(worker.visa_file_url || '');
+    setLabourCardFileUrl(worker.labour_card_file_url || '');
   }
 
-  // Register Worker
-  async function handleAddWorker(e) {
+  function resetWorkerForm() {
+    setEditingWorkerId(null);
+    setWorkerIdInput('');
+    setName('');
+    setDepartment('Plumbing');
+    setDesignation('Plumber');
+    setDailyRate('');
+    setPassportFileUrl('');
+    setIdCardFileUrl('');
+    setMedicalCardFileUrl('');
+    setVisaFileUrl('');
+    setLabourCardFileUrl('');
+  }
+
+  // SAVE OR UPDATE WORKER
+  async function handleSaveWorker(e) {
     e.preventDefault();
     if (!userRole.is_admin && !userRole.can_add_workers) {
-      return alert('Aap ke paas naye worker add karne ki permission nahi hai!');
+      return alert('Aap ke paas worker add/edit karne ki permission nahi hai!');
     }
     if (!name.trim() || !dailyRate) {
       return alert('Name aur Daily Rate required hain!');
     }
 
-    if (workerIdInput) {
-      const existing = workers.find(w => Number(w.id) === Number(workerIdInput));
-      if (existing) {
-        return alert(`Worker ID #${workerIdInput} pehle se '${existing.name}' ko assign hai!`);
-      }
-    }
-
-    const nextAutoId = workers.length > 0 ? Math.max(...workers.map(w => Number(w.id) || 0)) + 1 : 1;
-    const finalWorkerId = workerIdInput ? Number(workerIdInput) : nextAutoId;
-
-    const newWorker = {
-      id: finalWorkerId,
+    const workerData = {
       name: name.trim(),
       department: department.trim(),
       designation: designation.trim(),
       daily_rate: Number(dailyRate),
       religion,
       currency: selectedCurrency,
-      last_vacation_return: lastVacationReturn || null,
-      security_deposit: Number(securityDeposit),
-      passport_doc: passportDoc,
-      id_card_doc: idCardDoc,
-      medical_card_doc: medicalCardDoc,
-      visa_doc: visaDoc,
-      labour_card_doc: labourCardDoc
+      passport_file_url: passportFileUrl,
+      id_card_file_url: idCardFileUrl,
+      medical_card_file_url: medicalCardFileUrl,
+      visa_file_url: visaFileUrl,
+      labour_card_file_url: labourCardFileUrl
     };
 
-    const { error } = await supabase.from('workers').insert([newWorker]);
-    if (error) {
-      alert('Error: ' + error.message);
+    if (editingWorkerId) {
+      // UPDATE EXISTING WORKER
+      const { error } = await supabase.from('workers').update(workerData).eq('id', editingWorkerId);
+      if (error) alert('Error: ' + error.message);
+      else {
+        alert('Worker data updated successfully!');
+        resetWorkerForm();
+        fetchWorkers();
+      }
     } else {
-      alert('Worker add ho gaya!');
-      setWorkerIdInput('');
-      setName('');
-      setDailyRate('');
-      setPassportDoc('');
-      setIdCardDoc('');
-      setMedicalCardDoc('');
-      setVisaDoc('');
-      setLabourCardDoc('');
-      fetchWorkers();
+      // INSERT NEW WORKER
+      if (workerIdInput) {
+        const existing = workers.find(w => Number(w.id) === Number(workerIdInput));
+        if (existing) {
+          return alert(`Worker ID #${workerIdInput} pehle se assign hai!`);
+        }
+      }
+
+      const nextAutoId = workers.length > 0 ? Math.max(...workers.map(w => Number(w.id) || 0)) + 1 : 1;
+      const finalWorkerId = workerIdInput ? Number(workerIdInput) : nextAutoId;
+
+      const { error } = await supabase.from('workers').insert([{ id: finalWorkerId, ...workerData }]);
+      if (error) alert('Error: ' + error.message);
+      else {
+        alert('Naya Worker add ho gaya!');
+        resetWorkerForm();
+        fetchWorkers();
+      }
     }
   }
 
-  // Bulk Attendance / Overtime Action
+  // ATTENDANCE EDIT & DELETE
+  async function handleSaveAttendanceEdit(attId) {
+    const { error } = await supabase
+      .from('attendance')
+      .update({ status: editAttStatus, overtime_hours: Number(editAttOT) })
+      .eq('id', attId);
+
+    if (error) alert('Error: ' + error.message);
+    else {
+      alert('Attendance record updated!');
+      setEditingAttendanceId(null);
+      fetchAttendance();
+    }
+  }
+
+  async function handleDeleteAttendance(attId) {
+    if (window.confirm('Kya aap is attendance record ko delete karna chahte hain?')) {
+      const { error } = await supabase.from('attendance').delete().eq('id', attId);
+      if (error) alert('Error: ' + error.message);
+      else fetchAttendance();
+    }
+  }
+
+  // BULK ATTENDANCE
   async function handleBulkAttendance() {
     if (!userRole.is_admin && !userRole.can_use_bulk) {
       return alert('Aap ke paas Bulk Logging ki permission nahi hai!');
@@ -304,7 +377,7 @@ export default function App() {
     else fetchAttendance();
   }
 
-  // Populate Form for Editing Existing User Permissions
+  // USER PERMISSIONS EDIT & DELETE
   function handleStartEditUser(user) {
     setEditingEmail(user.user_email);
     setTargetEmail(user.user_email);
@@ -331,7 +404,6 @@ export default function App() {
     setPermPayroll(false);
   }
 
-  // Save / Update User Permissions
   async function handleSavePermission(e) {
     e.preventDefault();
     if (!targetEmail || !targetPassword) return alert('Email aur Password dono enter karein!');
@@ -354,15 +426,25 @@ export default function App() {
         .from('user_permissions')
         .upsert([permData], { onConflict: 'user_email' });
 
-      if (permError) {
-        alert('Permission Save Error: ' + permError.message);
-      } else {
-        alert(`User ${targetEmail} ki permissions successfully save ho gayi hain!`);
+      if (permError) alert('Permission Save Error: ' + permError.message);
+      else {
+        alert(`User permissions successfully saved!`);
         resetPermForm();
         fetchPermissionsList();
       }
     } catch (err) {
       alert('System Error: ' + err.message);
+    }
+  }
+
+  async function handleDeleteUserPermission(userEmail) {
+    if (window.confirm(`Delete access for ${userEmail}?`)) {
+      const { error } = await supabase.from('user_permissions').delete().eq('user_email', userEmail);
+      if (error) alert('Error: ' + error.message);
+      else {
+        fetchPermissionsList();
+        if (editingEmail === userEmail) resetPermForm();
+      }
     }
   }
 
@@ -430,7 +512,7 @@ export default function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: '#f8fafc', fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
       
-      {/* Top Header Navigation bar */}
+      {/* Navigation Header */}
       <header style={{ backgroundColor: '#0f172a', color: '#fff', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <h2 style={{ fontSize: '18px', margin: 0, color: '#38bdf8' }}>NDA-PK SYSTEM</h2>
@@ -439,7 +521,7 @@ export default function App() {
         <button onClick={handleLogout} style={{ padding: '8px 14px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>🔒 Logout</button>
       </header>
 
-      {/* Dynamic Tabs Menu Bar (Filters based on Permissions) */}
+      {/* Tabs Menu Bar */}
       <div style={{ backgroundColor: '#1e293b', padding: '5px 15px', display: 'flex', overflowX: 'auto', gap: '5px' }}>
         {(userRole.is_admin || userRole.can_view_dashboard) && (
           <button onClick={() => setActiveTab('dashboard')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'dashboard' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📊 Summary</button>
@@ -461,7 +543,6 @@ export default function App() {
         )}
       </div>
 
-      {/* Main Content Area */}
       <main style={{ flex: 1, padding: '20px' }}>
         
         {/* Controls Bar */}
@@ -553,14 +634,15 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 3: WORKER MANAGEMENT */}
+        {/* TAB 3: WORKER MANAGEMENT & DOCUMENT FILE UPLOAD */}
         {activeTab === 'workers' && (userRole.is_admin || userRole.can_view_workers) && (
           <div>
             {(userRole.is_admin || userRole.can_add_workers) && (
               <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '20px' }}>
-                <h3 style={{ margin: '0 0 15px 0' }}>➕ Add Worker Record</h3>
-                <form onSubmit={handleAddWorker} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
-                  <input type="number" placeholder="Worker ID (Optional)" value={workerIdInput} onChange={e => setWorkerIdInput(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+                <h3 style={{ margin: '0 0 15px 0' }}>{editingWorkerId ? `✏️ Edit Worker Record (#${editingWorkerId})` : '➕ Add New Worker & Documents'}</h3>
+                
+                <form onSubmit={handleSaveWorker} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                  <input type="number" placeholder="Worker ID (Optional)" value={workerIdInput} onChange={e => setWorkerIdInput(e.target.value)} disabled={!!editingWorkerId} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
                   <input type="text" placeholder="Full Name *" value={name} onChange={e => setName(e.target.value)} required style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
                   <select value={department} onChange={e => setDepartment(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
                     <option value="Plumbing">Plumbing Dept</option>
@@ -571,13 +653,59 @@ export default function App() {
                   </select>
                   <input type="text" placeholder="Designation" value={designation} onChange={e => setDesignation(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
                   <input type="number" placeholder={`Daily Rate (${selectedCurrency}) *`} value={dailyRate} onChange={e => setDailyRate(e.target.value)} required style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-                  <button type="submit" style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', padding: '10px' }}>Save Worker</button>
+
+                  {/* DIRECT JPG/PDF FILE UPLOAD INPUTS */}
+                  <div style={{ gridColumn: '1 / -1', marginTop: '10px', backgroundColor: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                    <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 'bold', color: '#0369a1' }}>📁 Upload Worker Documents (JPG / PNG / PDF):</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', fontSize: '12px' }}>
+                      
+                      <div>
+                        <label style={{ display: 'block', fontWeight: '600' }}>Passport Copy:</label>
+                        <input type="file" accept="image/*,application/pdf" onChange={e => handleFileUpload(e.target.files[0], setPassportFileUrl)} />
+                        {passportFileUrl && <a href={passportFileUrl} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontSize: '11px', display: 'block', marginTop: '2px' }}>📄 View Passport File</a>}
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontWeight: '600' }}>ID Card Copy:</label>
+                        <input type="file" accept="image/*,application/pdf" onChange={e => handleFileUpload(e.target.files[0], setIdCardFileUrl)} />
+                        {idCardFileUrl && <a href={idCardFileUrl} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontSize: '11px', display: 'block', marginTop: '2px' }}>📄 View ID Card File</a>}
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontWeight: '600' }}>Visa Copy:</label>
+                        <input type="file" accept="image/*,application/pdf" onChange={e => handleFileUpload(e.target.files[0], setVisaFileUrl)} />
+                        {visaFileUrl && <a href={visaFileUrl} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontSize: '11px', display: 'block', marginTop: '2px' }}>📄 View Visa File</a>}
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontWeight: '600' }}>Labour Card Copy:</label>
+                        <input type="file" accept="image/*,application/pdf" onChange={e => handleFileUpload(e.target.files[0], setLabourCardFileUrl)} />
+                        {labourCardFileUrl && <a href={labourCardFileUrl} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontSize: '11px', display: 'block', marginTop: '2px' }}>📄 View Labour Card File</a>}
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontWeight: '600' }}>Medical Card Copy:</label>
+                        <input type="file" accept="image/*,application/pdf" onChange={e => handleFileUpload(e.target.files[0], setMedicalCardFileUrl)} />
+                        {medicalCardFileUrl && <a href={medicalCardFileUrl} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontSize: '11px', display: 'block', marginTop: '2px' }}>📄 View Medical File</a>}
+                      </div>
+
+                    </div>
+                  </div>
+
+                  <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '10px', marginTop: '5px' }}>
+                    <button type="submit" disabled={uploadingFile} style={{ backgroundColor: editingWorkerId ? '#d97706' : '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', padding: '10px 20px' }}>
+                      {uploadingFile ? 'Uploading File...' : editingWorkerId ? '💾 Update Worker Details' : '➕ Save Worker'}
+                    </button>
+                    {editingWorkerId && (
+                      <button type="button" onClick={resetWorkerForm} style={{ backgroundColor: '#64748b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: '10px 15px' }}>Cancel Edit</button>
+                    )}
+                  </div>
                 </form>
               </div>
             )}
 
             <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
-              <h3>📋 Workers List ({selectedDeptFilter})</h3>
+              <h3>📋 Workers Directory & Files ({selectedDeptFilter})</h3>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f1f5f9' }}>
@@ -585,6 +713,7 @@ export default function App() {
                     <th style={{ padding: '8px' }}>Name</th>
                     <th style={{ padding: '8px' }}>Dept</th>
                     <th style={{ padding: '8px' }}>Rate</th>
+                    <th style={{ padding: '8px' }}>Attached Files</th>
                     {(userRole.is_admin || userRole.can_add_workers) && <th style={{ padding: '8px', textAlign: 'center' }}>Action</th>}
                   </tr>
                 </thead>
@@ -595,8 +724,16 @@ export default function App() {
                       <td style={{ padding: '8px', fontWeight: '600' }}>{w.name}</td>
                       <td style={{ padding: '8px', color: '#0369a1' }}>{w.department}</td>
                       <td style={{ padding: '8px' }}>{selectedCurrency} {w.daily_rate}</td>
+                      <td style={{ padding: '8px', fontSize: '11px' }}>
+                        {w.passport_file_url && <a href={w.passport_file_url} target="_blank" rel="noreferrer" style={{ marginRight: '6px', color: '#2563eb' }}>📁 Passport</a>}
+                        {w.id_card_file_url && <a href={w.id_card_file_url} target="_blank" rel="noreferrer" style={{ marginRight: '6px', color: '#2563eb' }}>📁 ID Card</a>}
+                        {w.visa_file_url && <a href={w.visa_file_url} target="_blank" rel="noreferrer" style={{ marginRight: '6px', color: '#2563eb' }}>📁 Visa</a>}
+                        {w.labour_card_file_url && <a href={w.labour_card_file_url} target="_blank" rel="noreferrer" style={{ marginRight: '6px', color: '#2563eb' }}>📁 Labour Card</a>}
+                        {w.medical_card_file_url && <a href={w.medical_card_file_url} target="_blank" rel="noreferrer" style={{ marginRight: '6px', color: '#2563eb' }}>📁 Medical</a>}
+                      </td>
                       {(userRole.is_admin || userRole.can_add_workers) && (
                         <td style={{ padding: '8px', textAlign: 'center' }}>
+                          <button onClick={() => handleStartEditWorker(w)} style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', marginRight: '4px' }}>✏️ Edit</button>
                           <button onClick={() => handleDeleteWorker(w.id)} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}>Delete</button>
                         </td>
                       )}
@@ -608,10 +745,11 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 4: TIMESHEET */}
+        {/* TAB 4: TIMESHEET & EDIT ATTENDANCE */}
         {activeTab === 'attendance' && (userRole.is_admin || userRole.can_view_timesheet) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
-            <h3>📅 Daily Timesheet ({selectedDeptFilter})</h3>
+            <h3>📅 Daily Timesheet & Attendance Logs</h3>
+            
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
               <thead>
                 <tr style={{ backgroundColor: '#f1f5f9' }}>
@@ -620,7 +758,7 @@ export default function App() {
                   <th style={{ padding: '8px' }}>Dept</th>
                   <th style={{ padding: '8px' }}>Status</th>
                   <th style={{ padding: '8px' }}>OT (Hrs)</th>
-                  <th style={{ padding: '8px', textAlign: 'center' }}>Action</th>
+                  <th style={{ padding: '8px', textAlign: 'center' }}>Mark Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -663,6 +801,57 @@ export default function App() {
                 })}
               </tbody>
             </table>
+
+            <h4 style={{ marginTop: '25px', marginBottom: '10px', color: '#0f172a' }}>📝 Edit Recent Attendance Logs</h4>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#e2e8f0' }}>
+                  <th style={{ padding: '6px' }}>Date</th>
+                  <th style={{ padding: '6px' }}>Worker ID</th>
+                  <th style={{ padding: '6px' }}>Status</th>
+                  <th style={{ padding: '6px' }}>OT Hours</th>
+                  <th style={{ padding: '6px', textAlign: 'center' }}>Edit / Delete</th>
+                </tr>
+              </thead>
+              <tbody>
+                {attendance.slice(0, 15).map(att => (
+                  <tr key={att.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                    <td style={{ padding: '6px' }}>{att.date}</td>
+                    <td style={{ padding: '6px', fontWeight: 'bold' }}>#{att.worker_id}</td>
+                    <td style={{ padding: '6px' }}>
+                      {editingAttendanceId === att.id ? (
+                        <select value={editAttStatus} onChange={e => setEditAttStatus(e.target.value)} style={{ padding: '2px' }}>
+                          <option value="Present">Present</option>
+                          <option value="Absent">Absent</option>
+                        </select>
+                      ) : (
+                        <span style={{ color: att.status === 'Present' ? '#166534' : '#991b1b', fontWeight: 'bold' }}>{att.status}</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '6px' }}>
+                      {editingAttendanceId === att.id ? (
+                        <input type="number" value={editAttOT} onChange={e => setEditAttOT(e.target.value)} style={{ width: '40px' }} />
+                      ) : (
+                        `${att.overtime_hours || 0} hrs`
+                      )}
+                    </td>
+                    <td style={{ padding: '6px', textAlign: 'center' }}>
+                      {editingAttendanceId === att.id ? (
+                        <>
+                          <button onClick={() => handleSaveAttendanceEdit(att.id)} style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', padding: '2px 6px', borderRadius: '3px', cursor: 'pointer', marginRight: '4px' }}>Save</button>
+                          <button onClick={() => setEditingAttendanceId(null)} style={{ backgroundColor: '#64748b', color: '#fff', border: 'none', padding: '2px 6px', borderRadius: '3px', cursor: 'pointer' }}>Cancel</button>
+                        </>
+                      ) : (
+                        <>
+                          <button onClick={() => { setEditingAttendanceId(att.id); setEditAttStatus(att.status); setEditAttOT(att.overtime_hours); }} style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', padding: '2px 6px', borderRadius: '3px', cursor: 'pointer', marginRight: '4px' }}>✏️ Edit</button>
+                          <button onClick={() => handleDeleteAttendance(att.id)} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '2px 6px', borderRadius: '3px', cursor: 'pointer' }}>🗑️ Delete</button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
@@ -697,7 +886,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 6: USER CREATION & EDIT PERMISSIONS (ADMIN ONLY) */}
+        {/* TAB 6: USER CREATION & EDIT PERMISSIONS */}
         {activeTab === 'permissions' && userRole.is_admin && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <h3>🔐 {editingEmail ? `Edit User Permissions (${editingEmail})` : 'Create New User Account'}</h3>
