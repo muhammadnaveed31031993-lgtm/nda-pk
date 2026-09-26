@@ -125,7 +125,7 @@ export default function App() {
     }
 
     // 2. Staff Member / Department User Check via user_permissions Table
-    const { data: userPerm, error } = await supabase
+    const { data: userPerm } = await supabase
       .from('user_permissions')
       .select('*')
       .eq('user_email', cleanEmail)
@@ -166,17 +166,6 @@ export default function App() {
       else {
         alert('Worker delete ho gaya!');
         fetchWorkers();
-      }
-    }
-  }
-
-  async function handleDeleteAttendance(id) {
-    if (window.confirm('Kya aap is attendance entry ko delete karna chahte hain?')) {
-      const { error } = await supabase.from('attendance').delete().eq('id', id);
-      if (error) alert('Error: ' + error.message);
-      else {
-        alert('Attendance entry delete ho gayi!');
-        fetchAttendance();
       }
     }
   }
@@ -336,10 +325,7 @@ export default function App() {
     const otSalary = totalOT * hourlyRate;
     const totalPayable = baseSalary + otSalary;
 
-    const accruedLeaveDays = Math.round((presentDays / 30) * 2.5 * 10) / 10;
-    const estimatedLeaveSalary = accruedLeaveDays * dailyRateNum;
-
-    return { ...worker, presentDays, totalOT, baseSalary, otSalary, totalPayable, accruedLeaveDays, estimatedLeaveSalary };
+    return { ...worker, presentDays, totalOT, baseSalary, otSalary, totalPayable };
   });
 
   const grandTotalPayroll = salaryData.reduce((acc, curr) => acc + curr.totalPayable, 0);
@@ -613,9 +599,9 @@ export default function App() {
                     <td style={{ padding: '8px', fontWeight: 'bold', color: '#2563eb' }}>#{s.id}</td>
                     <td style={{ padding: '8px' }}>{s.name}</td>
                     <td style={{ padding: '8px', color: '#0369a1' }}>{s.department}</td>
-                    <td style={{ padding: '8px', color: '#16a34a' }}>{s.presentDays} days</td>
-                    <td style={{ padding: '8px' }}>{s.totalOT} hrs</td>
-                    <td style={{ padding: '8px', fontWeight: 'bold', color: '#2563eb' }}>{selectedCurrency} {Math.round(s.totalPayable)}</td>
+                    <td style={{ padding: '8px' }}>{s.presentDays}</td>
+                    <td style={{ padding: '8px' }}>{s.totalOT}</td>
+                    <td style={{ padding: '8px', fontWeight: 'bold', color: '#16a34a' }}>{selectedCurrency} {Math.round(s.totalPayable)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -623,39 +609,38 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 6: PERMISSIONS */}
+        {/* TAB 6: PERMISSIONS & USER CREATION (ADMIN ONLY) */}
         {activeTab === 'permissions' && userRole.is_admin && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h3>🔐 User Creation & Department Permissions</h3>
-            <form onSubmit={handleSavePermission} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', marginBottom: '20px', backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px' }}>
-              <input type="email" placeholder="User Email *" value={targetEmail} onChange={e => setTargetEmail(e.target.value)} required style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+            <h3>🔐 Department Users & Permissions</h3>
+            <form onSubmit={handleSavePermission} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '25px' }}>
+              <input type="email" placeholder="Staff Email *" value={targetEmail} onChange={e => setTargetEmail(e.target.value)} required style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
               <input type="password" placeholder="Password *" value={targetPassword} onChange={e => setTargetPassword(e.target.value)} required style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
               <select value={targetDept} onChange={e => setTargetDept(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
-                <option value="Plumbing">Plumbing</option>
-                <option value="Electrical">Electrical</option>
-                <option value="Civil">Civil</option>
-                <option value="Ali Mardan">Ali Mardan</option>
-                <option value="Mustafa">Mustafa</option>
-                <option value="All">All Departments</option>
+                <option value="Plumbing">Plumbing Dept</option>
+                <option value="Electrical">Electrical Dept</option>
+                <option value="Civil">Civil Dept</option>
+                <option value="Ali Mardan">Ali Mardan Dept</option>
+                <option value="Mustafa">Mustafa Dept</option>
               </select>
-              <button type="submit" style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', padding: '8px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Save User Access</button>
+              <button type="submit" style={{ backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', padding: '10px' }}>Create User Account</button>
             </form>
 
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
               <thead>
                 <tr style={{ backgroundColor: '#f1f5f9' }}>
                   <th style={{ padding: '8px' }}>User Email</th>
-                  <th style={{ padding: '8px' }}>Department</th>
+                  <th style={{ padding: '8px' }}>Assigned Dept</th>
                   <th style={{ padding: '8px', textAlign: 'center' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {permissionsList.map(p => (
-                  <tr key={p.user_email} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '8px', fontWeight: 'bold' }}>{p.user_email}</td>
-                    <td style={{ padding: '8px', color: '#0369a1', fontWeight: 'bold' }}>{p.assigned_department || 'All'}</td>
+                {permissionsList.map(u => (
+                  <tr key={u.user_email} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '8px', fontWeight: '600' }}>{u.user_email}</td>
+                    <td style={{ padding: '8px', color: '#0369a1' }}>{u.assigned_department}</td>
                     <td style={{ padding: '8px', textAlign: 'center' }}>
-                      <button onClick={() => handleDeleteUserPermission(p.user_email)} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}>Delete</button>
+                      <button onClick={() => handleDeleteUserPermission(u.user_email)} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}>Delete User</button>
                     </td>
                   </tr>
                 ))}
