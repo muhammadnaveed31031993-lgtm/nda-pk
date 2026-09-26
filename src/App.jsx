@@ -8,12 +8,16 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   
-  // User Access Scope
+  // User Access Scope & Permissions
   const [userRole, setUserRole] = useState({
     is_admin: true,
+    assigned_department: 'All',
+    can_view_dashboard: true,
+    can_use_bulk: true,
+    can_view_workers: true,
+    can_add_workers: true,
     can_view_timesheet: true,
-    can_view_salary: true,
-    assigned_department: 'All'
+    can_view_payroll: true
   });
 
   // Global Settings & Filters
@@ -44,12 +48,17 @@ export default function App() {
   const [visaDoc, setVisaDoc] = useState('');
   const [labourCardDoc, setLabourCardDoc] = useState('');
 
-  // Permission / User Creation Form States
+  // Permission / User Creation & Editing States
+  const [editingEmail, setEditingEmail] = useState(null);
   const [targetEmail, setTargetEmail] = useState('');
   const [targetPassword, setTargetPassword] = useState('');
   const [targetDept, setTargetDept] = useState('Plumbing');
+  const [permDashboard, setPermDashboard] = useState(true);
+  const [permBulk, setPermBulk] = useState(false);
+  const [permWorkers, setPermWorkers] = useState(false);
+  const [permAddWorkers, setPermAddWorkers] = useState(false);
   const [permTimesheet, setPermTimesheet] = useState(true);
-  const [permSalary, setPermSalary] = useState(false);
+  const [permPayroll, setPermPayroll] = useState(false);
 
   // Bulk Operations State
   const [bulkDepartment, setBulkDepartment] = useState('Plumbing');
@@ -62,7 +71,6 @@ export default function App() {
   const today = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
-    // Check saved local login session on app start
     const savedUser = localStorage.getItem('nda_user_session');
     if (savedUser) {
       try {
@@ -108,13 +116,17 @@ export default function App() {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
 
-    // 1. Primary Admin Direct Check
+    // 1. Primary Admin Check
     if (cleanEmail === 'admin@nda.pk' && cleanPassword === '123456') {
       const adminRole = {
         is_admin: true,
+        assigned_department: 'All',
+        can_view_dashboard: true,
+        can_use_bulk: true,
+        can_view_workers: true,
+        can_add_workers: true,
         can_view_timesheet: true,
-        can_view_salary: true,
-        assigned_department: 'All'
+        can_view_payroll: true
       };
       const sessionObj = { user: { email: cleanEmail }, role: adminRole };
       setSession(sessionObj);
@@ -124,7 +136,7 @@ export default function App() {
       return;
     }
 
-    // 2. Staff Member / Department User Check via user_permissions Table
+    // 2. Staff Member / Department User Check
     const { data: userPerm } = await supabase
       .from('user_permissions')
       .select('*')
@@ -135,19 +147,33 @@ export default function App() {
     if (userPerm) {
       const staffRole = {
         is_admin: false,
-        can_view_timesheet: userPerm.can_view_timesheet,
-        can_view_salary: userPerm.can_view_salary,
-        assigned_department: userPerm.assigned_department || 'All'
+        assigned_department: userPerm.assigned_department || 'All',
+        can_view_dashboard: userPerm.can_view_dashboard ?? true,
+        can_use_bulk: userPerm.can_use_bulk ?? false,
+        can_view_workers: userPerm.can_view_workers ?? false,
+        can_add_workers: userPerm.can_add_workers ?? false,
+        can_view_timesheet: userPerm.can_view_timesheet ?? true,
+        can_view_payroll: userPerm.can_view_payroll ?? false
       };
+
       const sessionObj = { user: { email: cleanEmail }, role: staffRole };
       setSession(sessionObj);
       setUserRole(staffRole);
+
       if (staffRole.assigned_department !== 'All') {
         setSelectedDeptFilter(staffRole.assigned_department);
       }
+
+      // Auto set first accessible active tab
+      if (staffRole.can_view_dashboard) setActiveTab('dashboard');
+      else if (staffRole.can_use_bulk) setActiveTab('bulk');
+      else if (staffRole.can_view_workers) setActiveTab('workers');
+      else if (staffRole.can_view_timesheet) setActiveTab('attendance');
+      else if (staffRole.can_view_payroll) setActiveTab('payroll');
+
       localStorage.setItem('nda_user_session', JSON.stringify(sessionObj));
     } else {
-      alert('Invalid Email or Password! Sahi credentials enter karein.');
+      alert('Invalid Email or Password!');
     }
 
     setAuthLoading(false);
@@ -160,6 +186,9 @@ export default function App() {
 
   // Delete Actions
   async function handleDeleteWorker(id) {
+    if (!userRole.is_admin && !userRole.can_add_workers) {
+      return alert('Aap ke paas worker delete karne ki permission nahi hai!');
+    }
     if (window.confirm(`Kya aap Worker #${id} ko delete karna chahte hain?`)) {
       const { error } = await supabase.from('workers').delete().eq('id', id);
       if (error) alert('Error: ' + error.message);
@@ -175,8 +204,9 @@ export default function App() {
       const { error } = await supabase.from('user_permissions').delete().eq('user_email', userEmail);
       if (error) alert('Error: ' + error.message);
       else {
-        alert('User permission delete ho gayi!');
+        alert('User delete ho gaya!');
         fetchPermissionsList();
+        if (editingEmail === userEmail) resetPermForm();
       }
     }
   }
@@ -184,6 +214,9 @@ export default function App() {
   // Register Worker
   async function handleAddWorker(e) {
     e.preventDefault();
+    if (!userRole.is_admin && !userRole.can_add_workers) {
+      return alert('Aap ke paas naye worker add karne ki permission nahi hai!');
+    }
     if (!name.trim() || !dailyRate) {
       return alert('Name aur Daily Rate required hain!');
     }
@@ -191,7 +224,7 @@ export default function App() {
     if (workerIdInput) {
       const existing = workers.find(w => Number(w.id) === Number(workerIdInput));
       if (existing) {
-        return alert(`Worker ID #${workerIdInput} pehle se '${existing.name}' ko assign hai! Nayi ID enter karein.`);
+        return alert(`Worker ID #${workerIdInput} pehle se '${existing.name}' ko assign hai!`);
       }
     }
 
@@ -219,6 +252,7 @@ export default function App() {
     if (error) {
       alert('Error: ' + error.message);
     } else {
+      alert('Worker add ho gaya!');
       setWorkerIdInput('');
       setName('');
       setDailyRate('');
@@ -233,6 +267,9 @@ export default function App() {
 
   // Bulk Attendance / Overtime Action
   async function handleBulkAttendance() {
+    if (!userRole.is_admin && !userRole.can_use_bulk) {
+      return alert('Aap ke paas Bulk Logging ki permission nahi hai!');
+    }
     const deptWorkers = workers.filter(w => w.department.toLowerCase() === bulkDepartment.toLowerCase());
     if (deptWorkers.length === 0) return alert(`Department ${bulkDepartment} mein koi worker nahi mila!`);
 
@@ -247,12 +284,15 @@ export default function App() {
     const { error } = await supabase.from('attendance').insert(records);
     if (error) alert('Bulk Logging Error: ' + error.message);
     else {
-      alert(`Department ${bulkDepartment} ke ${deptWorkers.length} workers ki attendance & OT update ho gayi!`);
+      alert(`Department ${bulkDepartment} ke ${deptWorkers.length} workers ki attendance update ho gayi!`);
       fetchAttendance();
     }
   }
 
   async function handleMarkAttendance(workerId, status) {
+    if (!userRole.is_admin && !userRole.can_view_timesheet) {
+      return alert('Aap ke paas Timesheet ki permission nahi hai!');
+    }
     const otHours = Number(overtimeInputs[workerId] || 0);
     const worker = workers.find(w => w.id === workerId);
     
@@ -264,6 +304,33 @@ export default function App() {
     else fetchAttendance();
   }
 
+  // Populate Form for Editing Existing User Permissions
+  function handleStartEditUser(user) {
+    setEditingEmail(user.user_email);
+    setTargetEmail(user.user_email);
+    setTargetPassword(user.user_password);
+    setTargetDept(user.assigned_department || 'Plumbing');
+    setPermDashboard(user.can_view_dashboard ?? true);
+    setPermBulk(user.can_use_bulk ?? false);
+    setPermWorkers(user.can_view_workers ?? false);
+    setPermAddWorkers(user.can_add_workers ?? false);
+    setPermTimesheet(user.can_view_timesheet ?? true);
+    setPermPayroll(user.can_view_payroll ?? false);
+  }
+
+  function resetPermForm() {
+    setEditingEmail(null);
+    setTargetEmail('');
+    setTargetPassword('');
+    setTargetDept('Plumbing');
+    setPermDashboard(true);
+    setPermBulk(false);
+    setPermWorkers(false);
+    setPermAddWorkers(false);
+    setPermTimesheet(true);
+    setPermPayroll(false);
+  }
+
   // Save / Update User Permissions
   async function handleSavePermission(e) {
     e.preventDefault();
@@ -273,9 +340,13 @@ export default function App() {
       const permData = {
         user_email: targetEmail.trim().toLowerCase(),
         user_password: targetPassword.trim(),
-        can_view_timesheet: permTimesheet,
-        can_view_salary: permSalary,
         assigned_department: targetDept,
+        can_view_dashboard: permDashboard,
+        can_use_bulk: permBulk,
+        can_view_workers: permWorkers,
+        can_add_workers: permAddWorkers,
+        can_view_timesheet: permTimesheet,
+        can_view_payroll: permPayroll,
         is_admin: false
       };
 
@@ -286,9 +357,8 @@ export default function App() {
       if (permError) {
         alert('Permission Save Error: ' + permError.message);
       } else {
-        alert(`User ${targetEmail} ka account ('${targetDept}' Dept) successfully save ho gaya hai!`);
-        setTargetEmail('');
-        setTargetPassword('');
+        alert(`User ${targetEmail} ki permissions successfully save ho gayi hain!`);
+        resetPermForm();
         fetchPermissionsList();
       }
     } catch (err) {
@@ -296,7 +366,7 @@ export default function App() {
     }
   }
 
-  // Filtered Workers according to Department Selection / User Scope
+  // Filtered Workers
   const filteredWorkers = workers.filter(w => {
     const userDeptScope = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
     if (!userDeptScope || userDeptScope === 'All') return true;
@@ -369,14 +439,26 @@ export default function App() {
         <button onClick={handleLogout} style={{ padding: '8px 14px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>🔒 Logout</button>
       </header>
 
-      {/* Tabs Menu Bar */}
+      {/* Dynamic Tabs Menu Bar (Filters based on Permissions) */}
       <div style={{ backgroundColor: '#1e293b', padding: '5px 15px', display: 'flex', overflowX: 'auto', gap: '5px' }}>
-        <button onClick={() => setActiveTab('dashboard')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'dashboard' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📊 Summary</button>
-        <button onClick={() => setActiveTab('bulk')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'bulk' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>⚡ Bulk Log</button>
-        <button onClick={() => setActiveTab('workers')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'workers' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>👷 Workers & Docs</button>
-        <button onClick={() => setActiveTab('attendance')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'attendance' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📅 Timesheet</button>
-        <button onClick={() => setActiveTab('payroll')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'payroll' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>💵 Payroll</button>
-        {userRole.is_admin && <button onClick={() => setActiveTab('permissions')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'permissions' ? '#d97706' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🔐 Permissions</button>}
+        {(userRole.is_admin || userRole.can_view_dashboard) && (
+          <button onClick={() => setActiveTab('dashboard')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'dashboard' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📊 Summary</button>
+        )}
+        {(userRole.is_admin || userRole.can_use_bulk) && (
+          <button onClick={() => setActiveTab('bulk')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'bulk' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>⚡ Bulk Log</button>
+        )}
+        {(userRole.is_admin || userRole.can_view_workers) && (
+          <button onClick={() => setActiveTab('workers')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'workers' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>👷 Workers</button>
+        )}
+        {(userRole.is_admin || userRole.can_view_timesheet) && (
+          <button onClick={() => setActiveTab('attendance')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'attendance' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📅 Timesheet</button>
+        )}
+        {(userRole.is_admin || userRole.can_view_payroll) && (
+          <button onClick={() => setActiveTab('payroll')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'payroll' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>💵 Payroll</button>
+        )}
+        {userRole.is_admin && (
+          <button onClick={() => setActiveTab('permissions')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'permissions' ? '#d97706' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🔐 User Permissions</button>
+        )}
       </div>
 
       {/* Main Content Area */}
@@ -411,7 +493,7 @@ export default function App() {
         </div>
 
         {/* TAB 1: DASHBOARD */}
-        {activeTab === 'dashboard' && (
+        {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
             <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #2563eb' }}>
               <span style={{ color: '#64748b', fontSize: '13px' }}>Workers</span>
@@ -425,17 +507,19 @@ export default function App() {
               <span style={{ color: '#64748b', fontSize: '13px' }}>Total Overtime</span>
               <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#d97706', marginTop: '4px' }}>{totalOvertimeToday} hrs</div>
             </div>
-            <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #0891b2' }}>
-              <span style={{ color: '#64748b', fontSize: '13px' }}>Total Payroll ({selectedCurrency})</span>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>
-                {selectedCurrency} {Math.round(grandTotalPayroll).toLocaleString()}
+            {(userRole.is_admin || userRole.can_view_payroll) && (
+              <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #0891b2' }}>
+                <span style={{ color: '#64748b', fontSize: '13px' }}>Total Payroll ({selectedCurrency})</span>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>
+                  {selectedCurrency} {Math.round(grandTotalPayroll).toLocaleString()}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
         {/* TAB 2: BULK ATTENDANCE */}
-        {activeTab === 'bulk' && (
+        {activeTab === 'bulk' && (userRole.is_admin || userRole.can_use_bulk) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 10px 0' }}>⚡ Department Bulk Attendance & Overtime</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
@@ -469,26 +553,28 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 3: WORKER REGISTRATION */}
-        {activeTab === 'workers' && (
+        {/* TAB 3: WORKER MANAGEMENT */}
+        {activeTab === 'workers' && (userRole.is_admin || userRole.can_view_workers) && (
           <div>
-            <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '20px' }}>
-              <h3 style={{ margin: '0 0 15px 0' }}>➕ Add Worker Record</h3>
-              <form onSubmit={handleAddWorker} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
-                <input type="number" placeholder="Worker ID (Optional)" value={workerIdInput} onChange={e => setWorkerIdInput(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-                <input type="text" placeholder="Full Name *" value={name} onChange={e => setName(e.target.value)} required style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-                <select value={department} onChange={e => setDepartment(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
-                  <option value="Plumbing">Plumbing Dept</option>
-                  <option value="Electrical">Electrical Dept</option>
-                  <option value="Civil">Civil Dept</option>
-                  <option value="Ali Mardan">Ali Mardan Dept</option>
-                  <option value="Mustafa">Mustafa Dept</option>
-                </select>
-                <input type="text" placeholder="Designation" value={designation} onChange={e => setDesignation(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-                <input type="number" placeholder={`Daily Rate (${selectedCurrency}) *`} value={dailyRate} onChange={e => setDailyRate(e.target.value)} required style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-                <button type="submit" style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', padding: '10px' }}>Save Worker</button>
-              </form>
-            </div>
+            {(userRole.is_admin || userRole.can_add_workers) && (
+              <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '20px' }}>
+                <h3 style={{ margin: '0 0 15px 0' }}>➕ Add Worker Record</h3>
+                <form onSubmit={handleAddWorker} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+                  <input type="number" placeholder="Worker ID (Optional)" value={workerIdInput} onChange={e => setWorkerIdInput(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+                  <input type="text" placeholder="Full Name *" value={name} onChange={e => setName(e.target.value)} required style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+                  <select value={department} onChange={e => setDepartment(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
+                    <option value="Plumbing">Plumbing Dept</option>
+                    <option value="Electrical">Electrical Dept</option>
+                    <option value="Civil">Civil Dept</option>
+                    <option value="Ali Mardan">Ali Mardan Dept</option>
+                    <option value="Mustafa">Mustafa Dept</option>
+                  </select>
+                  <input type="text" placeholder="Designation" value={designation} onChange={e => setDesignation(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+                  <input type="number" placeholder={`Daily Rate (${selectedCurrency}) *`} value={dailyRate} onChange={e => setDailyRate(e.target.value)} required style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+                  <button type="submit" style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', padding: '10px' }}>Save Worker</button>
+                </form>
+              </div>
+            )}
 
             <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
               <h3>📋 Workers List ({selectedDeptFilter})</h3>
@@ -499,7 +585,7 @@ export default function App() {
                     <th style={{ padding: '8px' }}>Name</th>
                     <th style={{ padding: '8px' }}>Dept</th>
                     <th style={{ padding: '8px' }}>Rate</th>
-                    <th style={{ padding: '8px', textAlign: 'center' }}>Action</th>
+                    {(userRole.is_admin || userRole.can_add_workers) && <th style={{ padding: '8px', textAlign: 'center' }}>Action</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -509,9 +595,11 @@ export default function App() {
                       <td style={{ padding: '8px', fontWeight: '600' }}>{w.name}</td>
                       <td style={{ padding: '8px', color: '#0369a1' }}>{w.department}</td>
                       <td style={{ padding: '8px' }}>{selectedCurrency} {w.daily_rate}</td>
-                      <td style={{ padding: '8px', textAlign: 'center' }}>
-                        <button onClick={() => handleDeleteWorker(w.id)} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}>Delete</button>
-                      </td>
+                      {(userRole.is_admin || userRole.can_add_workers) && (
+                        <td style={{ padding: '8px', textAlign: 'center' }}>
+                          <button onClick={() => handleDeleteWorker(w.id)} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}>Delete</button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -521,7 +609,7 @@ export default function App() {
         )}
 
         {/* TAB 4: TIMESHEET */}
-        {activeTab === 'attendance' && (
+        {activeTab === 'attendance' && (userRole.is_admin || userRole.can_view_timesheet) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
             <h3>📅 Daily Timesheet ({selectedDeptFilter})</h3>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
@@ -579,7 +667,7 @@ export default function App() {
         )}
 
         {/* TAB 5: PAYROLL */}
-        {activeTab === 'payroll' && (
+        {activeTab === 'payroll' && (userRole.is_admin || userRole.can_view_payroll) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
             <h3>💵 Payroll Report ({selectedCurrency})</h3>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
@@ -609,29 +697,63 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 6: PERMISSIONS & USER CREATION (ADMIN ONLY) */}
+        {/* TAB 6: USER CREATION & EDIT PERMISSIONS (ADMIN ONLY) */}
         {activeTab === 'permissions' && userRole.is_admin && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h3>🔐 Department Users & Permissions</h3>
-            <form onSubmit={handleSavePermission} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '25px' }}>
-              <input type="email" placeholder="Staff Email *" value={targetEmail} onChange={e => setTargetEmail(e.target.value)} required style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-              <input type="password" placeholder="Password *" value={targetPassword} onChange={e => setTargetPassword(e.target.value)} required style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-              <select value={targetDept} onChange={e => setTargetDept(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
-                <option value="Plumbing">Plumbing Dept</option>
-                <option value="Electrical">Electrical Dept</option>
-                <option value="Civil">Civil Dept</option>
-                <option value="Ali Mardan">Ali Mardan Dept</option>
-                <option value="Mustafa">Mustafa Dept</option>
-              </select>
-              <button type="submit" style={{ backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', padding: '10px' }}>Create User Account</button>
+            <h3>🔐 {editingEmail ? `Edit User Permissions (${editingEmail})` : 'Create New User Account'}</h3>
+            
+            <form onSubmit={handleSavePermission} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '25px', backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Email Address *</label>
+                <input type="email" placeholder="user@nda.pk" value={targetEmail} onChange={e => setTargetEmail(e.target.value)} disabled={!!editingEmail} required style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Password *</label>
+                <input type="password" placeholder="Password" value={targetPassword} onChange={e => setTargetPassword(e.target.value)} required style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box' }} />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Assigned Department</label>
+                <select value={targetDept} onChange={e => setTargetDept(e.target.value)} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box' }}>
+                  <option value="Plumbing">Plumbing Dept</option>
+                  <option value="Electrical">Electrical Dept</option>
+                  <option value="Civil">Civil Dept</option>
+                  <option value="Ali Mardan">Ali Mardan Dept</option>
+                  <option value="Mustafa">Mustafa Dept</option>
+                </select>
+              </div>
+
+              <div style={{ gridColumn: '1 / -1', marginTop: '10px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#d97706', display: 'block', marginBottom: '8px' }}>Allowed Features & Access Permissions:</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', fontSize: '13px' }}>
+                  <label><input type="checkbox" checked={permDashboard} onChange={e => setPermDashboard(e.target.checked)} /> 📊 Summary / Dashboard</label>
+                  <label><input type="checkbox" checked={permBulk} onChange={e => setPermBulk(e.target.checked)} /> ⚡ Bulk Logging</label>
+                  <label><input type="checkbox" checked={permWorkers} onChange={e => setPermWorkers(e.target.checked)} /> 👷 View Workers</label>
+                  <label><input type="checkbox" checked={permAddWorkers} onChange={e => setPermAddWorkers(e.target.checked)} /> ➕ Add / Delete Workers</label>
+                  <label><input type="checkbox" checked={permTimesheet} onChange={e => setPermTimesheet(e.target.checked)} /> 📅 View / Mark Timesheet</label>
+                  <label><input type="checkbox" checked={permPayroll} onChange={e => setPermPayroll(e.target.checked)} /> 💵 View Payroll</label>
+                </div>
+              </div>
+
+              <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '10px', marginTop: '10px' }}>
+                <button type="submit" style={{ backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', padding: '10px 20px' }}>
+                  {editingEmail ? '💾 Update User Permissions' : '➕ Create User Account'}
+                </button>
+                {editingEmail && (
+                  <button type="button" onClick={resetPermForm} style={{ backgroundColor: '#64748b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: '10px 15px' }}>Cancel Edit</button>
+                )}
+              </div>
             </form>
 
+            <h4>Users List & Current Permissions</h4>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
               <thead>
                 <tr style={{ backgroundColor: '#f1f5f9' }}>
                   <th style={{ padding: '8px' }}>User Email</th>
-                  <th style={{ padding: '8px' }}>Assigned Dept</th>
-                  <th style={{ padding: '8px', textAlign: 'center' }}>Action</th>
+                  <th style={{ padding: '8px' }}>Dept</th>
+                  <th style={{ padding: '8px' }}>Active Permissions</th>
+                  <th style={{ padding: '8px', textAlign: 'center' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -639,8 +761,17 @@ export default function App() {
                   <tr key={u.user_email} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '8px', fontWeight: '600' }}>{u.user_email}</td>
                     <td style={{ padding: '8px', color: '#0369a1' }}>{u.assigned_department}</td>
+                    <td style={{ padding: '8px', fontSize: '11px' }}>
+                      {u.can_view_dashboard && <span style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', marginRight: '4px' }}>Summary</span>}
+                      {u.can_use_bulk && <span style={{ backgroundColor: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: '4px', marginRight: '4px' }}>Bulk</span>}
+                      {u.can_view_workers && <span style={{ backgroundColor: '#f3e8ff', color: '#6b21a8', padding: '2px 6px', borderRadius: '4px', marginRight: '4px' }}>Workers</span>}
+                      {u.can_add_workers && <span style={{ backgroundColor: '#dcfce7', color: '#166534', padding: '2px 6px', borderRadius: '4px', marginRight: '4px' }}>Add Workers</span>}
+                      {u.can_view_timesheet && <span style={{ backgroundColor: '#e0e7ff', color: '#3730a3', padding: '2px 6px', borderRadius: '4px', marginRight: '4px' }}>Timesheet</span>}
+                      {u.can_view_payroll && <span style={{ backgroundColor: '#fce7f3', color: '#9d174d', padding: '2px 6px', borderRadius: '4px', marginRight: '4px' }}>Payroll</span>}
+                    </td>
                     <td style={{ padding: '8px', textAlign: 'center' }}>
-                      <button onClick={() => handleDeleteUserPermission(u.user_email)} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}>Delete User</button>
+                      <button onClick={() => handleStartEditUser(u)} style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', marginRight: '5px' }}>✏️ Edit</button>
+                      <button onClick={() => handleDeleteUserPermission(u.user_email)} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}>🗑️ Delete</button>
                     </td>
                   </tr>
                 ))}
