@@ -1,16 +1,53 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-// Supabase Connection
+// Supabase Setup
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function App() {
+  const [session, setSession] = useState(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
+
   const [attendance, setAttendance] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanStatus, setScanStatus] = useState('');
+
+  // Check Login Session
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchAttendance();
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) fetchAttendance();
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Login Function
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError('');
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setAuthError(error.message);
+    setAuthLoading(false);
+  };
+
+  // Logout Function
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setAttendance([]);
+  };
 
   // Fetch Attendance Records
   const fetchAttendance = async () => {
@@ -29,10 +66,6 @@ export default function App() {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    fetchAttendance();
-  }, []);
 
   // Gemini AI Scan Function
   const handleFileUpload = async (event) => {
@@ -111,13 +144,54 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
+  // 1. Agar User Logged In Nahi Hai To Login Screen Dikhayein
+  if (!session) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', fontFamily: 'sans-serif', background: '#f3f4f6' }}>
+        <form onSubmit={handleLogin} style={{ background: '#fff', padding: '30px', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', width: '300px' }}>
+          <h2 style={{ textAlign: 'center', marginBottom: '20px' }}>ERP Login</h2>
+          {authError && <p style={{ color: 'red', fontSize: '14px' }}>{authError}</p>}
+          <div style={{ marginBottom: '15px' }}>
+            <label style={{ display: 'block', marginBottom: '5px' }}>Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
+            />
+          </div>
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', marginBottom: '5px' }}>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
+            />
+          </div>
+          <button type="submit" disabled={authLoading} style={{ width: '100%', padding: '10px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
+            {authLoading ? 'Logging in...' : 'Login'}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  // 2. Main ERP Dashboard (Login Hone Ke Baad)
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '800px', margin: '0 auto' }}>
-      <h2>Daily Attendance Management ERP</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h2>Daily Attendance Management ERP</h2>
+        <button onClick={handleLogout} style={{ padding: '8px 15px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
+          Logout
+        </button>
+      </div>
 
       {/* Upload Section */}
-      <div style={{ background: '#f4f4f4', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
-        <h3>Scan Paper Sheet</h3>
+      <div style={{ background: '#f4f4f4', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
+        <h3>Scan Attendance Sheet</h3>
         <input
           type="file"
           accept="image/*"
