@@ -145,7 +145,7 @@ export default function App() {
         reader.onerror = (err) => reject(err);
       });
 
-      const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       if (!apiKey) {
         throw new Error("OpenAI API Key nahi mili! Vercel environment variables check karein.");
       }
