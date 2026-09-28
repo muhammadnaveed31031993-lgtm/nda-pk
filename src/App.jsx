@@ -131,7 +131,8 @@ export default function App() {
 
   // OCR PAPER TIMESHEET PHOTO SCANNER HANDLER (GPT-4o)
  // FIXED: GEMINI OCR PAPER TIMESHEET SCANNER FUNCTION
- async function handleScanPaperSheet(event) {
+ // UPDATED GEMINI OCR SCANNER FOR NEW API KEY FORMAT
+  async function handleScanPaperSheet(event) {
     const file = event.target.files[0];
     if (!file) return;
 
@@ -141,7 +142,7 @@ export default function App() {
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.REACT_APP_GEMINI_API_KEY;
       if (!apiKey) {
-        throw new Error("Gemini API Key nahi mili! .env file check karein.");
+        throw new Error("Gemini API Key nahi mili! Apni .env file check karein.");
       }
 
       const base64Data = await new Promise((resolve, reject) => {
@@ -152,18 +153,22 @@ export default function App() {
       });
 
       const prompt = `Extract table data from this daily attendance sheet image. 
-      Return ONLY a valid raw JSON array of objects without markdown fences.
+      Return ONLY a valid raw JSON array of objects without markdown fences or extra text.
       Each object must contain:
       - "id_no": (number, ID from ID No column)
       - "working_days": (number: 1 if present or working, 0 if absent)
       - "overtime": (number, total overtime hours, default 0 if blank)
       Ignore blank rows.`;
 
+      // New Key format ke sath x-goog-api-key header aur proper API URL
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey.trim()
+          },
           body: JSON.stringify({
             contents: [
               {
@@ -183,9 +188,17 @@ export default function App() {
       );
 
       const data = await response.json();
-      if (data.error) throw new Error(data.error.message);
+      
+      if (data.error) {
+        throw new Error(`Gemini API Error: ${data.error.message}`);
+      }
+
+      if (!data.candidates || !data.candidates[0]?.content?.parts[0]?.text) {
+        throw new Error("Gemini se koi valid response nahi mila.");
+      }
 
       const responseText = data.candidates[0].content.parts[0].text;
+      
       const cleanJson = responseText.replace(/```json|```/g, "").trim();
       const parsedData = JSON.parse(cleanJson);
       const rows = Array.isArray(parsedData) ? parsedData : (parsedData.rows || []);
@@ -207,9 +220,9 @@ export default function App() {
         .from('attendance')
         .upsert(recordsToInsert, { onConflict: 'worker_id,date' });
 
-      if (error) throw error;
+      if (error) throw new Error(`Supabase Error: ${error.message}`);
 
-      setScanStatus(`Success! Total ${recordsToInsert.length} workers ka data auto save ho gaya.`);
+      setScanStatus(`Success! Total ${recordsToInsert.length} workers ka data save ho gaya.`);
       fetchAttendance();
 
     } catch (err) {
