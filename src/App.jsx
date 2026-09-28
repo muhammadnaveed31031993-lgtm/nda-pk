@@ -140,7 +140,7 @@ export default function App() {
     setScanStatus('Sheet ki photo Gemini OCR se scan ho rahi hai, please wait...');
 
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.REACT_APP_GEMINI_API_KEY;
+      const apiKey = "AQ.Ab8RN6KiOT2MaWs5C3838Kug-DN99S7E6mx2186APH6BPshKuA";
       if (!apiKey) {
         throw new Error("Gemini API Key nahi mili! Apni .env file check karein.");
       }
