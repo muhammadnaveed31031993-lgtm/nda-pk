@@ -131,7 +131,7 @@ export default function App() {
 
   // OCR PAPER TIMESHEET PHOTO SCANNER HANDLER (GPT-4o)
  // FIXED: GEMINI OCR PAPER TIMESHEET SCANNER FUNCTION
-  async function handleScanPaperSheet(event) {
+ async function handleScanPaperSheet(event) {
     const file = event.target.files[0];
     if (!file) return;
 
@@ -139,7 +139,7 @@ export default function App() {
     setScanStatus('Sheet ki photo Gemini OCR se scan ho rahi hai, please wait...');
 
     try {
-      const apiKey = process.env.REACT_APP_GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.REACT_APP_GEMINI_API_KEY;
       if (!apiKey) {
         throw new Error("Gemini API Key nahi mili! .env file check karein.");
       }
@@ -219,7 +219,6 @@ export default function App() {
       setScanning(false);
     }
   }
-
   // DIRECT FILE UPLOAD HANDLER (JPG, PNG, PDF)
   async function handleFileUpload(file, docTypeSetter) {
     if (!file) return;
