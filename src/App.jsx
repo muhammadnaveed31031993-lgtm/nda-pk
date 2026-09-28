@@ -130,58 +130,69 @@ export default function App() {
   }
 
   // OCR PAPER TIMESHEET PHOTO SCANNER HANDLER (GPT-4o)
+ // FIXED: GEMINI OCR PAPER TIMESHEET SCANNER FUNCTION
   async function handleScanPaperSheet(event) {
     const file = event.target.files[0];
     if (!file) return;
 
     setScanning(true);
-    setScanStatus('Sheet ki photo scan ho rahi hai, please wait...');
+    setScanStatus('Sheet ki photo Gemini OCR se scan ho rahi hai, please wait...');
 
     try {
-      const base64Image = await new Promise((resolve, reject) => {
+      const apiKey = process.env.REACT_APP_GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error("Gemini API Key nahi mili! .env file check karein.");
+      }
+
+      const base64Data = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result);
+        reader.onload = () => resolve(reader.result.split(',')[1]);
         reader.onerror = (err) => reject(err);
       });
 
-      const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-      if (!apiKey) {
-        throw new Error("OpenAI API Key nahi mili! Vercel environment variables check karein.");
-      }
+      const prompt = `Extract table data from this daily attendance sheet image. 
+      Return ONLY a valid raw JSON array of objects without markdown fences.
+      Each object must contain:
+      - "id_no": (number, ID from ID No column)
+      - "working_days": (number: 1 if present or working, 0 if absent)
+      - "overtime": (number, total overtime hours, default 0 if blank)
+      Ignore blank rows.`;
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: "Extract table data from this daily attendance sheet. Return ONLY a valid JSON object with key 'rows' containing an array of objects. Each object must have: 'id_no' (number from ID No column), 'working_days' (number: 1 if Working Days is 'ONE' or marked present, 0 if absent), and 'overtime' (number from Total Overtime column, if empty then 0). Ignore blank rows."
-                },
-                {
-                  type: "image_url",
-                  image_url: { url: base64Image }
-                }
-              ]
-            }
-          ],
-          response_format: { type: "json_object" }
-        })
-      });
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: prompt },
+                  {
+                    inline_data: {
+                      mime_type: file.type || 'image/jpeg',
+                      data: base64Data
+                    }
+                  }
+                ]
+              }
+            ]
+          })
+        }
+      );
 
       const data = await response.json();
       if (data.error) throw new Error(data.error.message);
 
-      const parsedContent = JSON.parse(data.choices[0].message.content);
-      const rows = parsedContent.rows || parsedContent;
+      const responseText = data.candidates[0].content.parts[0].text;
+      const cleanJson = responseText.replace(/```json|```/g, "").trim();
+      const parsedData = JSON.parse(cleanJson);
+      const rows = Array.isArray(parsedData) ? parsedData : (parsedData.rows || []);
+
+      if (rows.length === 0) {
+        throw new Error("Sheet se koi valid data extract nahi ho saka.");
+      }
 
       setScanStatus('Data extract ho gaya, Database mein save ho raha hai...');
 
@@ -198,12 +209,12 @@ export default function App() {
 
       if (error) throw error;
 
-      setScanStatus(`Zabardast! Total ${recordsToInsert.length} workers ka data auto save ho gaya.`);
+      setScanStatus(`Success! Total ${recordsToInsert.length} workers ka data auto save ho gaya.`);
       fetchAttendance();
 
     } catch (err) {
       console.error(err);
-      setScanStatus('Error: ' + err.message);
+      setScanStatus('Scan Error: ' + err.message);
     } finally {
       setScanning(false);
     }
