@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export default function App() {
   // Authentication & Session States
@@ -24,7 +23,7 @@ export default function App() {
   // Global Settings & Filters
   const [selectedCurrency, setSelectedCurrency] = useState('AED');
   const [selectedDeptFilter, setSelectedDeptFilter] = useState('All');
-  const [activeTab, setActiveTab] = useState('attendance'); // Default open tab set to Timesheet
+  const [activeTab, setActiveTab] = useState('attendance'); // Default tab set to Timesheet
   const [loading, setLoading] = useState(false);
 
   // Data States
@@ -130,7 +129,7 @@ export default function App() {
     setAttendance(data || []);
   }
 
-  // GEMINI OCR PAPER TIMESHEET PHOTO SCANNER HANDLER
+  // NATIVE GEMINI OCR PAPER TIMESHEET PHOTO SCANNER (No Library Needed)
   async function handleScanPaperSheet(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -141,11 +140,8 @@ export default function App() {
     try {
       const apiKey = process.env.REACT_APP_GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
       if (!apiKey) {
-        throw new Error("Gemini API Key nahi mili! Env variables (.env) check karein.");
+        throw new Error("Gemini API Key nahi mili! Env variables (.env ya Vercel) check karein.");
       }
-
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
       const base64Data = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -153,13 +149,6 @@ export default function App() {
         reader.onload = () => resolve(reader.result.split(',')[1]);
         reader.onerror = (err) => reject(err);
       });
-
-      const imagePart = {
-        inlineData: {
-          data: base64Data,
-          mimeType: file.type || 'image/jpeg'
-        }
-      };
 
       const prompt = `Extract table data from this daily attendance sheet image. 
       Return ONLY a valid raw JSON array of objects without markdown fences.
@@ -169,9 +158,33 @@ export default function App() {
       - "overtime": (number, total overtime hours, default 0 if blank)
       Ignore blank rows.`;
 
-      const result = await model.generateContent([prompt, imagePart]);
-      const responseText = await result.response.text();
-      
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: prompt },
+                  {
+                    inline_data: {
+                      mime_type: file.type || 'image/jpeg',
+                      data: base64Data
+                    }
+                  }
+                ]
+              }
+            ]
+          })
+        }
+      );
+
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
+
+      const responseText = data.candidates[0].content.parts[0].text;
       const cleanJson = responseText.replace(/```json|```/g, "").trim();
       const parsedData = JSON.parse(cleanJson);
       const rows = Array.isArray(parsedData) ? parsedData : (parsedData.rows || []);
@@ -435,20 +448,6 @@ export default function App() {
   }
 
   // ATTENDANCE EDIT & DELETE
-  async function handleSaveAttendanceEdit(attId) {
-    const { error } = await supabase
-      .from('attendance')
-      .update({ status: editAttStatus, overtime_hours: Number(editAttOT) })
-      .eq('id', attId);
-
-    if (error) alert('Error: ' + error.message);
-    else {
-      alert('Attendance record updated!');
-      setEditingAttendanceId(null);
-      fetchAttendance();
-    }
-  }
-
   async function handleDeleteAttendance(attId) {
     if (window.confirm('Kya aap is attendance record ko delete karna chahte hain?')) {
       const { error } = await supabase.from('attendance').delete().eq('id', attId);
@@ -473,7 +472,7 @@ export default function App() {
       department: w.department
     }));
 
-    const { error } = await supabase.from('attendance').insert(records);
+    const { error } = await supabase.from('attendance').upsert(records, { onConflict: 'worker_id,date' });
     if (error) alert('Bulk Logging Error: ' + error.message);
     else {
       alert(`Department ${bulkDepartment} ke ${deptWorkers.length} workers ki attendance update ho gayi!`);
@@ -481,16 +480,35 @@ export default function App() {
     }
   }
 
+  // MARK ATTENDANCE WITH IMMEDIATE UI RE-RENDER & UPSERT
   async function handleMarkAttendance(workerId, status) {
     const otHours = Number(overtimeInputs[workerId] || 0);
     const worker = workers.find(w => w.id === workerId);
-    
-    const { error } = await supabase.from('attendance').insert([
-      { worker_id: workerId, date: today, status, overtime_hours: otHours, department: worker?.department }
-    ]);
 
-    if (error) alert('Error: ' + error.message);
-    else fetchAttendance();
+    const record = {
+      worker_id: workerId,
+      date: today,
+      status: status,
+      overtime_hours: otHours,
+      department: worker?.department || 'Plumbing'
+    };
+
+    // Local state foran update karein taake redpoly / change immediately dikhe
+    setAttendance(prev => {
+      const filtered = prev.filter(a => !(a.worker_id === workerId && a.date === today));
+      return [record, ...filtered];
+    });
+
+    const { error } = await supabase
+      .from('attendance')
+      .upsert([record], { onConflict: 'worker_id,date' });
+
+    if (error) {
+      alert('Attendance Save Error: ' + error.message);
+      fetchAttendance();
+    } else {
+      fetchAttendance();
+    }
   }
 
   // USER PERMISSIONS EDIT & DELETE
@@ -687,7 +705,7 @@ export default function App() {
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <h3>📅 Timesheet & OCR Photo Scanner</h3>
             
-            {/* Gemini OCR File Upload Component */}
+            {/* Native Gemini OCR File Upload Component */}
             <div style={{ padding: '15px', backgroundColor: '#f0f9ff', borderRadius: '8px', border: '1px dashed #0284c7', marginBottom: '20px' }}>
               <h4 style={{ margin: '0 0 10px 0', color: '#0369a1' }}>📷 Paper Timesheet Scan (Gemini 1.5 Flash AI)</h4>
               <input type="file" accept="image/*" onChange={handleScanPaperSheet} disabled={scanning} />
