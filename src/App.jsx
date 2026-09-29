@@ -601,7 +601,9 @@ export default function App() {
     const dailyRateNum = Number(worker.daily_rate || 0);
     const hourlyRate = dailyRateNum / 8;
     const baseSalary = presentDays * dailyRateNum;
-    const otSalary = totalOT * hourlyRate;
+    
+    // Yahan 25% extra (1.25 multiplier) add kar diya gaya hai
+    const otSalary = totalOT * (hourlyRate * 1.25);
     const totalPayable = baseSalary + otSalary;
 
     return { ...worker, presentDays, totalOT, baseSalary, otSalary, totalPayable };
