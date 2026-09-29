@@ -677,7 +677,7 @@ export default function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           <img 
             src="/36.jpg" 
-            alt="MUHAMMAD NAVEED" 
+            alt="M Naveed" 
             style={{
               width: '50px',
               height: '50px',
@@ -689,7 +689,7 @@ export default function App() {
           />
           <div>
             <h2 style={{ fontSize: '18px', margin: 0, color: '#38bdf8' }}>NDA-PK HR System</h2>
-            <span style={{ fontSize: '12px', color: '#94a3b8' }}>Syed Abrar Shah (Admin)</span>
+            <span style={{ fontSize: '12px', color: '#94a3b8' }}>M Naveed (Admin)</span>
           </div>
         </div>
         <button onClick={handleLogout} style={{ padding: '8px 14px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>🔒 Logout</button>
