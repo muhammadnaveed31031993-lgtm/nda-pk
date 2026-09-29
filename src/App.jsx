@@ -677,7 +677,7 @@ export default function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           <img 
             src="/36.jpg" 
-            alt="Syed Abrar Shah" 
+            alt="MUHAMMAD NAVEED" 
             style={{
               width: '50px',
               height: '50px',
