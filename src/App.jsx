@@ -759,29 +759,26 @@ export default function App() {
         {/* TAB 1: DASHBOARD */}
         {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
-            <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #2563eb' }}>
-              <span style={{ color: '#64748b', fontSize: '13px' }}>Workers</span>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{filteredWorkers.length}</div>
+            <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', padding: '18px', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', borderLeft: '5px solid #2563eb' }}>
+              <span style={{ color: '#94a3b8', fontSize: '13px' }}>Workers</span>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#fff', marginTop: '4px' }}>{filteredWorkers.length}</div>
             </div>
-            <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #16a34a' }}>
-              <span style={{ color: '#64748b', fontSize: '13px' }}>Present Today</span>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#16a34a', marginTop: '4px' }}>{presentTodayCount}</div>
+            <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', padding: '18px', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', borderLeft: '5px solid #16a34a' }}>
+              <span style={{ color: '#94a3b8', fontSize: '13px' }}>Present Today</span>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#4ade80', marginTop: '4px' }}>{presentTodayCount}</div>
             </div>
-            <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #d97706' }}>
-              <span style={{ color: '#64748b', fontSize: '13px' }}>Total Overtime</span>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#d97706', marginTop: '4px' }}>{totalOvertimeToday} hrs</div>
+            <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', padding: '18px', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', borderLeft: '5px solid #d97706' }}>
+              <span style={{ color: '#94a3b8', fontSize: '13px' }}>Total Overtime</span>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#fbbf24', marginTop: '4px' }}>{totalOvertimeToday} hrs</div>
             </div>
             {(userRole.is_admin || userRole.can_view_payroll) && (
-              <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #0891b2' }}>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>Total Payroll ({selectedCurrency})</span>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>
-                  {selectedCurrency} {Math.round(grandTotalPayroll).toLocaleString()}
-                </div>
+              <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', padding: '18px', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', borderLeft: '5px solid #0891b2' }}>
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>Total Payroll</span>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#38bdf8', marginTop: '4px' }}>{selectedCurrency} {grandTotalPayroll.toFixed(2)}</div>
               </div>
             )}
           </div>
         )}
-
         {/* TAB 2: BULK ATTENDANCE */}
         {activeTab === 'bulk' && (userRole.is_admin || userRole.can_use_bulk) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', maxWidth: '600px' }}>
