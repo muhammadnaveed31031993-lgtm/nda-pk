@@ -673,8 +673,28 @@ export default function App() {
       `}</style>
 
       {/* Navigation Header */}
-      <header className="no-print" style={{ backgroundColor: '#0f172a', color: '#fff', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-        <div>
+      {/* Navigation Header */}
+      <header className="no-print" style={{ backgroundColor: '#1e293b', borderBottom: '1px solid #334155', color: '#fff', padding: '15px 25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <img 
+            src="/36.jpg" 
+            alt="Syed Abrar Shah" 
+            style={{
+              width: '50px',
+              height: '50px',
+              borderRadius: '50%',
+              objectFit: 'cover',
+              border: '2px solid #38bdf8',
+              boxShadow: '0 0 10px rgba(56, 189, 248, 0.5)'
+            }} 
+          />
+          <div>
+            <h2 style={{ fontSize: '18px', margin: 0, color: '#38bdf8' }}>NDA-PK HR System</h2>
+            <span style={{ fontSize: '12px', color: '#94a3b8' }}>Syed Abrar Shah (Admin)</span>
+          </div>
+        </div>
+        <button onClick={handleLogout} style={{ padding: '8px 14px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>🔒 Logout</button>
+      </header>
           <h2 style={{ fontSize: '18px', margin: 0, color: '#38bdf8' }}>NDA-PK SYSTEM</h2>
           <span style={{ fontSize: '12px', color: '#94a3b8' }}>User: {session.user.email} ({userRole.is_admin ? 'Admin' : userRole.assigned_department})</span>
         </div>
