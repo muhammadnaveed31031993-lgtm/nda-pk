@@ -647,7 +647,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: '#f8fafc', fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
+  <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: 'linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.8)), #0f172a', color: '#fff', fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
       
       {/* Global CSS for Clean Printing (Hides everything except printable area/payroll slip) */}
       <style>{`
