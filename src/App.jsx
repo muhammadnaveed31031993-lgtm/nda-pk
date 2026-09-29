@@ -676,16 +676,16 @@ export default function App() {
       <header className="no-print" style={{ backgroundColor: '#1e293b', borderBottom: '1px solid #334155', color: '#fff', padding: '15px 25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           <img 
-            src="/36.jpg" 
-            alt="M Naveed" 
-            style={{
-              width: '50px',
-              height: '50px',
-              borderRadius: '50%',
-              objectFit: 'cover',
-              border: '2px solid #38bdf8',
-              boxShadow: '0 0 10px rgba(56, 189, 248, 0.5)'
-            }} 
+  src="/Gemini_Generated_Image_hif9i0hif9i0hif9.jfif" 
+  alt="M Naveed" 
+  style={{
+    width: '50px',
+    height: '50px',
+    borderRadius: '50%',
+    objectFit: 'cover',
+    border: '2px solid #38bdf8',
+    boxShadow: '0 0 10px rgba(56, 189, 248, 0.5)'
+  }} 
           />
           <div>
             <h2 style={{ fontSize: '18px', margin: 0, color: '#38bdf8' }}>NDA-PK HR System</h2>
