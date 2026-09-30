@@ -1,8 +1,3 @@
-const [selectedSiteFilter, setSelectedSiteFilter] = useState('All');
-  const sitesList = ['Site A - Downtown', 'Site B - Marina', 'Site C - Airport Project'];
-  
-// Daily Overtime aur Site per worker ke liye
-  const [siteInputs, setSiteInputs] = useState({});
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
@@ -28,6 +23,7 @@ export default function App() {
   // Global Settings & Filters
   const [selectedCurrency, setSelectedCurrency] = useState('AED');
   const [selectedDeptFilter, setSelectedDeptFilter] = useState('All');
+  const [selectedSiteFilter, setSelectedSiteFilter] = useState('All');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loading, setLoading] = useState(false);
 
@@ -36,6 +32,9 @@ export default function App() {
   const [attendance, setAttendance] = useState([]);
   const [permissionsList, setPermissionsList] = useState([]);
   const [personalDocs, setPersonalDocs] = useState([]);
+
+  // Sites List for Multi-Site Management
+  const sitesList = ['Site A - Downtown', 'Site B - Marina', 'Site C - Airport Project'];
 
   // Edit / Add Worker Form States
   const [editingWorkerId, setEditingWorkerId] = useState(null);
@@ -80,13 +79,16 @@ export default function App() {
   const [editAttStatus, setEditAttStatus] = useState('Present');
   const [editAttOT, setEditAttOT] = useState('0');
 
-  // Bulk Operations State
+  // Bulk Operations State (Updated with Designation & Site)
   const [bulkDepartment, setBulkDepartment] = useState('Plumbing');
+  const [bulkDesignation, setBulkDesignation] = useState('All');
+  const [bulkSite, setBulkSite] = useState('Site A - Downtown');
   const [bulkStatus, setBulkStatus] = useState('Present');
   const [bulkOT, setBulkOT] = useState('5');
 
-  // Daily Overtime per worker
+  // Daily Overtime & Site Inputs per worker
   const [overtimeInputs, setOvertimeInputs] = useState({});
+  const [siteInputs, setSiteInputs] = useState({});
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -243,7 +245,7 @@ export default function App() {
     }
   }
 
-  // SAVE NAVEED PERSONAL DOC
+  // SAVE PERSONAL DOC
   async function handleSavePersonalDoc(e) {
     e.preventDefault();
     if (!personalDocTitle.trim() || !personalFileUrl) {
@@ -500,6 +502,8 @@ export default function App() {
       fetchAttendance();
     }
   }
+
+  // MARK SINGLE ATTENDANCE WITH SITE & OVERTIME
   async function handleMarkAttendance(workerId, status) {
     if (!userRole.is_admin && !userRole.can_view_timesheet) {
       return alert('Aap ke paas Timesheet ki permission nahi hai!');
@@ -605,7 +609,7 @@ export default function App() {
     return w.department.toLowerCase() === userDeptScope.toLowerCase();
   });
 
-  // Calculations
+  // Calculations & Payroll (with Site Filter & 25% UAE Overtime Rule)
   const activeWorkerIds = new Set(filteredWorkers.map(w => w.id));
   const todayAttendance = attendance.filter(a => a.date === today && activeWorkerIds.has(a.worker_id));
   
@@ -617,10 +621,9 @@ export default function App() {
   const presentTodayCount = Object.values(latestAttendanceMap).filter(a => a.status === 'Present').length;
   const totalOvertimeToday = Object.values(latestAttendanceMap).reduce((acc, curr) => acc + Number(curr.overtime_hours || 0), 0);
 
- const salaryData = filteredWorkers.map(worker => {
+  const salaryData = filteredWorkers.map(worker => {
     let workerRecords = attendance.filter(a => a.worker_id === worker.id && a.status === 'Present');
     
-    // Site filter apply karna
     if (selectedSiteFilter !== 'All') {
       workerRecords = workerRecords.filter(a => a.site_name === selectedSiteFilter);
     }
@@ -685,44 +688,55 @@ export default function App() {
           <button onClick={() => setActiveTab('dashboard')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'dashboard' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📊 Summary</button>
         )}
         {(userRole.is_admin || userRole.can_use_bulk) && (
-          <button onClick={() => setActiveTab('bulk')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'bulk' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>⚡ Bulk Log</button>
+          <button onClick={() => setActiveTab('bulk')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'bulk' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>⚡ Bulk Log & Sites</button>
         )}
         {(userRole.is_admin || userRole.can_view_workers) && (
           <button onClick={() => setActiveTab('workers')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'workers' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>👷 Workers</button>
         )}
         {(userRole.is_admin || userRole.can_view_timesheet) && (
-          <button onClick={() => setActiveTab('attendance')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'attendance' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📅 Timesheet</button>
+          <button onClick={() => setActiveTab('attendance')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'attendance' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📅 Timesheet & Site</button>
         )}
         {(userRole.is_admin || userRole.can_view_payroll) && (
           <button onClick={() => setActiveTab('payroll')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'payroll' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>💵 Payroll</button>
         )}
         {userRole.is_admin && (
-          <button onClick={() => setActiveTab('personal_docs')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'personal_docs' ? '#0284c7' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📂 Naveed Personal Docs</button>
+          <button onClick={() => setActiveTab('personal_docs')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'personal_docs' ? '#0284c7' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📂 Personal Docs</button>
         )}
         {userRole.is_admin && (
-          <button onClick={() => setActiveTab('permissions')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'permissions' ? '#d97706' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🔐 User Permissions</button>
+          <button onClick={() => setActiveTab('permissions')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'permissions' ? '#d97706' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🔐 Permissions</button>
         )}
       </div>
 
       <main style={{ flex: 1, padding: '20px' }}>
         
-        {/* Controls Bar */}
+        {/* Global Controls & Filters Bar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#fff', padding: '12px 18px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', flexWrap: 'wrap', gap: '10px' }}>
-          {userRole.is_admin ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#2563eb' }}>🏢 Dept Filter:</label>
-              <select value={selectedDeptFilter} onChange={e => setSelectedDeptFilter(e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #2563eb', backgroundColor: '#eff6ff', fontWeight: '600' }}>
-                <option value="All">All Departments</option>
-                <option value="Plumbing">Plumbing</option>
-                <option value="Electrical">Electrical</option>
-                <option value="Civil">Civil</option>
-                <option value="Ali Mardan">Ali Mardan</option>
-                <option value="Mustafa">Mustafa</option>
+          <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
+            {userRole.is_admin ? (
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#2563eb', marginRight: '5px' }}>🏢 Dept:</label>
+                <select value={selectedDeptFilter} onChange={e => setSelectedDeptFilter(e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #2563eb' }}>
+                  <option value="All">All Departments</option>
+                  <option value="Plumbing">Plumbing</option>
+                  <option value="Electrical">Electrical</option>
+                  <option value="Civil">Civil</option>
+                  <option value="Ali Mardan">Ali Mardan</option>
+                  <option value="Mustafa">Mustafa</option>
+                </select>
+              </div>
+            ) : (
+              <span style={{ fontWeight: 'bold', color: '#0369a1' }}>Department: {userRole.assigned_department}</span>
+            )}
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#059669', marginRight: '5px' }}>🏗️ Site Filter:</label>
+              <select value={selectedSiteFilter} onChange={e => setSelectedSiteFilter(e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #059669' }}>
+                <option value="All">All Sites</option>
+                {sitesList.map((site, idx) => (
+                  <option key={idx} value={site}>{site}</option>
+                ))}
               </select>
             </div>
-          ) : (
-            <span style={{ fontWeight: 'bold', color: '#0369a1' }}>Department: {userRole.assigned_department}</span>
-          )}
+          </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <select value={selectedCurrency} onChange={e => setSelectedCurrency(e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
@@ -760,14 +774,14 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 2: BULK ATTENDANCE */}
+        {/* TAB 2: BULK ATTENDANCE & SITE SELECTION */}
         {activeTab === 'bulk' && (userRole.is_admin || userRole.can_use_bulk) && (
-          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ margin: '0 0 10px 0' }}>⚡ Department Bulk Attendance & Overtime</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
+          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', maxWidth: '700px' }}>
+            <h3 style={{ margin: '0 0 15px 0' }}>⚡ Site & Designation Wise Bulk Attendance</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
               <div>
-                <label style={{ fontSize: '12px' }}>Select Department</label>
-                <select value={bulkDepartment} onChange={e => setBulkDepartment(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Select Department</label>
+                <select value={bulkDepartment} onChange={e => setBulkDepartment(e.target.value)} style={{ width: '100%', padding: '8px', marginTop: '5px' }}>
                   <option value="Plumbing">Plumbing</option>
                   <option value="Electrical">Electrical</option>
                   <option value="Civil">Civil</option>
@@ -776,128 +790,94 @@ export default function App() {
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: '12px' }}>Status</label>
-                <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                  <option value="Present">Present All</option>
-                  <option value="Absent">Absent All</option>
+                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Select Designation (e.g. Carpenter/Steel Fixer)</label>
+                <select value={bulkDesignation} onChange={e => setBulkDesignation(e.target.value)} style={{ width: '100%', padding: '8px', marginTop: '5px' }}>
+                  <option value="All">All Designations in Dept</option>
+                  <option value="Carpenter">Carpenter</option>
+                  <option value="Steel Fixer">Steel Fixer</option>
+                  <option value="Plumber">Plumber</option>
+                  <option value="Electrician">Electrician</option>
+                  <option value="Helper">Helper</option>
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: '12px' }}>Bulk Overtime (Hours)</label>
-                <input type="number" value={bulkOT} onChange={e => setBulkOT(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Select Work Site Today</label>
+                <select value={bulkSite} onChange={e => setBulkSite(e.target.value)} style={{ width: '100%', padding: '8px', marginTop: '5px' }}>
+                  {sitesList.map((site, idx) => (
+                    <option key={idx} value={site}>{site}</option>
+                  ))}
+                </select>
               </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                <button onClick={handleBulkAttendance} style={{ width: '100%', backgroundColor: '#16a34a', color: '#fff', padding: '10px', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  Apply to All
-                </button>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Status</label>
+                <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} style={{ width: '100%', padding: '8px', marginTop: '5px' }}>
+                  <option value="Present">Present</option>
+                  <option value="Absent">Absent</option>
+                  <option value="Leave">Leave</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Overtime Hours (e.g. 4 or 5 hrs)</label>
+                <input type="number" value={bulkOT} onChange={e => setBulkOT(e.target.value)} style={{ width: '100%', padding: '8px', boxSizing: 'border-box', marginTop: '5px' }} />
               </div>
             </div>
+            <button onClick={handleBulkAttendance} style={{ padding: '12px 20px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Apply Bulk Log to Site</button>
           </div>
         )}
 
-        {/* TAB 3: WORKER MANAGEMENT & DOCUMENT FILE UPLOAD */}
+        {/* TAB 3: WORKERS MODULE */}
         {activeTab === 'workers' && (userRole.is_admin || userRole.can_view_workers) && (
-          <div>
+          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ margin: '0 0 15px 0' }}>👷 Workers Management</h3>
+            {/* Add / Edit Worker Form */}
             {(userRole.is_admin || userRole.can_add_workers) && (
-              <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '20px' }}>
-                <h3 style={{ margin: '0 0 15px 0' }}>{editingWorkerId ? `✏️ Edit Worker Record (#${editingWorkerId})` : '➕ Add New Worker & Documents'}</h3>
-                
-                <form onSubmit={handleSaveWorker} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-                  <input type="number" placeholder="Worker ID (Optional)" value={workerIdInput} onChange={e => setWorkerIdInput(e.target.value)} disabled={!!editingWorkerId} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-                  <input type="text" placeholder="Full Name *" value={name} onChange={e => setName(e.target.value)} required style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-                  <select value={department} onChange={e => setDepartment(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
-                    <option value="Plumbing">Plumbing Dept</option>
-                    <option value="Electrical">Electrical Dept</option>
-                    <option value="Civil">Civil Dept</option>
-                    <option value="Ali Mardan">Ali Mardan Dept</option>
-                    <option value="Mustafa">Mustafa Dept</option>
+              <form onSubmit={handleSaveWorker} style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #e2e8f0' }}>
+                <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#2563eb' }}>{editingWorkerId ? 'Edit Worker' : 'Add New Worker'}</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '10px' }}>
+                  <input type="number" placeholder="Worker ID (Optional)" value={workerIdInput} onChange={e => setWorkerIdInput(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }} />
+                  <input type="text" placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }} required />
+                  <select value={department} onChange={e => setDepartment(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}>
+                    <option value="Plumbing">Plumbing</option>
+                    <option value="Electrical">Electrical</option>
+                    <option value="Civil">Civil</option>
+                    <option value="Ali Mardan">Ali Mardan</option>
+                    <option value="Mustafa">Mustafa</option>
                   </select>
-                  <input type="text" placeholder="Designation" value={designation} onChange={e => setDesignation(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-                  <input type="number" placeholder={`Daily Rate (${selectedCurrency}) *`} value={dailyRate} onChange={e => setDailyRate(e.target.value)} required style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-
-                  {/* DIRECT JPG/PDF FILE UPLOAD INPUTS */}
-                  <div style={{ gridColumn: '1 / -1', marginTop: '10px', backgroundColor: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                    <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 'bold', color: '#0369a1' }}>📁 Upload Worker Documents (JPG / PNG / PDF):</p>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', fontSize: '12px' }}>
-                      
-                      <div>
-                        <label style={{ display: 'block', fontWeight: '600' }}>Passport Copy:</label>
-                        <input type="file" accept="image/*,application/pdf" onChange={e => handleFileUpload(e.target.files[0], setPassportFileUrl)} />
-                        {passportFileUrl && <a href={passportFileUrl} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontSize: '11px', display: 'block', marginTop: '2px' }}>📄 View Passport File</a>}
-                      </div>
-
-                      <div>
-                        <label style={{ display: 'block', fontWeight: '600' }}>ID Card Copy:</label>
-                        <input type="file" accept="image/*,application/pdf" onChange={e => handleFileUpload(e.target.files[0], setIdCardFileUrl)} />
-                        {idCardFileUrl && <a href={idCardFileUrl} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontSize: '11px', display: 'block', marginTop: '2px' }}>📄 View ID Card File</a>}
-                      </div>
-
-                      <div>
-                        <label style={{ display: 'block', fontWeight: '600' }}>Visa Copy:</label>
-                        <input type="file" accept="image/*,application/pdf" onChange={e => handleFileUpload(e.target.files[0], setVisaFileUrl)} />
-                        {visaFileUrl && <a href={visaFileUrl} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontSize: '11px', display: 'block', marginTop: '2px' }}>📄 View Visa File</a>}
-                      </div>
-
-                      <div>
-                        <label style={{ display: 'block', fontWeight: '600' }}>Labour Card Copy:</label>
-                        <input type="file" accept="image/*,application/pdf" onChange={e => handleFileUpload(e.target.files[0], setLabourCardFileUrl)} />
-                        {labourCardFileUrl && <a href={labourCardFileUrl} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontSize: '11px', display: 'block', marginTop: '2px' }}>📄 View Labour Card File</a>}
-                      </div>
-
-                      <div>
-                        <label style={{ display: 'block', fontWeight: '600' }}>Medical Card Copy:</label>
-                        <input type="file" accept="image/*,application/pdf" onChange={e => handleFileUpload(e.target.files[0], setMedicalCardFileUrl)} />
-                        {medicalCardFileUrl && <a href={medicalCardFileUrl} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontSize: '11px', display: 'block', marginTop: '2px' }}>📄 View Medical File</a>}
-                      </div>
-
-                    </div>
-                  </div>
-
-                  <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '10px', marginTop: '5px' }}>
-                    <button type="submit" disabled={uploadingFile} style={{ backgroundColor: editingWorkerId ? '#d97706' : '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', padding: '10px 20px' }}>
-                      {uploadingFile ? 'Uploading File...' : editingWorkerId ? '💾 Update Worker Details' : '➕ Save Worker'}
-                    </button>
-                    {editingWorkerId && (
-                      <button type="button" onClick={resetWorkerForm} style={{ backgroundColor: '#64748b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: '10px 15px' }}>Cancel Edit</button>
-                    )}
-                  </div>
-                </form>
-              </div>
+                  <input type="text" placeholder="Designation (e.g. Carpenter)" value={designation} onChange={e => setDesignation(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }} />
+                  <input type="number" placeholder="Daily Rate" value={dailyRate} onChange={e => setDailyRate(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }} required />
+                </div>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button type="submit" style={{ padding: '8px 16px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>{editingWorkerId ? 'Update Worker' : 'Save Worker'}</button>
+                  {editingWorkerId && <button type="button" onClick={resetWorkerForm} style={{ padding: '8px 16px', backgroundColor: '#64748b', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>}
+                </div>
+              </form>
             )}
 
-            <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
-              <h3>📋 Workers Directory & Files ({selectedDeptFilter})</h3>
+            {/* Workers List Table */}
+            <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
                 <thead>
-                  <tr style={{ backgroundColor: '#f1f5f9' }}>
-                    <th style={{ padding: '8px' }}>ID</th>
-                    <th style={{ padding: '8px' }}>Name</th>
-                    <th style={{ padding: '8px' }}>Dept</th>
-                    <th style={{ padding: '8px' }}>Rate</th>
-                    <th style={{ padding: '8px' }}>Attached Files</th>
-                    {(userRole.is_admin || userRole.can_add_workers) && <th style={{ padding: '8px', textAlign: 'center' }}>Action</th>}
+                  <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+                    <th style={{ padding: '10px' }}>ID</th>
+                    <th style={{ padding: '10px' }}>Name</th>
+                    <th style={{ padding: '10px' }}>Department</th>
+                    <th style={{ padding: '10px' }}>Designation</th>
+                    <th style={{ padding: '10px' }}>Daily Rate</th>
+                    <th style={{ padding: '10px' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredWorkers.map(w => (
-                    <tr key={w.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '8px', fontWeight: 'bold', color: '#2563eb' }}>#{w.id}</td>
-                      <td style={{ padding: '8px', fontWeight: '600' }}>{w.name}</td>
-                      <td style={{ padding: '8px', color: '#0369a1' }}>{w.department}</td>
-                      <td style={{ padding: '8px' }}>{selectedCurrency} {w.daily_rate}</td>
-                      <td style={{ padding: '8px', fontSize: '11px' }}>
-                        {w.passport_file_url && <a href={w.passport_file_url} target="_blank" rel="noreferrer" style={{ marginRight: '6px', color: '#2563eb' }}>📁 Passport</a>}
-                        {w.id_card_file_url && <a href={w.id_card_file_url} target="_blank" rel="noreferrer" style={{ marginRight: '6px', color: '#2563eb' }}>📁 ID Card</a>}
-                        {w.visa_file_url && <a href={w.visa_file_url} target="_blank" rel="noreferrer" style={{ marginRight: '6px', color: '#2563eb' }}>📁 Visa</a>}
-                        {w.labour_card_file_url && <a href={w.labour_card_file_url} target="_blank" rel="noreferrer" style={{ marginRight: '6px', color: '#2563eb' }}>📁 Labour Card</a>}
-                        {w.medical_card_file_url && <a href={w.medical_card_file_url} target="_blank" rel="noreferrer" style={{ marginRight: '6px', color: '#2563eb' }}>📁 Medical</a>}
+                  {filteredWorkers.map(worker => (
+                    <tr key={worker.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                      <td style={{ padding: '10px' }}>#{worker.id}</td>
+                      <td style={{ padding: '10px', fontWeight: 'bold' }}>{worker.name}</td>
+                      <td style={{ padding: '10px' }}>{worker.department}</td>
+                      <td style={{ padding: '10px' }}>{worker.designation || 'Worker'}</td>
+                      <td style={{ padding: '10px' }}>{worker.daily_rate} {worker.currency || 'AED'}</td>
+                      <td style={{ padding: '10px', display: 'flex', gap: '8px' }}>
+                        <button onClick={() => handleStartEditWorker(worker)} style={{ padding: '4px 8px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Edit</button>
+                        <button onClick={() => handleDeleteWorker(worker.id)} style={{ padding: '4px 8px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Delete</button>
                       </td>
-                      {(userRole.is_admin || userRole.can_add_workers) && (
-                        <td style={{ padding: '8px', textAlign: 'center' }}>
-                          <button onClick={() => handleStartEditWorker(w)} style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', marginRight: '4px' }}>✏️ Edit</button>
-                          <button onClick={() => handleDeleteWorker(w.id)} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}>Delete</button>
-                        </td>
-                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -906,316 +886,173 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 4: NAVEED PERSONAL DOCS */}
-        {activeTab === 'personal_docs' && userRole.is_admin && (
-          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h3>📂 Naveed Personal Documents Vault</h3>
-            
-            <form onSubmit={handleSavePersonalDoc} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '25px', backgroundColor: '#f0f9ff', padding: '15px', borderRadius: '8px', border: '1px solid #bae6fd' }}>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Document Title *</label>
-                <input type="text" placeholder="e.g. Naveed Visa 2026 / Passport" value={personalDocTitle} onChange={e => setPersonalDocTitle(e.target.value)} required style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box' }} />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Category</label>
-                <select value={personalDocCategory} onChange={e => setPersonalDocCategory(e.target.value)} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box' }}>
-                  <option value="Visa">Visa Copy</option>
-                  <option value="Passport">Passport Copy</option>
-                  <option value="Emirates ID">Emirates / National ID</option>
-                  <option value="Licence">Driving License</option>
-                  <option value="Contract">Agreement / Contract</option>
-                  <option value="General">Other Personal File</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Upload File (JPG / PNG / PDF)</label>
-                <input type="file" accept="image/*,application/pdf" onChange={e => handleFileUpload(e.target.files[0], setPersonalFileUrl)} style={{ width: '100%', fontSize: '12px' }} />
-                {personalFileUrl && <span style={{ color: '#16a34a', fontSize: '11px', display: 'block', marginTop: '2px' }}>✅ File attached!</span>}
-              </div>
-
-              <div style={{ gridColumn: '1 / -1' }}>
-                <button type="submit" disabled={uploadingFile} style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', padding: '10px 20px' }}>
-                  {uploadingFile ? 'Uploading...' : '💾 Save Personal Document'}
-                </button>
-              </div>
-            </form>
-
-            <h4>Saved Documents Vault</h4>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f1f5f9' }}>
-                  <th style={{ padding: '8px' }}>Title</th>
-                  <th style={{ padding: '8px' }}>Category</th>
-                  <th style={{ padding: '8px' }}>Uploaded Date</th>
-                  <th style={{ padding: '8px' }}>File Link</th>
-                  <th style={{ padding: '8px', textAlign: 'center' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {personalDocs.map(doc => (
-                  <tr key={doc.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '8px', fontWeight: 'bold', color: '#0369a1' }}>{doc.doc_title}</td>
-                    <td style={{ padding: '8px' }}>
-                      <span style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' }}>{doc.doc_category}</span>
-                    </td>
-                    <td style={{ padding: '8px', color: '#64748b' }}>{doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : 'N/A'}</td>
-                    <td style={{ padding: '8px' }}>
-                      <a href={doc.file_url} target="_blank" rel="noreferrer" style={{ backgroundColor: '#2563eb', color: '#fff', padding: '4px 10px', borderRadius: '4px', textDecoration: 'none', fontSize: '12px', fontWeight: 'bold' }}>
-                        📄 Open / View File
-                      </a>
-                    </td>
-                    <td style={{ padding: '8px', textAlign: 'center' }}>
-                      <button onClick={() => handleDeletePersonalDoc(doc.id)} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}>🗑️ Delete</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* TAB 5: TIMESHEET & EDIT ATTENDANCE + AI PHOTO SCANNER */}
+        {/* TAB 4: TIMESHEET & SITE ASSIGNMENT */}
         {activeTab === 'attendance' && (userRole.is_admin || userRole.can_view_timesheet) && (
-          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
-            
-            {/* AUTOMATIC PAPER SHEET SCANNER BOX */}
-            <div style={{ backgroundColor: '#eff6ff', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '2px dashed #3b82f6' }}>
-              <h4 style={{ margin: '0 0 5px 0', color: '#1e40af' }}>📷 Automatic Daily Paper Sheet Scanner (AI)</h4>
-              <p style={{ fontSize: '12px', margin: '0 0 10px 0', color: '#1e3a8a' }}>
-                Handwritten paper sheet ki picture le kar upload karein. System automatic ID No aur Overtime read kar ke Database mein add kar dega.
-              </p>
-              
-              <input 
-                type="file" 
-                accept="image/*" 
-                capture="environment"
-                onChange={handleScanPaperSheet} 
-                disabled={scanning}
-              />
-
-              {scanning && <p style={{ color: '#d97706', fontWeight: 'bold', fontSize: '12px', marginTop: '8px' }}>⌛ {scanStatus}</p>}
-              {!scanning && scanStatus && <p style={{ color: '#16a34a', fontWeight: 'bold', fontSize: '12px', marginTop: '8px' }}>{scanStatus}</p>}
-            </div>
-
-            <h3>📅 Daily Timesheet & Attendance Logs</h3>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f1f5f9' }}>
-                  <th style={{ padding: '8px' }}>ID</th>
-                  <th style={{ padding: '8px' }}>Name</th>
-                  <th style={{ padding: '8px' }}>Dept</th>
-                  <th style={{ padding: '8px' }}>Status</th>
-                  <th style={{ padding: '8px' }}>OT (Hrs)</th>
-                  <th style={{ padding: '8px', textAlign: 'center' }}>Mark Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredWorkers.map(worker => {
-                  const record = latestAttendanceMap[worker.id];
-                  const currentStatus = record ? record.status : 'Not Marked';
-                  const currentOT = record ? record.overtime_hours : 0;
-                  return (
-                    <tr key={worker.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '8px', fontWeight: 'bold', color: '#2563eb' }}>#{worker.id}</td>
-                      <td style={{ padding: '8px' }}>{worker.name}</td>
-                      <td style={{ padding: '8px', color: '#0369a1' }}>{worker.department}</td>
-                      <td style={{ padding: '8px' }}>
-                        <span style={{
-                          padding: '3px 8px',
-                          borderRadius: '10px',
-                          fontSize: '11px',
-                          fontWeight: 'bold',
-                          backgroundColor: currentStatus === 'Present' ? '#dcfce7' : currentStatus === 'Absent' ? '#fee2e2' : '#f1f5f9',
-                          color: currentStatus === 'Present' ? '#166534' : currentStatus === 'Absent' ? '#991b1b' : '#475569'
-                        }}>
-                          {currentStatus} {currentStatus === 'Present' && currentOT > 0 ? `(+${currentOT}h OT)` : ''}
-                        </span>
+          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ margin: '0 0 15px 0' }}>📅 Daily Timesheet - Assign Site & Overtime per Worker</h3>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+                    <th style={{ padding: '10px' }}>ID</th>
+                    <th style={{ padding: '10px' }}>Name</th>
+                    <th style={{ padding: '10px' }}>Designation</th>
+                    <th style={{ padding: '10px' }}>Select Site</th>
+                    <th style={{ padding: '10px' }}>Overtime (Hrs)</th>
+                    <th style={{ padding: '10px' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredWorkers.map(worker => (
+                    <tr key={worker.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                      <td style={{ padding: '10px' }}>#{worker.id}</td>
+                      <td style={{ padding: '10px', fontWeight: 'bold' }}>{worker.name}</td>
+                      <td style={{ padding: '10px' }}><span style={{ backgroundColor: '#e0f2fe', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', color: '#0369a1' }}>{worker.designation || 'Worker'}</span></td>
+                      <td style={{ padding: '10px' }}>
+                        <select 
+                          value={siteInputs[worker.id] || sitesList[0]} 
+                          onChange={e => setSiteInputs({...siteInputs, [worker.id]: e.target.value})}
+                          style={{ padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                        >
+                          {sitesList.map((site, idx) => (
+                            <option key={idx} value={site}>{site}</option>
+                          ))}
+                        </select>
                       </td>
-                      <td style={{ padding: '8px' }}>
-                        <input
-                          type="number"
-                          placeholder="0"
-                          value={overtimeInputs[worker.id] ?? ''}
-                          onChange={(e) => setOvertimeInputs({ ...overtimeInputs, [worker.id]: e.target.value })}
-                          style={{ width: '50px', padding: '4px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                      <td style={{ padding: '10px' }}>
+                        <input 
+                          type="number" 
+                          placeholder="OT" 
+                          value={overtimeInputs[worker.id] || ''} 
+                          onChange={e => setOvertimeInputs({...overtimeInputs, [worker.id]: e.target.value})}
+                          style={{ width: '60px', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
                         />
                       </td>
-                      <td style={{ padding: '8px', textAlign: 'center' }}>
-                        <button onClick={() => handleMarkAttendance(worker.id, 'Present')} style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', marginRight: '4px' }}>Present</button>
-                        <button onClick={() => handleMarkAttendance(worker.id, 'Absent')} style={{ backgroundColor: '#dc2626', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}>Absent</button>
+                      <td style={{ padding: '10px' }}>
+                        <button onClick={() => handleMarkAttendance(worker.id, 'Present')} style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Mark Present</button>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            <h4 style={{ marginTop: '25px', marginBottom: '10px', color: '#0f172a' }}>📝 Edit Recent Attendance Logs</h4>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#e2e8f0' }}>
-                  <th style={{ padding: '6px' }}>Date</th>
-                  <th style={{ padding: '6px' }}>Worker ID</th>
-                  <th style={{ padding: '6px' }}>Status</th>
-                  <th style={{ padding: '6px' }}>OT Hours</th>
-                  <th style={{ padding: '6px', textAlign: 'center' }}>Edit / Delete</th>
-                </tr>
-              </thead>
-              <tbody>
-                {attendance.slice(0, 15).map(att => (
-                  <tr key={att.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ padding: '6px' }}>{att.date}</td>
-                    <td style={{ padding: '6px', fontWeight: 'bold' }}>#{att.worker_id}</td>
-                    <td style={{ padding: '6px' }}>
-                      {editingAttendanceId === att.id ? (
-                        <select value={editAttStatus} onChange={e => setEditAttStatus(e.target.value)} style={{ padding: '2px' }}>
-                          <option value="Present">Present</option>
-                          <option value="Absent">Absent</option>
-                        </select>
-                      ) : (
-                        <span style={{ color: att.status === 'Present' ? '#166534' : '#991b1b', fontWeight: 'bold' }}>{att.status}</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '6px' }}>
-                      {editingAttendanceId === att.id ? (
-                        <input type="number" value={editAttOT} onChange={e => setEditAttOT(e.target.value)} style={{ width: '40px' }} />
-                      ) : (
-                        `${att.overtime_hours || 0} hrs`
-                      )}
-                    </td>
-                    <td style={{ padding: '6px', textAlign: 'center' }}>
-                      {editingAttendanceId === att.id ? (
-                        <>
-                          <button onClick={() => handleSaveAttendanceEdit(att.id)} style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', padding: '2px 6px', borderRadius: '3px', cursor: 'pointer', marginRight: '4px' }}>Save</button>
-                          <button onClick={() => setEditingAttendanceId(null)} style={{ backgroundColor: '#64748b', color: '#fff', border: 'none', padding: '2px 6px', borderRadius: '3px', cursor: 'pointer' }}>Cancel</button>
-                        </>
-                      ) : (
-                        <>
-                          <button onClick={() => { setEditingAttendanceId(att.id); setEditAttStatus(att.status); setEditAttOT(att.overtime_hours); }} style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', padding: '2px 6px', borderRadius: '3px', cursor: 'pointer', marginRight: '4px' }}>✏️ Edit</button>
-                          <button onClick={() => handleDeleteAttendance(att.id)} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '2px 6px', borderRadius: '3px', cursor: 'pointer' }}>🗑️ Delete</button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
-        {/* TAB 6: PAYROLL */}
+        {/* TAB 5: PAYROLL */}
         {activeTab === 'payroll' && (userRole.is_admin || userRole.can_view_payroll) && (
-          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
-            <h3>💵 Payroll Report ({selectedCurrency})</h3>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f1f5f9' }}>
-                  <th style={{ padding: '8px' }}>ID</th>
-                  <th style={{ padding: '8px' }}>Worker</th>
-                  <th style={{ padding: '8px' }}>Dept</th>
-                  <th style={{ padding: '8px' }}>Days Present</th>
-                  <th style={{ padding: '8px' }}>OT Hrs</th>
-                  <th style={{ padding: '8px', fontWeight: 'bold' }}>Total Payable</th>
-                </tr>
-              </thead>
-              <tbody>
-                {salaryData.map(s => (
-                  <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '8px', fontWeight: 'bold', color: '#2563eb' }}>#{s.id}</td>
-                    <td style={{ padding: '8px' }}>{s.name}</td>
-                    <td style={{ padding: '8px', color: '#0369a1' }}>{s.department}</td>
-                    <td style={{ padding: '8px' }}>{s.presentDays}</td>
-                    <td style={{ padding: '8px' }}>{s.totalOT}</td>
-                    <td style={{ padding: '8px', fontWeight: 'bold', color: '#16a34a' }}>{selectedCurrency} {Math.round(s.totalPayable)}</td>
+          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ margin: '0 0 15px 0' }}>💵 Payroll Summary (with UAE 25% Overtime Rule)</h3>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+                    <th style={{ padding: '10px' }}>ID</th>
+                    <th style={{ padding: '10px' }}>Name</th>
+                    <th style={{ padding: '10px' }}>Present Days</th>
+                    <th style={{ padding: '10px' }}>Total OT (Hrs)</th>
+                    <th style={{ padding: '10px' }}>Base Salary</th>
+                    <th style={{ padding: '10px' }}>OT Salary (+25%)</th>
+                    <th style={{ padding: '10px' }}>Total Payable ({selectedCurrency})</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {salaryData.map(item => (
+                    <tr key={item.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                      <td style={{ padding: '10px' }}>#{item.id}</td>
+                      <td style={{ padding: '10px', fontWeight: 'bold' }}>{item.name}</td>
+                      <td style={{ padding: '10px' }}>{item.presentDays}</td>
+                      <td style={{ padding: '10px' }}>{item.totalOT} hrs</td>
+                      <td style={{ padding: '10px' }}>{Math.round(item.baseSalary).toLocaleString()}</td>
+                      <td style={{ padding: '10px', color: '#d97706' }}>{Math.round(item.otSalary).toLocaleString()}</td>
+                      <td style={{ padding: '10px', fontWeight: 'bold', color: '#16a34a' }}>{Math.round(item.totalPayable).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ marginTop: '15px', textAlign: 'right', fontSize: '18px', fontWeight: 'bold' }}>
+              Grand Total Payroll: {selectedCurrency} {Math.round(grandTotalPayroll).toLocaleString()}
+            </div>
           </div>
         )}
 
-        {/* TAB 7: USER CREATION & EDIT PERMISSIONS */}
-        {activeTab === 'permissions' && userRole.is_admin && (
+        {/* TAB 6: PERSONAL DOCS */}
+        {activeTab === 'personal_docs' && userRole.is_admin && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h3>🔐 {editingEmail ? `Edit User Permissions (${editingEmail})` : 'Create New User Account'}</h3>
-            
-            <form onSubmit={handleSavePermission} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '25px', backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Email Address *</label>
-                <input type="email" placeholder="user@nda.pk" value={targetEmail} onChange={e => setTargetEmail(e.target.value)} disabled={!!editingEmail} required style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box' }} />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Password *</label>
-                <input type="password" placeholder="Password" value={targetPassword} onChange={e => setTargetPassword(e.target.value)} required style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box' }} />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Assigned Department</label>
-                <select value={targetDept} onChange={e => setTargetDept(e.target.value)} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box' }}>
-                  <option value="Plumbing">Plumbing Dept</option>
-                  <option value="Electrical">Electrical Dept</option>
-                  <option value="Civil">Civil Dept</option>
-                  <option value="Ali Mardan">Ali Mardan Dept</option>
-                  <option value="Mustafa">Mustafa Dept</option>
+            <h3 style={{ margin: '0 0 15px 0' }}>📂 Naveed Personal Documents</h3>
+            <form onSubmit={handleSavePersonalDoc} style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '10px' }}>
+                <input type="text" placeholder="Document Title" value={personalDocTitle} onChange={e => setPersonalDocTitle(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }} required />
+                <select value={personalDocCategory} onChange={e => setPersonalDocCategory(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}>
+                  <option value="Visa">Visa</option>
+                  <option value="Passport">Passport</option>
+                  <option value="Medical">Medical</option>
+                  <option value="ID Card">ID Card</option>
                 </select>
+                <input type="file" onChange={e => handleFileUpload(e.target.files[0], setPersonalFileUrl)} style={{ padding: '6px' }} />
               </div>
-
-              <div style={{ gridColumn: '1 / -1', marginTop: '10px' }}>
-                <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#d97706', display: 'block', marginBottom: '8px' }}>Allowed Features & Access Permissions:</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', fontSize: '13px' }}>
-                  <label><input type="checkbox" checked={permDashboard} onChange={e => setPermDashboard(e.target.checked)} /> 📊 Summary / Dashboard</label>
-                  <label><input type="checkbox" checked={permBulk} onChange={e => setPermBulk(e.target.checked)} /> ⚡ Bulk Logging</label>
-                  <label><input type="checkbox" checked={permWorkers} onChange={e => setPermWorkers(e.target.checked)} /> 👷 View Workers</label>
-                  <label><input type="checkbox" checked={permAddWorkers} onChange={e => setPermAddWorkers(e.target.checked)} /> ➕ Add / Delete Workers</label>
-                  <label><input type="checkbox" checked={permTimesheet} onChange={e => setPermTimesheet(e.target.checked)} /> 📅 View / Mark Timesheet</label>
-                  <label><input type="checkbox" checked={permPayroll} onChange={e => setPermPayroll(e.target.checked)} /> 💵 View Payroll</label>
-                </div>
-              </div>
-
-              <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '10px', marginTop: '10px' }}>
-                <button type="submit" style={{ backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', padding: '10px 20px' }}>
-                  {editingEmail ? '💾 Update User Permissions' : '➕ Create User Account'}
-                </button>
-                {editingEmail && (
-                  <button type="button" onClick={resetPermForm} style={{ backgroundColor: '#64748b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: '10px 15px' }}>Cancel Edit</button>
-                )}
-              </div>
+              <button type="submit" style={{ padding: '8px 16px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Save Personal Doc</button>
             </form>
 
-            <h4>Users List & Current Permissions</h4>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f1f5f9' }}>
-                  <th style={{ padding: '8px' }}>User Email</th>
-                  <th style={{ padding: '8px' }}>Dept</th>
-                  <th style={{ padding: '8px' }}>Active Permissions</th>
-                  <th style={{ padding: '8px', textAlign: 'center' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {permissionsList.map(u => (
-                  <tr key={u.user_email} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '8px', fontWeight: '600' }}>{u.user_email}</td>
-                    <td style={{ padding: '8px', color: '#0369a1' }}>{u.assigned_department}</td>
-                    <td style={{ padding: '8px', fontSize: '11px' }}>
-                      {u.can_view_dashboard && <span style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', marginRight: '4px' }}>Summary</span>}
-                      {u.can_use_bulk && <span style={{ backgroundColor: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: '4px', marginRight: '4px' }}>Bulk</span>}
-                      {u.can_view_workers && <span style={{ backgroundColor: '#f3e8ff', color: '#6b21a8', padding: '2px 6px', borderRadius: '4px', marginRight: '4px' }}>Workers</span>}
-                      {u.can_add_workers && <span style={{ backgroundColor: '#dcfce7', color: '#166534', padding: '2px 6px', borderRadius: '4px', marginRight: '4px' }}>Add Workers</span>}
-                      {u.can_view_timesheet && <span style={{ backgroundColor: '#e0e7ff', color: '#3730a3', padding: '2px 6px', borderRadius: '4px', marginRight: '4px' }}>Timesheet</span>}
-                      {u.can_view_payroll && <span style={{ backgroundColor: '#fce7f3', color: '#9d174d', padding: '2px 6px', borderRadius: '4px', marginRight: '4px' }}>Payroll</span>}
-                    </td>
-                    <td style={{ padding: '8px', textAlign: 'center' }}>
-                      <button onClick={() => handleStartEditUser(u)} style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', marginRight: '5px' }}>✏️ Edit</button>
-                      <button onClick={() => handleDeleteUserPermission(u.user_email)} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}>🗑️ Delete</button>
-                    </td>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px' }}>
+              {personalDocs.map(doc => (
+                <div key={doc.id} style={{ border: '1px solid #e2e8f0', padding: '12px', borderRadius: '8px', backgroundColor: '#fff' }}>
+                  <h4 style={{ margin: '0 0 5px 0' }}>{doc.doc_title}</h4>
+                  <span style={{ fontSize: '11px', backgroundColor: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>{doc.doc_category}</span>
+                  <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
+                    <a href={doc.file_url} target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: '#2563eb' }}>View File</a>
+                    <button onClick={() => handleDeletePersonalDoc(doc.id)} style={{ fontSize: '12px', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }}>Delete</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 7: PERMISSIONS */}
+        {activeTab === 'permissions' && userRole.is_admin && (
+          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ margin: '0 0 15px 0' }}>🔐 User Access & Permissions</h3>
+            <form onSubmit={handleSavePermission} style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '10px' }}>
+                <input type="email" placeholder="Staff Email" value={targetEmail} onChange={e => setTargetEmail(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }} required />
+                <input type="password" placeholder="Password" value={targetPassword} onChange={e => setTargetPassword(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }} required />
+                <select value={targetDept} onChange={e => setTargetDept(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}>
+                  <option value="All">All Departments</option>
+                  <option value="Plumbing">Plumbing</option>
+                  <option value="Electrical">Electrical</option>
+                  <option value="Civil">Civil</option>
+                  <option value="Ali Mardan">Ali Mardan</option>
+                  <option value="Mustafa">Mustafa</option>
+                </select>
+              </div>
+              <button type="submit" style={{ padding: '8px 16px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Save Permission</button>
+            </form>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+                    <th style={{ padding: '10px' }}>Email</th>
+                    <th style={{ padding: '10px' }}>Assigned Dept</th>
+                    <th style={{ padding: '10px' }}>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {permissionsList.map((user, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                      <td style={{ padding: '10px' }}>{user.user_email}</td>
+                      <td style={{ padding: '10px' }}>{user.assigned_department}</td>
+                      <td style={{ padding: '10px', display: 'flex', gap: '8px' }}>
+                        <button onClick={() => handleStartEditUser(user)} style={{ padding: '4px 8px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Edit</button>
+                        <button onClick={() => handleDeleteUserPermission(user.user_email)} style={{ padding: '4px 8px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Revoke</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
