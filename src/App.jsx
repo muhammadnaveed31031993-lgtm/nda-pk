@@ -39,9 +39,6 @@ export default function App() {
   const [personalDocs, setPersonalDocs] = useState([]);
   const [sitesList, setSitesList] = useState(['Sharjah Mamzar', 'Ajman Aaliya', 'Dubai Downtown']);
 
-  // Individual Worker Monthly Report Modal/State
-  const [reportWorker, setReportWorker] = useState(null);
-
   // Edit / Add Worker Form States
   const [editingWorkerId, setEditingWorkerId] = useState(null);
   const [workerIdInput, setWorkerIdInput] = useState('');
@@ -73,7 +70,8 @@ export default function App() {
   const [scanning, setScanning] = useState(false);
   const [scanStatus, setScanStatus] = useState('');
 
-  // Permission Creation States
+  // Permission Creation States & Staff ID Input
+  const [targetStaffId, setTargetStaffId] = useState('');
   const [targetEmail, setTargetEmail] = useState('');
   const [targetPassword, setTargetPassword] = useState('');
   const [targetDept, setTargetDept] = useState('Plumbing');
@@ -95,6 +93,7 @@ export default function App() {
   const [bulkOT, setBulkOT] = useState('5');
 
   const [overtimeInputs, setOvertimeInputs] = useState({});
+  const [timesheetSiteInputs, setTimesheetSiteInputs] = useState({});
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -270,56 +269,6 @@ export default function App() {
     }
   }
 
-  async function handleFileUpload(file, docTypeSetter) {
-    if (!file) return;
-    try {
-      setUploadingFile(true);
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
-      const filePath = `documents/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('worker-documents')
-        .upload(filePath, file);
-
-      if (uploadError) {
-        alert('Upload Error: ' + uploadError.message);
-        setUploadingFile(false);
-        return;
-      }
-
-      const { data } = supabase.storage.from('worker-documents').getPublicUrl(filePath);
-      docTypeSetter(data.publicUrl);
-      alert('Document uploaded successfully!');
-    } catch (err) {
-      alert('Upload Error: ' + err.message);
-    } finally {
-      setUploadingFile(false);
-    }
-  }
-
-  async function handleSavePersonalDoc(e) {
-    e.preventDefault();
-    if (!userRole.is_admin) return alert('Access Denied!');
-    if (!personalDocTitle.trim() || !personalFileUrl) return alert('Title aur File zaroori hain!');
-
-    const newDoc = {
-      doc_title: personalDocTitle.trim(),
-      doc_category: personalDocCategory,
-      file_url: personalFileUrl,
-      file_type: personalFileUrl.endsWith('.pdf') ? 'PDF' : 'Image'
-    };
-
-    const { error } = await supabase.from('personal_docs').insert([newDoc]);
-    if (error) alert('Error: ' + error.message);
-    else {
-      alert('Personal Document saved successfully!');
-      setPersonalDocTitle('');
-      setPersonalFileUrl('');
-      fetchPersonalDocs();
-    }
-  }
-
   async function handleLogin(e) {
     e.preventDefault();
     setAuthLoading(true);
@@ -361,6 +310,7 @@ export default function App() {
     if (userPerm) {
       const staffRole = {
         is_admin: false,
+        staff_id: userPerm.staff_id || '',
         assigned_department: userPerm.assigned_department || 'All',
         assigned_site: userPerm.assigned_site || 'All',
         can_view_dashboard: userPerm.can_view_dashboard ?? true,
@@ -566,9 +516,10 @@ export default function App() {
     if (!userRole.is_admin && !userRole.can_edit_timesheet) return;
     const otHours = Number(overtimeInputs[workerId] || 0);
     const worker = workers.find(w => w.id === workerId);
+    const assignedSiteForToday = timesheetSiteInputs[workerId] || worker?.work_site || 'Sharjah Mamzar';
     
     const { error } = await supabase.from('attendance').insert([
-      { worker_id: workerId, date: today, status, overtime_hours: otHours, department: worker?.department, work_site: worker?.work_site }
+      { worker_id: workerId, date: today, status, overtime_hours: otHours, department: worker?.department, work_site: assignedSiteForToday }
     ]);
 
     if (error) alert('Error: ' + error.message);
@@ -580,6 +531,7 @@ export default function App() {
     if (!targetEmail || !targetPassword) return;
 
     const permData = {
+      staff_id: targetStaffId.trim(),
       user_email: targetEmail.trim().toLowerCase(),
       user_password: targetPassword.trim(),
       assigned_department: targetDept,
@@ -600,6 +552,7 @@ export default function App() {
     if (error) alert('Error: ' + error.message);
     else {
       alert('Staff permission saved successfully!');
+      setTargetStaffId('');
       setTargetEmail('');
       setTargetPassword('');
       fetchPermissionsList();
@@ -681,7 +634,7 @@ export default function App() {
       <header style={{ backgroundColor: '#0f172a', color: '#fff', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <h2 style={{ fontSize: '18px', margin: 0, color: '#38bdf8' }}>NDA-PK SYSTEM (Multi-Site)</h2>
-          <span style={{ fontSize: '12px', color: '#94a3b8' }}>User: {session.user.email} | Days: <strong style={{color: '#38bdf8'}}>{totalDaysInCurrentMonth}</strong></span>
+          <span style={{ fontSize: '12px', color: '#94a3b8' }}>User: {session.user.email} {userRole.staff_id ? `(ID: ${userRole.staff_id})` : ''} | Days: <strong style={{color: '#38bdf8'}}>{totalDaysInCurrentMonth}</strong></span>
         </div>
         <button onClick={handleLogout} style={{ padding: '6px 12px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Logout</button>
       </header>
@@ -795,6 +748,7 @@ export default function App() {
                 <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px' }}>
                   <option value="Present">Present</option>
                   <option value="Absent">Absent</option>
+                  <option value="Leave">Leave</option>
                 </select>
               </div>
               <div>
@@ -898,12 +852,13 @@ export default function App() {
         {/* TAB 4: TIMESHEET */}
         {activeTab === 'attendance' && (userRole.is_admin || userRole.can_view_timesheet) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ margin: '0 0 15px 0' }}>📅 Daily Timesheet Entry</h3>
+            <h3 style={{ margin: '0 0 15px 0' }}>📅 Daily Timesheet Entry (Select Site per Worker)</h3>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
-                    <th style={{ padding: '10px' }}>Worker & Site</th>
+                    <th style={{ padding: '10px' }}>Worker</th>
+                    <th style={{ padding: '10px' }}>Select Working Site Today</th>
                     <th style={{ padding: '10px' }}>Overtime (Hrs)</th>
                     <th style={{ padding: '10px' }}>Attendance ({today})</th>
                   </tr>
@@ -912,8 +867,16 @@ export default function App() {
                   {filteredWorkers.map(worker => (
                     <tr key={worker.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                       <td style={{ padding: '10px', fontWeight: 'bold' }}>
-                        #{worker.id} - {worker.name} 
-                        <div style={{ fontSize: '11px', color: '#0369a1' }}>Site: {worker.work_site || 'Sharjah Mamzar'}</div>
+                        #{worker.id} - {worker.name}
+                      </td>
+                      <td style={{ padding: '10px' }}>
+                        <select 
+                          value={timesheetSiteInputs[worker.id] || worker.work_site || 'Sharjah Mamzar'} 
+                          onChange={e => setTimesheetSiteInputs({...timesheetSiteInputs, [worker.id]: e.target.value})}
+                          style={{ padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 'bold', color: '#0369a1' }}
+                        >
+                          {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
+                        </select>
                       </td>
                       <td style={{ padding: '10px' }}>
                         <input type="number" placeholder="OT Hrs" value={overtimeInputs[worker.id] || ''} onChange={e => setOvertimeInputs({...overtimeInputs, [worker.id]: e.target.value})} style={{ width: '70px', padding: '5px' }} />
@@ -922,6 +885,7 @@ export default function App() {
                         <div style={{ display: 'flex', gap: '6px' }}>
                           <button onClick={() => handleMarkAttendance(worker.id, 'Present')} style={{ padding: '5px 10px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Present</button>
                           <button onClick={() => handleMarkAttendance(worker.id, 'Absent')} style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Absent</button>
+                          <button onClick={() => handleMarkAttendance(worker.id, 'Leave')} style={{ padding: '5px 10px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Leave</button>
                         </div>
                       </td>
                     </tr>
@@ -964,7 +928,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 6: CHANGE PASSWORD (Dedicated Menu Bar Tab) */}
+        {/* TAB 6: CHANGE PASSWORD */}
         {activeTab === 'changepass' && (
           <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', maxWidth: '450px', margin: '0 auto' }}>
             <h3 style={{ margin: '0 0 15px 0', color: '#0f172a' }}>🔑 Change Password</h3>
@@ -998,9 +962,13 @@ export default function App() {
         {/* TAB 8: PERMISSIONS PANEL */}
         {activeTab === 'permissions' && userRole.is_admin && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ margin: '0 0 15px 0' }}>🔐 Granular Staff Permissions & Site Allocation</h3>
+            <h3 style={{ margin: '0 0 15px 0' }}>🔐 Granular Staff Permissions & Staff ID Allocation</h3>
             <form onSubmit={handleSavePermission} style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '8px', marginBottom: '25px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Staff ID</label>
+                  <input type="text" value={targetStaffId} onChange={e => setTargetStaffId(e.target.value)} placeholder="e.g. STF-01" style={{ width: '100%', padding: '8px' }} />
+                </div>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Staff Email</label>
                   <input type="email" value={targetEmail} onChange={e => setTargetEmail(e.target.value)} placeholder="staff@nda.pk" style={{ width: '100%', padding: '8px' }} required />
@@ -1019,6 +987,30 @@ export default function App() {
               </div>
               <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Save Staff Access</button>
             </form>
+
+            <h4 style={{ margin: '20px 0 10px 0' }}>Existing Staff Access List</h4>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+                  <th style={{ padding: '10px' }}>Staff ID</th>
+                  <th style={{ padding: '10px' }}>Email</th>
+                  <th style={{ padding: '10px' }}>Assigned Site</th>
+                  <th style={{ padding: '10px' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {permissionsList.map((p, idx) => (
+                  <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                    <td style={{ padding: '10px', fontWeight: 'bold' }}>{p.staff_id || 'N/A'}</td>
+                    <td style={{ padding: '10px' }}>{p.user_email}</td>
+                    <td style={{ padding: '10px' }}>{p.assigned_site}</td>
+                    <td style={{ padding: '10px' }}>
+                      <button onClick={() => handleDeleteUserPermission(p.user_email)} style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
