@@ -616,15 +616,21 @@ export default function App() {
   const presentTodayCount = Object.values(latestAttendanceMap).filter(a => a.status === 'Present').length;
   const totalOvertimeToday = Object.values(latestAttendanceMap).reduce((acc, curr) => acc + Number(curr.overtime_hours || 0), 0);
 
-  const salaryData = filteredWorkers.map(worker => {
-    const workerRecords = attendance.filter(a => a.worker_id === worker.id && a.status === 'Present');
+ const salaryData = filteredWorkers.map(worker => {
+    let workerRecords = attendance.filter(a => a.worker_id === worker.id && a.status === 'Present');
+    
+    // Site filter apply karna
+    if (selectedSiteFilter !== 'All') {
+      workerRecords = workerRecords.filter(a => a.site_name === selectedSiteFilter);
+    }
+
     const presentDays = workerRecords.length;
     const totalOT = workerRecords.reduce((acc, curr) => acc + Number(curr.overtime_hours || 0), 0);
     const dailyRateNum = Number(worker.daily_rate || 0);
     const hourlyRate = dailyRateNum / 8;
     const baseSalary = presentDays * dailyRateNum;
     
-    // Yahan 25% extra (1.25 multiplier) add kar diya gaya hai
+    // UAE Qanoon ke mutabiq Overtime par 25% extra (1.25 multiplier)
     const otSalary = totalOT * (hourlyRate * 1.25);
     const totalPayable = baseSalary + otSalary;
 
