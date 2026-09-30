@@ -41,9 +41,9 @@ export default function App() {
   const [dailyRate, setDailyRate] = useState('');
   const [religion, setReligion] = useState('Muslim');
   
-  // New States for Leave & Return Tracking
-  const [lastReturnDate, setLastReturnDate] = useState('');
-  const [annualLeaveDays, setAnnualLeaveDays] = useState('30');
+  // Updated Leave Tracking States (Months worked since last leave, aur leave policy per year e.g. 30 days/year)
+  const [monthsSinceLastLeave, setMonthsSinceLastLeave] = useState('');
+  const [annualLeaveRate, setAnnualLeaveRate] = useState('30'); // 30 days per year default
 
   // File Upload URL States (JPG / PNG / PDF)
   const [passportFileUrl, setPassportFileUrl] = useState('');
@@ -242,7 +242,6 @@ export default function App() {
     }
   }
 
-  // SAVE NAVEED PERSONAL DOC
   async function handleSavePersonalDoc(e) {
     e.preventDefault();
     if (!personalDocTitle.trim() || !personalFileUrl) {
@@ -329,12 +328,6 @@ export default function App() {
         setSelectedDeptFilter(staffRole.assigned_department);
       }
 
-      if (staffRole.can_view_dashboard) setActiveTab('dashboard');
-      else if (staffRole.can_use_bulk) setActiveTab('bulk');
-      else if (staffRole.can_view_workers) setActiveTab('workers');
-      else if (staffRole.can_view_timesheet) setActiveTab('attendance');
-      else if (staffRole.can_view_payroll) setActiveTab('payroll');
-
       localStorage.setItem('nda_user_session', JSON.stringify(sessionObj));
     } else {
       alert('Invalid Email or Password!');
@@ -348,7 +341,6 @@ export default function App() {
     setSession(null);
   }
 
-  // DELETE WORKER
   async function handleDeleteWorker(id) {
     if (!userRole.is_admin && !userRole.can_add_workers) {
       return alert('Aap ke paas worker delete karne ki permission nahi hai!');
@@ -363,7 +355,6 @@ export default function App() {
     }
   }
 
-  // EDIT WORKER POPULATE FORM
   function handleStartEditWorker(worker) {
     setEditingWorkerId(worker.id);
     setWorkerIdInput(worker.id);
@@ -372,8 +363,8 @@ export default function App() {
     setDesignation(worker.designation || 'Worker');
     setDailyRate(worker.daily_rate || '');
     setReligion(worker.religion || 'Muslim');
-    setLastReturnDate(worker.last_return_date || '');
-    setAnnualLeaveDays(worker.annual_leave_days || '30');
+    setMonthsSinceLastLeave(worker.months_since_last_leave !== undefined && worker.months_since_last_leave !== null ? worker.months_since_last_leave : '');
+    setAnnualLeaveRate(worker.annual_leave_rate || '30');
     setPassportFileUrl(worker.passport_file_url || '');
     setIdCardFileUrl(worker.id_card_file_url || '');
     setMedicalCardFileUrl(worker.medical_card_file_url || '');
@@ -389,8 +380,8 @@ export default function App() {
     setDesignation('Plumber');
     setDailyRate('');
     setReligion('Muslim');
-    setLastReturnDate('');
-    setAnnualLeaveDays('30');
+    setMonthsSinceLastLeave('');
+    setAnnualLeaveRate('30');
     setPassportFileUrl('');
     setIdCardFileUrl('');
     setMedicalCardFileUrl('');
@@ -398,7 +389,6 @@ export default function App() {
     setLabourCardFileUrl('');
   }
 
-  // SAVE OR UPDATE WORKER
   async function handleSaveWorker(e) {
     e.preventDefault();
     if (!userRole.is_admin && !userRole.can_add_workers) {
@@ -414,8 +404,8 @@ export default function App() {
       designation: designation.trim(),
       daily_rate: Number(dailyRate),
       religion,
-      last_return_date: lastReturnDate || null,
-      annual_leave_days: Number(annualLeaveDays || 30),
+      months_since_last_leave: monthsSinceLastLeave !== '' ? Number(monthsSinceLastLeave) : 0,
+      annual_leave_rate: Number(annualLeaveRate || 30),
       currency: selectedCurrency,
       passport_file_url: passportFileUrl,
       id_card_file_url: idCardFileUrl,
@@ -453,21 +443,6 @@ export default function App() {
     }
   }
 
-  // ATTENDANCE EDIT & DELETE
-  async function handleSaveAttendanceEdit(attId) {
-    const { error } = await supabase
-      .from('attendance')
-      .update({ status: editAttStatus, overtime_hours: Number(editAttOT) })
-      .eq('id', attId);
-
-    if (error) alert('Error: ' + error.message);
-    else {
-      alert('Attendance record updated!');
-      setEditingAttendanceId(null);
-      fetchAttendance();
-    }
-  }
-
   async function handleDeleteAttendance(attId) {
     if (window.confirm('Kya aap is attendance record ko delete karna chahte hain?')) {
       const { error } = await supabase.from('attendance').delete().eq('id', attId);
@@ -476,7 +451,6 @@ export default function App() {
     }
   }
 
-  // BULK ATTENDANCE
   async function handleBulkAttendance() {
     if (!userRole.is_admin && !userRole.can_use_bulk) {
       return alert('Aap ke paas Bulk Logging ki permission nahi hai!');
@@ -515,7 +489,6 @@ export default function App() {
     else fetchAttendance();
   }
 
-  // USER PERMISSIONS EDIT & DELETE
   function handleStartEditUser(user) {
     setEditingEmail(user.user_email);
     setTargetEmail(user.user_email);
@@ -586,14 +559,12 @@ export default function App() {
     }
   }
 
-  // Filtered Workers
   const filteredWorkers = workers.filter(w => {
     const userDeptScope = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
     if (!userDeptScope || userDeptScope === 'All') return true;
     return w.department.toLowerCase() === userDeptScope.toLowerCase();
   });
 
-  // Calculations
   const activeWorkerIds = new Set(filteredWorkers.map(w => w.id));
   const todayAttendance = attendance.filter(a => a.date === today && activeWorkerIds.has(a.worker_id));
   
@@ -621,7 +592,6 @@ export default function App() {
 
   const grandTotalPayroll = salaryData.reduce((acc, curr) => acc + curr.totalPayable, 0);
 
-  // LOGIN SCREEN
   if (!session) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
@@ -826,18 +796,17 @@ export default function App() {
                       </select>
                     </div>
 
-                    {/* NEW FIELDS: Last Return Date & Annual Leave */}
+                    {/* UPDATED FIELDS: Months Since Last Leave & Leave Policy */}
                     <div>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Last Return Date</label>
-                      <input type="date" value={lastReturnDate} onChange={e => setLastReturnDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Months Since Last Leave</label>
+                      <input type="number" step="0.1" value={monthsSinceLastLeave} onChange={e => setMonthsSinceLastLeave(e.target.value)} placeholder="e.g. 5 (for 5 months)" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
                     </div>
                     <div>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Annual Leave Duration</label>
-                      <select value={annualLeaveDays} onChange={e => setAnnualLeaveDays(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}>
-                        <option value="30">30 Days (1 Month)</option>
-                        <option value="60">60 Days (2 Months)</option>
-                        <option value="90">90 Days (3 Months)</option>
-                        <option value="365">1 Year (365 Days)</option>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Leave Rate (Days per Year)</label>
+                      <select value={annualLeaveRate} onChange={e => setAnnualLeaveRate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}>
+                        <option value="30">30 Days / Year</option>
+                        <option value="45">45 Days / Year</option>
+                        <option value="60">60 Days / Year</option>
                       </select>
                     </div>
                   </div>
@@ -888,9 +857,9 @@ export default function App() {
               </div>
             )}
 
-            {/* Workers Table including Leave & Return Date calculation */}
+            {/* Workers Table showing Accumulated Leave Days automatically */}
             <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
-              <h3 style={{ margin: '0 0 15px 0', color: '#0f172a' }}>👷 Workers Directory & Leave Status</h3>
+              <h3 style={{ margin: '0 0 15px 0', color: '#0f172a' }}>👷 Workers Directory & Earned Leave Summary</h3>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1', color: '#334155' }}>
@@ -899,8 +868,8 @@ export default function App() {
                     <th style={{ padding: '10px' }}>Dept</th>
                     <th style={{ padding: '10px' }}>Designation</th>
                     <th style={{ padding: '10px' }}>Daily Rate</th>
-                    <th style={{ padding: '10px' }}>Last Return</th>
-                    <th style={{ padding: '10px' }}>Leave Days / 1 Yr Expiry</th>
+                    <th style={{ padding: '10px' }}>Duration Since Leave</th>
+                    <th style={{ padding: '10px' }}>Earned Leave Days (Auto)</th>
                     <th style={{ padding: '10px' }}>Documents</th>
                     <th style={{ padding: '10px' }}>Actions</th>
                   </tr>
@@ -912,38 +881,23 @@ export default function App() {
                     </tr>
                   ) : (
                     filteredWorkers.map(w => {
-                      // Calculate Leave Expiry / Due Date if Last Return Date is provided
-                      let calculatedExpiry = '-';
-                      let isExpired = false;
-                      if (w.last_return_date) {
-                        const returnDate = new Date(w.last_return_date);
-                        const leaveDays = Number(w.annual_leave_days || 30);
-                        returnDate.setDate(returnDate.getDate() + leaveDays);
-                        calculatedExpiry = returnDate.toISOString().split('T')[0];
-                        
-                        // Check if due or passed
-                        const todayDate = new Date();
-                        if (returnDate < todayDate) {
-                          isExpired = true;
-                        }
-                      }
+                      // Calculate Earned Leaves: (Months / 12) * Annual Leave Rate (e.g. 30 days/yr)
+                      const months = Number(w.months_since_last_leave || 0);
+                      const annualRate = Number(w.annual_leave_rate || 30);
+                      const earnedDays = Math.round((months / 12) * annualRate * 10) / 10; // Round to 1 decimal place
 
                       return (
-                        <tr key={w.id} style={{ borderBottom: '1px solid #e2e8f0', backgroundColor: isExpired ? '#fff5f5' : 'transparent' }}>
+                        <tr key={w.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                           <td style={{ padding: '10px', fontWeight: 'bold' }}>#{w.id}</td>
                           <td style={{ padding: '10px', fontWeight: '600' }}>{w.name}</td>
                           <td style={{ padding: '10px' }}>{w.department}</td>
                           <td style={{ padding: '10px' }}>{w.designation}</td>
                           <td style={{ padding: '10px' }}>{w.daily_rate} {w.currency || selectedCurrency}</td>
-                          <td style={{ padding: '10px' }}>{w.last_return_date || 'N/A'}</td>
+                          <td style={{ padding: '10px' }}>{months > 0 ? `${months} Months` : '0 Months'}</td>
                           <td style={{ padding: '10px' }}>
-                            {w.last_return_date ? (
-                              <span style={{ color: isExpired ? '#dc2626' : '#16a34a', fontWeight: 'bold' }}>
-                                {calculatedExpiry} ({w.annual_leave_days || 30}d) {isExpired && '⚠️ Due!'}
-                              </span>
-                            ) : (
-                              'Not Set'
-                            )}
+                            <span style={{ color: '#2563eb', fontWeight: 'bold', backgroundColor: '#eff6ff', padding: '4px 8px', borderRadius: '4px' }}>
+                              🎁 {earnedDays} Days
+                            </span>
                           </td>
                           <td style={{ padding: '10px', fontSize: '11px' }}>
                             <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
