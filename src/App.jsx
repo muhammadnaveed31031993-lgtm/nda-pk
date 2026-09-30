@@ -469,30 +469,36 @@ export default function App() {
     }
   }
 
-  // BULK ATTENDANCE
+  // BULK ATTENDANCE (With Designation & Site Name)
   async function handleBulkAttendance() {
     if (!userRole.is_admin && !userRole.can_use_bulk) {
       return alert('Aap ke paas Bulk Logging ki permission nahi hai!');
     }
-    const deptWorkers = workers.filter(w => w.department.toLowerCase() === bulkDepartment.toLowerCase());
-    if (deptWorkers.length === 0) return alert(`Department ${bulkDepartment} mein koi worker nahi mila!`);
+    
+    let deptWorkers = workers.filter(w => w.department.toLowerCase() === bulkDepartment.toLowerCase());
+    if (bulkDesignation !== 'All') {
+      deptWorkers = deptWorkers.filter(w => w.designation?.toLowerCase() === bulkDesignation.toLowerCase());
+    }
+
+    if (deptWorkers.length === 0) return alert(`Selected criteria ke mutabiq koi worker nahi mila!`);
 
     const records = deptWorkers.map(w => ({
       worker_id: w.id,
       date: today,
       status: bulkStatus,
       overtime_hours: Number(bulkOT),
-      department: w.department
+      department: w.department,
+      designation: w.designation,
+      site_name: bulkSite
     }));
 
     const { error } = await supabase.from('attendance').insert(records);
     if (error) alert('Bulk Logging Error: ' + error.message);
     else {
-      alert(`Department ${bulkDepartment} ke ${deptWorkers.length} workers ki attendance update ho gayi!`);
+      alert(`Total ${deptWorkers.length} workers ki attendance ${bulkSite} par update ho gayi!`);
       fetchAttendance();
     }
   }
-
   async function handleMarkAttendance(workerId, status) {
     if (!userRole.is_admin && !userRole.can_view_timesheet) {
       return alert('Aap ke paas Timesheet ki permission nahi hai!');
