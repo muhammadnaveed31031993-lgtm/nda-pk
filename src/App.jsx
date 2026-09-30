@@ -38,6 +38,7 @@ export default function App() {
   const [permissionsList, setPermissionsList] = useState([]);
   const [personalDocs, setPersonalDocs] = useState([]);
   const [sitesList, setSitesList] = useState(['Sharjah Mamzar', 'Ajman Aaliya', 'Dubai Downtown']);
+  const [departmentsList, setDepartmentsList] = useState(['Plumbing', 'Electrical', 'Civil', 'Mustafa']);
 
   // Edit / Add Worker Form States
   const [editingWorkerId, setEditingWorkerId] = useState(null);
@@ -58,13 +59,13 @@ export default function App() {
   const [medicalCardFileUrl, setMedicalCardFileUrl] = useState('');
   const [visaFileUrl, setVisaFileUrl] = useState('');
   const [labourCardFileUrl, setLabourCardFileUrl] = useState('');
-  const [uploadingFile, setUploadingFile] = useState(false);
 
-  // Personal Docs & New Site Form
+  // Personal Docs & New Site/Dept Form
   const [personalDocTitle, setPersonalDocTitle] = useState('');
   const [personalDocCategory, setPersonalDocCategory] = useState('Visa');
   const [personalFileUrl, setPersonalFileUrl] = useState('');
   const [newSiteInput, setNewSiteInput] = useState('');
+  const [newDeptInput, setNewDeptInput] = useState('');
 
   // OCR Photo Scanner States
   const [scanning, setScanning] = useState(false);
@@ -164,6 +165,17 @@ export default function App() {
     setSitesList([...sitesList, newSiteInput.trim()]);
     alert(`New working site '${newSiteInput.trim()}' added successfully!`);
     setNewSiteInput('');
+  }
+
+  async function handleAddNewDepartment(e) {
+    e.preventDefault();
+    if (!userRole.is_admin) return alert('Access Denied!');
+    if (!newDeptInput.trim()) return alert('Department name enter karein!');
+    if (departmentsList.includes(newDeptInput.trim())) return alert('Yeh department pehle se mojood hai!');
+
+    setDepartmentsList([...departmentsList, newDeptInput.trim()]);
+    alert(`New department '${newDeptInput.trim()}' added successfully!`);
+    setNewDeptInput('');
   }
 
   async function handleChangePasswordSubmit(e) {
@@ -366,9 +378,9 @@ export default function App() {
     setEditingWorkerId(worker.id);
     setWorkerIdInput(worker.id);
     setName(worker.name);
-    setDepartment(worker.department || 'Plumbing');
-    setWorkSite(worker.work_site || 'Sharjah Mamzar');
-    setDesignation(worker.designation || 'Plumber');
+    setDepartment(worker.department || departmentsList[0]);
+    setWorkSite(worker.work_site || sitesList[0]);
+    setDesignation(worker.designation || 'Worker');
     setMonthlySalary(worker.monthly_salary || (worker.daily_rate * totalDaysInCurrentMonth) || '');
     setReligion(worker.religion || 'Muslim');
     setLastReturnDate(worker.last_return_date || '');
@@ -384,9 +396,9 @@ export default function App() {
     setEditingWorkerId(null);
     setWorkerIdInput('');
     setName('');
-    setDepartment('Plumbing');
-    setWorkSite('Sharjah Mamzar');
-    setDesignation('Plumber');
+    setDepartment(departmentsList[0]);
+    setWorkSite(sitesList[0]);
+    setDesignation('Worker');
     setMonthlySalary('');
     setReligion('Muslim');
     setLastReturnDate('');
@@ -516,7 +528,7 @@ export default function App() {
     if (!userRole.is_admin && !userRole.can_edit_timesheet) return;
     const otHours = Number(overtimeInputs[workerId] || 0);
     const worker = workers.find(w => w.id === workerId);
-    const assignedSiteForToday = timesheetSiteInputs[workerId] || worker?.work_site || 'Sharjah Mamzar';
+    const assignedSiteForToday = timesheetSiteInputs[workerId] || worker?.work_site || sitesList[0];
     
     const { error } = await supabase.from('attendance').insert([
       { worker_id: workerId, date: today, status, overtime_hours: otHours, department: worker?.department, work_site: assignedSiteForToday }
@@ -661,6 +673,9 @@ export default function App() {
           <button onClick={() => setActiveTab('sites')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'sites' ? '#059669' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🏗️ Working Sites</button>
         )}
         {userRole.is_admin && (
+          <button onClick={() => setActiveTab('departments')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'departments' ? '#7c3aed' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🏢 Departments</button>
+        )}
+        {userRole.is_admin && (
           <button onClick={() => setActiveTab('permissions')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'permissions' ? '#d97706' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🔐 Permissions</button>
         )}
       </div>
@@ -675,9 +690,7 @@ export default function App() {
                 <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#2563eb', marginRight: '5px' }}>Dept:</label>
                 <select value={selectedDeptFilter} onChange={e => setSelectedDeptFilter(e.target.value)} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #2563eb' }}>
                   <option value="All">All Depts</option>
-                  <option value="Plumbing">Plumbing</option>
-                  <option value="Electrical">Electrical</option>
-                  <option value="Civil">Civil</option>
+                  {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
                 </select>
               </div>
               <div>
@@ -732,9 +745,7 @@ export default function App() {
               <div>
                 <label style={{ fontSize: '12px' }}>Department</label>
                 <select value={bulkDepartment} onChange={e => setBulkDepartment(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px' }}>
-                  <option value="Plumbing">Plumbing</option>
-                  <option value="Electrical">Electrical</option>
-                  <option value="Civil">Civil</option>
+                  {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
                 </select>
               </div>
               <div>
@@ -788,9 +799,7 @@ export default function App() {
                     <div>
                       <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Department</label>
                       <select value={department} onChange={e => setDepartment(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                        <option value="Plumbing">Plumbing</option>
-                        <option value="Electrical">Electrical</option>
-                        <option value="Civil">Civil</option>
+                        {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
                       </select>
                     </div>
                     <div>
@@ -828,7 +837,7 @@ export default function App() {
                     <tr key={w.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                       <td style={{ padding: '10px', fontWeight: 'bold' }}>#{w.id} - {w.name}</td>
                       <td style={{ padding: '10px' }}>{w.department}</td>
-                      <td style={{ padding: '10px' }}><span style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '4px', fontWeight: 'bold' }}>{w.work_site || 'Sharjah Mamzar'}</span></td>
+                      <td style={{ padding: '10px' }}><span style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '4px', fontWeight: 'bold' }}>{w.work_site || sitesList[0]}</span></td>
                       <td style={{ padding: '10px' }}>{w.monthly_salary} {w.currency || selectedCurrency}</td>
                       <td style={{ padding: '10px' }}>
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -871,7 +880,7 @@ export default function App() {
                       </td>
                       <td style={{ padding: '10px' }}>
                         <select 
-                          value={timesheetSiteInputs[worker.id] || worker.work_site || 'Sharjah Mamzar'} 
+                          value={timesheetSiteInputs[worker.id] || worker.work_site || sitesList[0]} 
                           onChange={e => setTimesheetSiteInputs({...timesheetSiteInputs, [worker.id]: e.target.value})}
                           style={{ padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 'bold', color: '#0369a1' }}
                         >
@@ -917,7 +926,7 @@ export default function App() {
                 {salaryData.map(s => (
                   <tr key={s.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={{ padding: '10px', fontWeight: 'bold' }}>#{s.id} - {s.name}</td>
-                    <td style={{ padding: '10px' }}>{s.work_site || 'Sharjah Mamzar'}</td>
+                    <td style={{ padding: '10px' }}>{s.work_site || sitesList[0]}</td>
                     <td style={{ padding: '10px' }}>{s.presentDays}</td>
                     <td style={{ padding: '10px' }}>{s.totalOT} hrs</td>
                     <td style={{ padding: '10px', fontWeight: 'bold', color: '#16a34a' }}>{Math.round(s.totalPayable).toLocaleString()} {selectedCurrency}</td>
@@ -959,7 +968,24 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 8: PERMISSIONS PANEL */}
+        {/* TAB 8: DEPARTMENTS MANAGEMENT */}
+        {activeTab === 'departments' && userRole.is_admin && (
+          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', maxWidth: '500px' }}>
+            <h3 style={{ margin: '0 0 15px 0' }}>🏢 Manage Departments</h3>
+            <form onSubmit={handleAddNewDepartment} style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+              <input type="text" value={newDeptInput} onChange={e => setNewDeptInput(e.target.value)} placeholder="e.g. Mustafa / Carpentry" style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
+              <button type="submit" style={{ padding: '8px 15px', backgroundColor: '#7c3aed', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Add Dept</button>
+            </form>
+            <h4>Current Departments:</h4>
+            <ul>
+              {departmentsList.map((dept, index) => (
+                <li key={index} style={{ padding: '5px 0', fontWeight: '600', color: '#334155' }}>{dept}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* TAB 9: PERMISSIONS PANEL */}
         {activeTab === 'permissions' && userRole.is_admin && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 15px 0' }}>🔐 Granular Staff Permissions & Staff ID Allocation</h3>
@@ -978,6 +1004,13 @@ export default function App() {
                   <input type="text" value={targetPassword} onChange={e => setTargetPassword(e.target.value)} placeholder="Password" style={{ width: '100%', padding: '8px' }} required />
                 </div>
                 <div>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Assigned Dept</label>
+                  <select value={targetDept} onChange={e => setTargetDept(e.target.value)} style={{ width: '100%', padding: '8px' }}>
+                    <option value="All">All Depts</option>
+                    {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
                   <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Assigned Site</label>
                   <select value={targetSite} onChange={e => setTargetSite(e.target.value)} style={{ width: '100%', padding: '8px' }}>
                     <option value="All">All Sites</option>
@@ -985,6 +1018,39 @@ export default function App() {
                   </select>
                 </div>
               </div>
+
+              {/* Checkboxes Permissions */}
+              <h4 style={{ margin: '15px 0 10px 0', fontSize: '14px', color: '#334155' }}>Select Permissions:</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '20px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                  <input type="checkbox" checked={permDashboard} onChange={e => setPermDashboard(e.target.checked)} /> Can View Dashboard
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                  <input type="checkbox" checked={permBulk} onChange={e => setPermBulk(e.target.checked)} /> Can Use Bulk & OCR
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                  <input type="checkbox" checked={permViewWorkers} onChange={e => setPermViewWorkers(e.target.checked)} /> Can View Workers
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                  <input type="checkbox" checked={permAddWorkers} onChange={e => setPermAddWorkers(e.target.checked)} /> Can Add Workers
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                  <input type="checkbox" checked={permEditWorkers} onChange={e => setPermEditWorkers(e.target.checked)} /> Can Edit Workers
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                  <input type="checkbox" checked={permDeleteWorkers} onChange={e => setPermDeleteWorkers(e.target.checked)} /> Can Delete Workers
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                  <input type="checkbox" checked={permTimesheetView} onChange={e => setPermTimesheetView(e.target.checked)} /> Can View Timesheet
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                  <input type="checkbox" checked={permTimesheetEdit} onChange={e => setPermTimesheetEdit(e.target.checked)} /> Can Edit Timesheet
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                  <input type="checkbox" checked={permPayroll} onChange={e => setPermPayroll(e.target.checked)} /> Can View Payroll
+                </label>
+              </div>
+
               <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Save Staff Access</button>
             </form>
 
@@ -994,7 +1060,7 @@ export default function App() {
                 <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
                   <th style={{ padding: '10px' }}>Staff ID</th>
                   <th style={{ padding: '10px' }}>Email</th>
-                  <th style={{ padding: '10px' }}>Assigned Site</th>
+                  <th style={{ padding: '10px' }}>Dept / Site</th>
                   <th style={{ padding: '10px' }}>Action</th>
                 </tr>
               </thead>
@@ -1003,7 +1069,7 @@ export default function App() {
                   <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={{ padding: '10px', fontWeight: 'bold' }}>{p.staff_id || 'N/A'}</td>
                     <td style={{ padding: '10px' }}>{p.user_email}</td>
-                    <td style={{ padding: '10px' }}>{p.assigned_site}</td>
+                    <td style={{ padding: '10px' }}>{p.assigned_department} / {p.assigned_site}</td>
                     <td style={{ padding: '10px' }}>
                       <button onClick={() => handleDeleteUserPermission(p.user_email)} style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Delete</button>
                     </td>
