@@ -11,7 +11,7 @@ export default function App() {
   // Password Change State
   const [newPasswordInput, setNewPasswordInput] = useState('');
 
-  // User Access Scope & Permissions
+  // User Access Scope & Permissions (Default strict fallback for staff)
   const [userRole, setUserRole] = useState({
     is_admin: true,
     assigned_department: 'All',
@@ -19,7 +19,10 @@ export default function App() {
     can_use_bulk: true,
     can_view_workers: true,
     can_add_workers: true,
+    can_edit_workers: true,
+    can_delete_workers: true,
     can_view_timesheet: true,
+    can_edit_timesheet: true,
     can_view_payroll: true
   });
 
@@ -69,11 +72,16 @@ export default function App() {
   const [targetEmail, setTargetEmail] = useState('');
   const [targetPassword, setTargetPassword] = useState('');
   const [targetDept, setTargetDept] = useState('Plumbing');
+  
+  // Granular Permission Checkbox States
   const [permDashboard, setPermDashboard] = useState(true);
   const [permBulk, setPermBulk] = useState(false);
-  const [permWorkers, setPermWorkers] = useState(false);
+  const [permViewWorkers, setPermViewWorkers] = useState(true);
   const [permAddWorkers, setPermAddWorkers] = useState(false);
-  const [permTimesheet, setPermTimesheet] = useState(true);
+  const [permEditWorkers, setPermEditWorkers] = useState(false);
+  const [permDeleteWorkers, setPermDeleteWorkers] = useState(false);
+  const [permTimesheetView, setPermTimesheetView] = useState(true);
+  const [permTimesheetEdit, setPermTimesheetEdit] = useState(true); // Sirf entry/edit karne ke liye
   const [permPayroll, setPermPayroll] = useState(false);
 
   // Bulk Operations State
@@ -86,10 +94,10 @@ export default function App() {
 
   const today = new Date().toISOString().split('T')[0];
 
-  // Dynamic Current Month Total Days Calculation (Handles 28, 29, 30, 31 automatically)
+  // Dynamic Current Month Total Days Calculation
   const now = new Date();
   const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth(); // 0 to 11
+  const currentMonth = now.getMonth();
   const totalDaysInCurrentMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
   useEffect(() => {
@@ -136,7 +144,6 @@ export default function App() {
     setAttendance(data || []);
   }
 
-  // CHANGE PASSWORD HANDLER
   async function handleChangePassword(e) {
     e.preventDefault();
     if (!newPasswordInput.trim()) return alert('Naya password enter karein!');
@@ -158,8 +165,11 @@ export default function App() {
     }
   }
 
-  // OCR PAPER TIMESHEET PHOTO SCANNER HANDLER (GPT-4o)
   async function handleScanPaperSheet(event) {
+    if (!userRole.is_admin && !userRole.can_edit_timesheet) {
+      return alert('Aapko timesheet scan ya entry ki permission nahi hai!');
+    }
+
     const file = event.target.files[0];
     if (!file) return;
 
@@ -234,7 +244,6 @@ export default function App() {
     }
   }
 
-  // DIRECT FILE UPLOAD HANDLER
   async function handleFileUpload(file, docTypeSetter) {
     if (!file) return;
     try {
@@ -265,6 +274,7 @@ export default function App() {
 
   async function handleSavePersonalDoc(e) {
     e.preventDefault();
+    if (!userRole.is_admin) return alert('Access Denied!');
     if (!personalDocTitle.trim() || !personalFileUrl) return alert('Title aur File zaroori hain!');
 
     const newDoc = {
@@ -284,7 +294,6 @@ export default function App() {
     }
   }
 
-  // UNIFIED LOGIN HANDLER
   async function handleLogin(e) {
     e.preventDefault();
     setAuthLoading(true);
@@ -300,7 +309,10 @@ export default function App() {
         can_use_bulk: true,
         can_view_workers: true,
         can_add_workers: true,
+        can_edit_workers: true,
+        can_delete_workers: true,
         can_view_timesheet: true,
+        can_edit_timesheet: true,
         can_view_payroll: true
       };
       const sessionObj = { user: { email: cleanEmail }, role: adminRole };
@@ -324,9 +336,12 @@ export default function App() {
         assigned_department: userPerm.assigned_department || 'All',
         can_view_dashboard: userPerm.can_view_dashboard ?? true,
         can_use_bulk: userPerm.can_use_bulk ?? false,
-        can_view_workers: userPerm.can_view_workers ?? false,
+        can_view_workers: userPerm.can_view_workers ?? true,
         can_add_workers: userPerm.can_add_workers ?? false,
+        can_edit_workers: userPerm.can_edit_workers ?? false,
+        can_delete_workers: userPerm.can_delete_workers ?? false,
         can_view_timesheet: userPerm.can_view_timesheet ?? true,
+        can_edit_timesheet: userPerm.can_edit_timesheet ?? true,
         can_view_payroll: userPerm.can_view_payroll ?? false
       };
 
@@ -350,6 +365,9 @@ export default function App() {
   }
 
   async function handleDeleteWorker(id) {
+    if (!userRole.is_admin && !userRole.can_delete_workers) {
+      return alert('Aapko workers delete karne ki permission nahi hai!');
+    }
     if (window.confirm(`Delete Worker #${id}?`)) {
       const { error } = await supabase.from('workers').delete().eq('id', id);
       if (error) alert('Error: ' + error.message);
@@ -358,11 +376,14 @@ export default function App() {
   }
 
   function handleStartEditWorker(worker) {
+    if (!userRole.is_admin && !userRole.can_edit_workers) {
+      return alert('Aapko workers edit karne ki permission nahi hai!');
+    }
     setEditingWorkerId(worker.id);
     setWorkerIdInput(worker.id);
     setName(worker.name);
     setDepartment(worker.department || 'Plumbing');
-    setDesignation(worker.designation || 'Worker');
+    setDesignation(worker.designation || 'Plumber');
     setMonthlySalary(worker.monthly_salary || (worker.daily_rate * totalDaysInCurrentMonth) || '');
     setReligion(worker.religion || 'Muslim');
     setLastReturnDate(worker.last_return_date || '');
@@ -393,10 +414,15 @@ export default function App() {
 
   async function handleSaveWorker(e) {
     e.preventDefault();
+    if (editingWorkerId && !userRole.is_admin && !userRole.can_edit_workers) {
+      return alert('Aapko worker edit karne ki permission nahi hai!');
+    }
+    if (!editingWorkerId && !userRole.is_admin && !userRole.can_add_workers) {
+      return alert('Aapko naya worker add karne ki permission nahi hai!');
+    }
     if (!name.trim() || !monthlySalary) return alert('Name aur Monthly Salary required hain!');
 
     const monthlyNum = Number(monthlySalary);
-    // Dynamic division based on actual days in current month (28, 29, 30, or 31)
     const dailyRateCalc = monthlyNum / totalDaysInCurrentMonth;
 
     const workerData = {
@@ -438,7 +464,6 @@ export default function App() {
     }
   }
 
-  // INDIVIDUAL WORKER FILE / PAYROLL PRINT
   function handlePrintWorkerFile(worker, workerSalaryData) {
     const printWindow = window.open('', '_blank');
     printWindow.document.write(`
@@ -482,6 +507,9 @@ export default function App() {
   }
 
   async function handleBulkAttendance() {
+    if (!userRole.is_admin && !userRole.can_edit_timesheet) {
+      return alert('Aapko bulk attendance enter karne ki permission nahi hai!');
+    }
     const deptWorkers = workers.filter(w => w.department.toLowerCase() === bulkDepartment.toLowerCase());
     if (deptWorkers.length === 0) return alert(`No workers found in ${bulkDepartment}!`);
 
@@ -502,6 +530,9 @@ export default function App() {
   }
 
   async function handleMarkAttendance(workerId, status) {
+    if (!userRole.is_admin && !userRole.can_edit_timesheet) {
+      return alert('Aapko attendance/timesheet entry karne ki permission nahi hai! Aap sirf view kar sakte hain.');
+    }
     const otHours = Number(overtimeInputs[workerId] || 0);
     const worker = workers.find(w => w.id === workerId);
     
@@ -523,9 +554,12 @@ export default function App() {
       assigned_department: targetDept,
       can_view_dashboard: permDashboard,
       can_use_bulk: permBulk,
-      can_view_workers: permWorkers,
+      can_view_workers: permViewWorkers,
       can_add_workers: permAddWorkers,
-      can_view_timesheet: permTimesheet,
+      can_edit_workers: permEditWorkers,
+      can_delete_workers: permDeleteWorkers,
+      can_view_timesheet: permTimesheetView,
+      can_edit_timesheet: permTimesheetEdit,
       can_view_payroll: permPayroll,
       is_admin: false
     };
@@ -533,12 +567,11 @@ export default function App() {
     const { error } = await supabase.from('user_permissions').upsert([permData], { onConflict: 'user_email' });
     if (error) alert('Error: ' + error.message);
     else {
-      alert('User permission saved successfully!');
+      alert('User permission saved successfully with granular rules!');
       fetchPermissionsList();
     }
   }
 
-  // Muslims & Non-Muslims Count (All Departments)
   const totalMuslims = workers.filter(w => (w.religion || 'Muslim') === 'Muslim').length;
   const totalNonMuslims = workers.filter(w => w.religion === 'Non-Muslim').length;
 
@@ -562,7 +595,6 @@ export default function App() {
     const presentDays = workerRecords.length;
     const totalOT = workerRecords.reduce((acc, curr) => acc + Number(curr.overtime_hours || 0), 0);
     
-    // Dynamic month days calculation division
     const monthlySal = Number(worker.monthly_salary || (worker.daily_rate * totalDaysInCurrentMonth) || 0);
     const dailyRateNum = monthlySal / totalDaysInCurrentMonth;
     const hourlyRate = dailyRateNum / 8;
@@ -614,7 +646,7 @@ export default function App() {
       <header style={{ backgroundColor: '#0f172a', color: '#fff', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <h2 style={{ fontSize: '18px', margin: 0, color: '#38bdf8' }}>NDA-PK SYSTEM</h2>
-          <span style={{ fontSize: '12px', color: '#94a3b8' }}>User: {session.user.email} | Current Month Days Base: <strong style={{color: '#38bdf8'}}>{totalDaysInCurrentMonth} Days</strong></span>
+          <span style={{ fontSize: '12px', color: '#94a3b8' }}>User: {session.user.email} {userRole.is_admin ? '(Admin)' : '(Staff Role Restricted)'} | Month Base: <strong style={{color: '#38bdf8'}}>{totalDaysInCurrentMonth} Days</strong></span>
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <form onSubmit={handleChangePassword} style={{ display: 'flex', gap: '5px' }}>
@@ -625,15 +657,29 @@ export default function App() {
         </div>
       </header>
 
-      {/* Tabs Menu Bar */}
+      {/* Tabs Menu Bar with Permission Checks */}
       <div style={{ backgroundColor: '#1e293b', padding: '5px 15px', display: 'flex', overflowX: 'auto', gap: '5px' }}>
-        <button onClick={() => setActiveTab('dashboard')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'dashboard' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📊 Summary & Religion</button>
-        <button onClick={() => setActiveTab('bulk')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'bulk' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>⚡ Bulk Log</button>
-        <button onClick={() => setActiveTab('workers')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'workers' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>👷 Workers Directory</button>
-        <button onClick={() => setActiveTab('attendance')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'attendance' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📅 Timesheet</button>
-        <button onClick={() => setActiveTab('payroll')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'payroll' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>💵 Payroll</button>
-        {userRole.is_admin && <button onClick={() => setActiveTab('personal_docs')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'personal_docs' ? '#0284c7' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📂 Personal Docs</button>}
-        {userRole.is_admin && <button onClick={() => setActiveTab('permissions')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'permissions' ? '#d97706' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🔐 Permissions</button>}
+        {(userRole.is_admin || userRole.can_view_dashboard) && (
+          <button onClick={() => setActiveTab('dashboard')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'dashboard' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📊 Summary & Religion</button>
+        )}
+        {(userRole.is_admin || userRole.can_use_bulk) && (
+          <button onClick={() => setActiveTab('bulk')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'bulk' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>⚡ Bulk Log</button>
+        )}
+        {(userRole.is_admin || userRole.can_view_workers) && (
+          <button onClick={() => setActiveTab('workers')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'workers' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>👷 Workers Directory</button>
+        )}
+        {(userRole.is_admin || userRole.can_view_timesheet) && (
+          <button onClick={() => setActiveTab('attendance')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'attendance' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📅 Timesheet Entry</button>
+        )}
+        {(userRole.is_admin || userRole.can_view_payroll) && (
+          <button onClick={() => setActiveTab('payroll')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'payroll' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>💵 Payroll</button>
+        )}
+        {userRole.is_admin && (
+          <button onClick={() => setActiveTab('personal_docs')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'personal_docs' ? '#0284c7' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📂 Personal Docs</button>
+        )}
+        {userRole.is_admin && (
+          <button onClick={() => setActiveTab('permissions')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'permissions' ? '#d97706' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🔐 Permissions</button>
+        )}
       </div>
 
       <main style={{ flex: 1, padding: '20px' }}>
@@ -653,7 +699,7 @@ export default function App() {
               </select>
             </div>
           ) : (
-            <span style={{ fontWeight: 'bold', color: '#0369a1' }}>Department: {userRole.assigned_department}</span>
+            <span style={{ fontWeight: 'bold', color: '#0369a1' }}>Department Scope: {userRole.assigned_department}</span>
           )}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -666,8 +712,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* TAB 1: DASHBOARD & RELIGION STATS */}
-        {activeTab === 'dashboard' && (
+        {/* TAB 1: DASHBOARD */}
+        {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
               <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #2563eb' }}>
@@ -679,23 +725,25 @@ export default function App() {
                 <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#16a34a', marginTop: '4px' }}>{presentTodayCount}</div>
               </div>
               <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #059669' }}>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>🌙 Muslims (All Dept)</span>
+                <span style={{ color: '#64748b', fontSize: '13px' }}>🌙 Muslims</span>
                 <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#059669', marginTop: '4px' }}>{totalMuslims}</div>
               </div>
               <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #d97706' }}>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>☀️ Non-Muslims (All Dept)</span>
+                <span style={{ color: '#64748b', fontSize: '13px' }}>☀️ Non-Muslims</span>
                 <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#d97706', marginTop: '4px' }}>{totalNonMuslims}</div>
               </div>
-              <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #0891b2' }}>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>Total Payroll ({totalDaysInCurrentMonth} Days Base)</span>
-                <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{Math.round(grandTotalPayroll).toLocaleString()} {selectedCurrency}</div>
-              </div>
+              {(userRole.is_admin || userRole.can_view_payroll) && (
+                <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #0891b2' }}>
+                  <span style={{ color: '#64748b', fontSize: '13px' }}>Total Payroll</span>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{Math.round(grandTotalPayroll).toLocaleString()} {selectedCurrency}</div>
+                </div>
+              )}
             </div>
           </div>
         )}
 
         {/* TAB 2: BULK ATTENDANCE */}
-        {activeTab === 'bulk' && (
+        {activeTab === 'bulk' && (userRole.is_admin || userRole.can_use_bulk) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 10px 0' }}>⚡ Department Bulk Attendance & OCR Scanner</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
@@ -736,71 +784,73 @@ export default function App() {
         )}
 
         {/* TAB 3: WORKERS MANAGEMENT */}
-        {activeTab === 'workers' && (
+        {activeTab === 'workers' && (userRole.is_admin || userRole.can_view_workers) && (
           <div>
-            <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '25px' }}>
-              <h3 style={{ margin: '0 0 15px 0', color: '#0f172a' }}>{editingWorkerId ? `✏️ Edit Worker ID #${editingWorkerId}` : '➕ Add New Worker'}</h3>
-              <form onSubmit={handleSaveWorker}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Worker ID (Optional)</label>
-                    <input type="number" value={workerIdInput} onChange={e => setWorkerIdInput(e.target.value)} placeholder="e.g. 101" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+            {(userRole.is_admin || userRole.can_add_workers || userRole.can_edit_workers) && (
+              <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '25px' }}>
+                <h3 style={{ margin: '0 0 15px 0', color: '#0f172a' }}>{editingWorkerId ? `✏️ Edit Worker ID #${editingWorkerId}` : '➕ Add New Worker'}</h3>
+                <form onSubmit={handleSaveWorker}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Worker ID (Optional)</label>
+                      <input type="number" value={workerIdInput} onChange={e => setWorkerIdInput(e.target.value)} placeholder="e.g. 101" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Full Name *</label>
+                      <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Worker Name" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} required />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Department</label>
+                      <select value={department} onChange={e => setDepartment(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}>
+                        <option value="Plumbing">Plumbing</option>
+                        <option value="Electrical">Electrical</option>
+                        <option value="Civil">Civil</option>
+                        <option value="Ali Mardan">Ali Mardan</option>
+                        <option value="Mustafa">Mustafa</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Designation</label>
+                      <input type="text" value={designation} onChange={e => setDesignation(e.target.value)} placeholder="e.g. Plumber" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Total Monthly Salary ({selectedCurrency}) *</label>
+                      <input type="number" value={monthlySalary} onChange={e => setMonthlySalary(e.target.value)} placeholder="e.g. 3000" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} required />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Religion</label>
+                      <select value={religion} onChange={e => setReligion(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}>
+                        <option value="Muslim">Muslim</option>
+                        <option value="Non-Muslim">Non-Muslim</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Last Return Date</label>
+                      <input type="date" value={lastReturnDate} onChange={e => setLastReturnDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Leave Rate (Days/Year)</label>
+                      <select value={annualLeaveRate} onChange={e => setAnnualLeaveRate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}>
+                        <option value="30">30 Days</option>
+                        <option value="45">45 Days</option>
+                        <option value="60">60 Days</option>
+                      </select>
+                    </div>
                   </div>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Full Name *</label>
-                    <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Worker Name" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} required />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Department</label>
-                    <select value={department} onChange={e => setDepartment(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}>
-                      <option value="Plumbing">Plumbing</option>
-                      <option value="Electrical">Electrical</option>
-                      <option value="Civil">Civil</option>
-                      <option value="Ali Mardan">Ali Mardan</option>
-                      <option value="Mustafa">Mustafa</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Designation</label>
-                    <input type="text" value={designation} onChange={e => setDesignation(e.target.value)} placeholder="e.g. Plumber" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Total Monthly Salary ({selectedCurrency}) *</label>
-                    <input type="number" value={monthlySalary} onChange={e => setMonthlySalary(e.target.value)} placeholder="e.g. 3000" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} required />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Religion</label>
-                    <select value={religion} onChange={e => setReligion(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}>
-                      <option value="Muslim">Muslim</option>
-                      <option value="Non-Muslim">Non-Muslim</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Last Return Date</label>
-                    <input type="date" value={lastReturnDate} onChange={e => setLastReturnDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Leave Rate (Days/Year)</label>
-                    <select value={annualLeaveRate} onChange={e => setAnnualLeaveRate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}>
-                      <option value="30">30 Days</option>
-                      <option value="45">45 Days</option>
-                      <option value="60">60 Days</option>
-                    </select>
-                  </div>
-                </div>
 
-                <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
-                  <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    {editingWorkerId ? 'Update Worker' : 'Save Worker'}
-                  </button>
-                  {editingWorkerId && (
-                    <button type="button" onClick={resetWorkerForm} style={{ padding: '10px 20px', backgroundColor: '#64748b', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-                      Cancel
+                  <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
+                    <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
+                      {editingWorkerId ? 'Update Worker' : 'Save Worker'}
                     </button>
-                  )}
-                </div>
-              </form>
-            </div>
+                    {editingWorkerId && (
+                      <button type="button" onClick={resetWorkerForm} style={{ padding: '10px 20px', backgroundColor: '#64748b', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </form>
+              </div>
+            )}
 
             {/* Workers Table */}
             <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
@@ -813,7 +863,7 @@ export default function App() {
                     <th style={{ padding: '10px' }}>Monthly Salary</th>
                     <th style={{ padding: '10px' }}>Religion</th>
                     <th style={{ padding: '10px' }}>Earned Leave</th>
-                    <th style={{ padding: '10px' }}>Actions / Print File</th>
+                    <th style={{ padding: '10px' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -840,9 +890,13 @@ export default function App() {
                         <td style={{ padding: '10px' }}>{earnedDays} Days</td>
                         <td style={{ padding: '10px' }}>
                           <div style={{ display: 'flex', gap: '6px' }}>
-                            <button onClick={() => handlePrintWorkerFile(w, workerSalData)} style={{ padding: '4px 8px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>🖨️ Print File</button>
-                            <button onClick={() => handleStartEditWorker(w)} style={{ padding: '4px 8px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Edit</button>
-                            <button onClick={() => handleDeleteWorker(w.id)} style={{ padding: '4px 8px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Del</button>
+                            <button onClick={() => handlePrintWorkerFile(w, workerSalData)} style={{ padding: '4px 8px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>🖨️ Print</button>
+                            {(userRole.is_admin || userRole.can_edit_workers) && (
+                              <button onClick={() => handleStartEditWorker(w)} style={{ padding: '4px 8px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Edit</button>
+                            )}
+                            {(userRole.is_admin || userRole.can_delete_workers) && (
+                              <button onClick={() => handleDeleteWorker(w.id)} style={{ padding: '4px 8px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Del</button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -855,9 +909,12 @@ export default function App() {
         )}
 
         {/* TAB 4: TIMESHEET */}
-        {activeTab === 'attendance' && (
+        {activeTab === 'attendance' && (userRole.is_admin || userRole.can_view_timesheet) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ margin: '0 0 15px 0', color: '#0f172a' }}>📅 Daily Timesheet</h3>
+            <h3 style={{ margin: '0 0 15px 0', color: '#0f172a' }}>📅 Daily Timesheet Entry</h3>
+            {(!userRole.is_admin && !userRole.can_edit_timesheet) && (
+              <p style={{ color: '#d97706', fontSize: '13px', fontWeight: 'bold', marginBottom: '15px' }}>⚠️ Note: Aapko timesheet entry karne ki permission nahi hai. Aap sirf view kar sakte hain.</p>
+            )}
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
                 <thead>
@@ -875,14 +932,18 @@ export default function App() {
                         <td style={{ padding: '10px', fontWeight: 'bold' }}>#{worker.id} - {worker.name}</td>
                         <td style={{ padding: '10px' }}>{worker.department}</td>
                         <td style={{ padding: '10px' }}>
-                          <input type="number" placeholder="OT Hrs" value={overtimeInputs[worker.id] || ''} onChange={e => setOvertimeInputs({...overtimeInputs, [worker.id]: e.target.value})} style={{ width: '70px', padding: '5px' }} />
+                          <input type="number" placeholder="OT Hrs" value={overtimeInputs[worker.id] || ''} onChange={e => setOvertimeInputs({...overtimeInputs, [worker.id]: e.target.value})} disabled={!userRole.is_admin && !userRole.can_edit_timesheet} style={{ width: '70px', padding: '5px' }} />
                         </td>
                         <td style={{ padding: '10px' }}>
-                          <div style={{ display: 'flex', gap: '6px' }}>
-                            <button onClick={() => handleMarkAttendance(worker.id, 'Present')} style={{ padding: '5px 10px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Present</button>
-                            <button onClick={() => handleMarkAttendance(worker.id, 'Absent')} style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Absent</button>
-                            <button onClick={() => handleMarkAttendance(worker.id, 'Leave')} style={{ padding: '5px 10px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Leave</button>
-                          </div>
+                          {(userRole.is_admin || userRole.can_edit_timesheet) ? (
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button onClick={() => handleMarkAttendance(worker.id, 'Present')} style={{ padding: '5px 10px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Present</button>
+                              <button onClick={() => handleMarkAttendance(worker.id, 'Absent')} style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Absent</button>
+                              <button onClick={() => handleMarkAttendance(worker.id, 'Leave')} style={{ padding: '5px 10px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Leave</button>
+                            </div>
+                          ) : (
+                            <span style={{ color: '#64748b', fontSize: '12px' }}>Read-Only</span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -894,7 +955,7 @@ export default function App() {
         )}
 
         {/* TAB 5: PAYROLL */}
-        {activeTab === 'payroll' && (
+        {activeTab === 'payroll' && (userRole.is_admin || userRole.can_view_payroll) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
               <h3 style={{ margin: 0, color: '#0f172a' }}>💵 Monthly Payroll ({totalDaysInCurrentMonth} Days Basis Calculation)</h3>
@@ -951,24 +1012,65 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 7: PERMISSIONS */}
+        {/* TAB 7: GRANULAR PERMISSIONS PANEL */}
         {activeTab === 'permissions' && userRole.is_admin && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ margin: '0 0 15px 0' }}>🔐 Staff Logins & Permissions</h3>
-            <form onSubmit={handleSavePermission} style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '15px' }}>
-                <input type="email" value={targetEmail} onChange={e => setTargetEmail(e.target.value)} placeholder="staff@nda.pk" style={{ padding: '8px' }} required />
-                <input type="text" value={targetPassword} onChange={e => setTargetPassword(e.target.value)} placeholder="Password" style={{ padding: '8px' }} required />
-                <select value={targetDept} onChange={e => setTargetDept(e.target.value)} style={{ padding: '8px' }}>
-                  <option value="All">All Departments</option>
-                  <option value="Plumbing">Plumbing</option>
-                  <option value="Electrical">Electrical</option>
-                  <option value="Civil">Civil</option>
-                  <option value="Ali Mardan">Ali Mardan</option>
-                  <option value="Mustafa">Mustafa</option>
-                </select>
+            <h3 style={{ margin: '0 0 15px 0' }}>🔐 Granular Staff Permissions & Access Control</h3>
+            <form onSubmit={handleSavePermission} style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Staff Email</label>
+                  <input type="email" value={targetEmail} onChange={e => setTargetEmail(e.target.value)} placeholder="staff@nda.pk" style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }} required />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Password</label>
+                  <input type="text" value={targetPassword} onChange={e => setTargetPassword(e.target.value)} placeholder="Password" style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }} required />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Department Scope</label>
+                  <select value={targetDept} onChange={e => setTargetDept(e.target.value)} style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}>
+                    <option value="All">All Departments</option>
+                    <option value="Plumbing">Plumbing</option>
+                    <option value="Electrical">Electrical</option>
+                    <option value="Civil">Civil</option>
+                    <option value="Ali Mardan">Ali Mardan</option>
+                    <option value="Mustafa">Mustafa</option>
+                  </select>
+                </div>
               </div>
-              <button type="submit" style={{ padding: '9px 18px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Create Staff Login</button>
+
+              <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#2563eb' }}>Check What This User Can Do:</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={permDashboard} onChange={e => setPermDashboard(e.target.checked)} /> View Dashboard
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={permBulk} onChange={e => setPermBulk(e.target.checked)} /> Bulk Attendance & OCR
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={permViewWorkers} onChange={e => setPermViewWorkers(e.target.checked)} /> View Workers Directory
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={permAddWorkers} onChange={e => setPermAddWorkers(e.target.checked)} /> Add New Workers
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={permEditWorkers} onChange={e => setPermEditWorkers(e.target.checked)} /> Edit Workers Info
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', color: '#dc2626', fontWeight: 'bold' }}>
+                  <input type="checkbox" checked={permDeleteWorkers} onChange={e => setPermDeleteWorkers(e.target.checked)} /> Delete Workers (Danger)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={permTimesheetView} onChange={e => setPermTimesheetView(e.target.checked)} /> View Timesheet
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer', backgroundColor: '#eff6ff', padding: '5px', borderRadius: '4px', border: '1px solid #3b82f6' }}>
+                  <input type="checkbox" checked={permTimesheetEdit} onChange={e => setPermTimesheetEdit(e.target.checked)} /> <strong>Mark/Edit Timesheet (Sirf Entry)</strong>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={permPayroll} onChange={e => setPermPayroll(e.target.checked)} /> View Payroll Reports
+                </label>
+              </div>
+
+              <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Save Granular Permissions</button>
             </form>
           </div>
         )}
