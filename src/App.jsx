@@ -504,14 +504,26 @@ export default function App() {
       return alert('Aap ke paas Timesheet ki permission nahi hai!');
     }
     const otHours = Number(overtimeInputs[workerId] || 0);
+    const assignedSite = siteInputs[workerId] || sitesList[0];
     const worker = workers.find(w => w.id === workerId);
     
     const { error } = await supabase.from('attendance').insert([
-      { worker_id: workerId, date: today, status, overtime_hours: otHours, department: worker?.department }
+      { 
+        worker_id: workerId, 
+        date: today, 
+        status, 
+        overtime_hours: otHours, 
+        department: worker?.department,
+        designation: worker?.designation,
+        site_name: assignedSite 
+      }
     ]);
 
     if (error) alert('Error: ' + error.message);
-    else fetchAttendance();
+    else {
+      alert('Attendance saved successfully!');
+      fetchAttendance();
+    }
   }
 
   // USER PERMISSIONS EDIT & DELETE
