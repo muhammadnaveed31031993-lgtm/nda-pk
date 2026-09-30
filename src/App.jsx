@@ -8,7 +8,7 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   
-  // Password Change State
+  // Password Change State (Admin Only)
   const [newPasswordInput, setNewPasswordInput] = useState('');
 
   // User Access Scope & Permissions (Default strict fallback for staff)
@@ -81,7 +81,7 @@ export default function App() {
   const [permEditWorkers, setPermEditWorkers] = useState(false);
   const [permDeleteWorkers, setPermDeleteWorkers] = useState(false);
   const [permTimesheetView, setPermTimesheetView] = useState(true);
-  const [permTimesheetEdit, setPermTimesheetEdit] = useState(true); // Sirf entry/edit karne ke liye
+  const [permTimesheetEdit, setPermTimesheetEdit] = useState(true);
   const [permPayroll, setPermPayroll] = useState(false);
 
   // Bulk Operations State
@@ -144,24 +144,22 @@ export default function App() {
     setAttendance(data || []);
   }
 
+  async function handleDeleteUserPermission(emailToDelete) {
+    if (!userRole.is_admin) return;
+    if (window.confirm(`Delete access for ${emailToDelete}?`)) {
+      const { error } = await supabase.from('user_permissions').delete().eq('user_email', emailToDelete);
+      if (error) alert('Error: ' + error.message);
+      else fetchPermissionsList();
+    }
+  }
+
   async function handleChangePassword(e) {
     e.preventDefault();
     if (!newPasswordInput.trim()) return alert('Naya password enter karein!');
 
     if (session.user.email === 'admin@nda.pk') {
-      alert('Admin password secured hai ya database permission table check karein.');
+      alert('Admin password secured hai.');
       return;
-    }
-
-    const { error } = await supabase
-      .from('user_permissions')
-      .update({ user_password: newPasswordInput.trim() })
-      .eq('user_email', session.user.email);
-
-    if (error) alert('Error: ' + error.message);
-    else {
-      alert('Password successfully change ho gaya!');
-      setNewPasswordInput('');
     }
   }
 
@@ -320,6 +318,7 @@ export default function App() {
       setUserRole(adminRole);
       localStorage.setItem('nda_user_session', JSON.stringify(sessionObj));
       setAuthLoading(false);
+      setActiveTab('dashboard');
       return;
     }
 
@@ -353,6 +352,14 @@ export default function App() {
         setSelectedDeptFilter(staffRole.assigned_department);
       }
       localStorage.setItem('nda_user_session', JSON.stringify(sessionObj));
+
+      // Automatically redirect staff to the first available tab they have permission for
+      if (staffRole.can_view_dashboard) setActiveTab('dashboard');
+      else if (staffRole.can_view_timesheet) setActiveTab('attendance');
+      else if (staffRole.can_view_workers) setActiveTab('workers');
+      else if (staffRole.can_use_bulk) setActiveTab('bulk');
+      else if (staffRole.can_view_payroll) setActiveTab('payroll');
+
     } else {
       alert('Invalid Email or Password!');
     }
@@ -568,6 +575,8 @@ export default function App() {
     if (error) alert('Error: ' + error.message);
     else {
       alert('User permission saved successfully with granular rules!');
+      setTargetEmail('');
+      setTargetPassword('');
       fetchPermissionsList();
     }
   }
@@ -646,18 +655,21 @@ export default function App() {
       <header style={{ backgroundColor: '#0f172a', color: '#fff', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <h2 style={{ fontSize: '18px', margin: 0, color: '#38bdf8' }}>NDA-PK SYSTEM</h2>
-          <span style={{ fontSize: '12px', color: '#94a3b8' }}>User: {session.user.email} {userRole.is_admin ? '(Admin)' : '(Staff Role Restricted)'} | Month Base: <strong style={{color: '#38bdf8'}}>{totalDaysInCurrentMonth} Days</strong></span>
+          <span style={{ fontSize: '12px', color: '#94a3b8' }}>User: {session.user.email} {userRole.is_admin ? '(Admin)' : '(Staff)'} | Month Base: <strong style={{color: '#38bdf8'}}>{totalDaysInCurrentMonth} Days</strong></span>
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <form onSubmit={handleChangePassword} style={{ display: 'flex', gap: '5px' }}>
-            <input type="password" value={newPasswordInput} onChange={e => setNewPasswordInput(e.target.value)} placeholder="New Password" style={{ padding: '5px 8px', borderRadius: '4px', border: 'none', fontSize: '12px' }} />
-            <button type="submit" style={{ padding: '5px 10px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>Change Pass</button>
-          </form>
+          {/* Change Password button sirf Admin ke liye show hoga, staff ke liye nahi */}
+          {userRole.is_admin && (
+            <form onSubmit={handleChangePassword} style={{ display: 'flex', gap: '5px' }}>
+              <input type="password" value={newPasswordInput} onChange={e => setNewPasswordInput(e.target.value)} placeholder="New Password" style={{ padding: '5px 8px', borderRadius: '4px', border: 'none', fontSize: '12px' }} />
+              <button type="submit" style={{ padding: '5px 10px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>Change Pass</button>
+            </form>
+          )}
           <button onClick={handleLogout} style={{ padding: '6px 12px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Logout</button>
         </div>
       </header>
 
-      {/* Tabs Menu Bar with Permission Checks */}
+      {/* Tabs Menu Bar with strict permission visibility check (Jis ki permission nahi, woh show nahi hoga) */}
       <div style={{ backgroundColor: '#1e293b', padding: '5px 15px', display: 'flex', overflowX: 'auto', gap: '5px' }}>
         {(userRole.is_admin || userRole.can_view_dashboard) && (
           <button onClick={() => setActiveTab('dashboard')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'dashboard' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📊 Summary & Religion</button>
@@ -1016,7 +1028,7 @@ export default function App() {
         {activeTab === 'permissions' && userRole.is_admin && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 15px 0' }}>🔐 Granular Staff Permissions & Access Control</h3>
-            <form onSubmit={handleSavePermission} style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '8px' }}>
+            <form onSubmit={handleSavePermission} style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '8px', marginBottom: '25px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', marginBottom: '20px' }}>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Staff Email</label>
@@ -1072,6 +1084,51 @@ export default function App() {
 
               <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Save Granular Permissions</button>
             </form>
+
+            {/* List of Existing Staff Access Accounts */}
+            <h4 style={{ margin: '20px 0 10px 0', fontSize: '15px', color: '#0f172a' }}>📋 Active Staff Accounts & Permissions List</h4>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+                    <th style={{ padding: '8px' }}>Staff Email</th>
+                    <th style={{ padding: '8px' }}>Department Scope</th>
+                    <th style={{ padding: '8px' }}>Allowed Features</th>
+                    <th style={{ padding: '8px' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {permissionsList.length === 0 ? (
+                    <tr><td colSpan="4" style={{ padding: '15px', textAlign: 'center', color: '#64748b' }}>No staff permissions created yet.</td></tr>
+                  ) : (
+                    permissionsList.map((p, idx) => {
+                      const allowed = [];
+                      if (p.can_view_dashboard) allowed.push('Dashboard');
+                      if (p.can_use_bulk) allowed.push('Bulk');
+                      if (p.can_view_workers) allowed.push('Workers');
+                      if (p.can_add_workers) allowed.push('Add Worker');
+                      if (p.can_edit_workers) allowed.push('Edit Worker');
+                      if (p.can_delete_workers) allowed.push('Del Worker');
+                      if (p.can_view_timesheet) allowed.push('Timesheet View');
+                      if (p.can_edit_timesheet) allowed.push('Timesheet Entry');
+                      if (p.can_view_payroll) allowed.push('Payroll');
+
+                      return (
+                        <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                          <td style={{ padding: '8px', fontWeight: 'bold' }}>{p.user_email}</td>
+                          <td style={{ padding: '8px' }}>{p.assigned_department}</td>
+                          <td style={{ padding: '8px', color: '#475569', fontSize: '12px' }}>{allowed.join(', ')}</td>
+                          <td style={{ padding: '8px' }}>
+                            <button onClick={() => handleDeleteUserPermission(p.user_email)} style={{ padding: '4px 8px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Revoke Access</button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
           </div>
         )}
 
