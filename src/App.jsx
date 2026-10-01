@@ -725,7 +725,7 @@ export default function App() {
        {/* TAB 1: DASHBOARD */}
         {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
           <div>
-            {/* Dashboard Admin Header - Step 1 */}
+            {/* Dashboard Admin Header - Topmost */}
             <div style={{
               background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
               color: 'white',
@@ -759,6 +759,7 @@ export default function App() {
               </div>
             </div>
 
+            {/* Stats Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
               <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #2563eb' }}>
                 <span style={{ color: '#64748b', fontSize: '13px' }}>Filtered Workers</span>
@@ -776,7 +777,7 @@ export default function App() {
               )}
             </div>
 
-            {/* Print Signature Footer - Step 1 */}
+            {/* Print Signature Footer */}
             <div className="print-signature" style={{ display: 'none', marginTop: '50px', textAlign: 'right', paddingRight: '30px' }}>
               <div style={{ borderTop: '1px solid #000', display: 'inline-block', minWidth: '200px', paddingTop: '5px', fontWeight: 'bold' }}>
                 Prepared by: M. Naveed
