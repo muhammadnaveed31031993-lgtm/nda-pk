@@ -1023,30 +1023,52 @@ export default function App() {
         {activeTab === 'permissions' && userRole.is_admin && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 15px 0' }}>🔐 Granular Staff Permissions & Staff ID Allocation</h3>
-            <form onSubmit={handleSavePermission} style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '8px', marginBottom: '25px' }}>
+            <form onSubmit={handleSavePermission} style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '8px', marginBottom: '25px', border: '1px solid #cbd5e1' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                <h4 style={{ margin: 0, color: '#1e293b' }}>{targetEmail ? `✏️ Edit Access for: ${targetEmail}` : '➕ Add New Staff Access'}</h4>
+                {targetEmail && (
+                  <button type="button" onClick={() => {
+                    setTargetStaffId('');
+                    setTargetEmail('');
+                    setTargetPassword('');
+                    setTargetDept('All');
+                    setTargetSite('All');
+                    setPermDashboard(true);
+                    setPermBulk(false);
+                    setPermViewWorkers(true);
+                    setPermAddWorkers(false);
+                    setPermEditWorkers(false);
+                    setPermDeleteWorkers(false);
+                    setPermTimesheetView(true);
+                    setPermTimesheetEdit(true);
+                    setPermPayroll(false);
+                  }} style={{ padding: '4px 10px', backgroundColor: '#64748b', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Cancel Edit</button>
+                )}
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '20px' }}>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Staff ID</label>
-                  <input type="text" value={targetStaffId} onChange={e => setTargetStaffId(e.target.value)} placeholder="e.g. STF-01" style={{ width: '100%', padding: '8px' }} />
+                  <input type="text" value={targetStaffId} onChange={e => setTargetStaffId(e.target.value)} placeholder="e.g. STF-01" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
                 </div>
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Staff Email</label>
-                  <input type="email" value={targetEmail} onChange={e => setTargetEmail(e.target.value)} placeholder="staff@nda.pk" style={{ width: '100%', padding: '8px' }} required />
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Staff Email *</label>
+                  <input type="email" value={targetEmail} onChange={e => setTargetEmail(e.target.value)} placeholder="staff@nda.pk" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
                 </div>
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Password</label>
-                  <input type="text" value={targetPassword} onChange={e => setTargetPassword(e.target.value)} placeholder="Password" style={{ width: '100%', padding: '8px' }} required />
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Password *</label>
+                  <input type="text" value={targetPassword} onChange={e => setTargetPassword(e.target.value)} placeholder="Password" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
                 </div>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Assigned Dept</label>
-                  <select value={targetDept} onChange={e => setTargetDept(e.target.value)} style={{ width: '100%', padding: '8px' }}>
+                  <select value={targetDept} onChange={e => setTargetDept(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
                     <option value="All">All Depts</option>
                     {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
                   </select>
                 </div>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Assigned Site</label>
-                  <select value={targetSite} onChange={e => setTargetSite(e.target.value)} style={{ width: '100%', padding: '8px' }}>
+                  <select value={targetSite} onChange={e => targetSite !== e.target.value && setTargetSite(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
                     <option value="All">All Sites</option>
                     {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
                   </select>
@@ -1056,65 +1078,106 @@ export default function App() {
               {/* Checkboxes Permissions */}
               <h4 style={{ margin: '15px 0 10px 0', fontSize: '14px', color: '#334155' }}>Select Permissions:</h4>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '20px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={permDashboard} onChange={e => setPermDashboard(e.target.checked)} /> Can View Dashboard
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={permBulk} onChange={e => setPermBulk(e.target.checked)} /> Can Use Bulk & OCR
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={permViewWorkers} onChange={e => setPermViewWorkers(e.target.checked)} /> Can View Workers
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={permAddWorkers} onChange={e => setPermAddWorkers(e.target.checked)} /> Can Add Workers
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={permEditWorkers} onChange={e => setPermEditWorkers(e.target.checked)} /> Can Edit Workers
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={permDeleteWorkers} onChange={e => setPermDeleteWorkers(e.target.checked)} /> Can Delete Workers
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={permTimesheetView} onChange={e => setPermTimesheetView(e.target.checked)} /> Can View Timesheet
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={permTimesheetEdit} onChange={e => setPermTimesheetEdit(e.target.checked)} /> Can Edit Timesheet
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={permPayroll} onChange={e => setPermPayroll(e.target.checked)} /> Can View Payroll
                 </label>
               </div>
 
-              <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Save Staff Access</button>
+              <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Save / Update Staff Access</button>
             </form>
 
-            <h4 style={{ margin: '20px 0 10px 0' }}>Existing Staff Access List</h4>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
-                  <th style={{ padding: '10px' }}>Staff ID</th>
-                  <th style={{ padding: '10px' }}>Email</th>
-                  <th style={{ padding: '10px' }}>Dept / Site</th>
-                  <th style={{ padding: '10px' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {permissionsList.map((p, idx) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ padding: '10px', fontWeight: 'bold' }}>{p.staff_id || 'N/A'}</td>
-                    <td style={{ padding: '10px' }}>{p.user_email}</td>
-                    <td style={{ padding: '10px' }}>{p.assigned_department} / {p.assigned_site}</td>
-                    <td style={{ padding: '10px' }}>
-                      <button onClick={() => handleDeleteUserPermission(p.user_email)} style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Delete</button>
-                    </td>
+            <h4 style={{ margin: '20px 0 10px 0' }}>Existing Staff Access List & Active Permissions</h4>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+                    <th style={{ padding: '10px' }}>Staff ID & Email</th>
+                    <th style={{ padding: '10px' }}>Dept / Site Scope</th>
+                    <th style={{ padding: '10px' }}>Assigned Permissions Summary</th>
+                    <th style={{ padding: '10px' }}>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {permissionsList.map((p, idx) => {
+                    const activePerms = [];
+                    if (p.can_view_dashboard) activePerms.push('Dashboard');
+                    if (p.can_use_bulk) activePerms.push('Bulk/OCR');
+                    if (p.can_view_workers) activePerms.push('View Workers');
+                    if (p.can_add_workers) activePerms.push('Add Worker');
+                    if (p.can_edit_workers) activePerms.push('Edit Worker');
+                    if (p.can_delete_workers) activePerms.push('Delete Worker');
+                    if (p.can_view_timesheet) activePerms.push('View Timesheet');
+                    if (p.can_edit_timesheet) activePerms.push('Edit Timesheet');
+                    if (p.can_view_payroll) activePerms.push('Payroll');
+
+                    return (
+                      <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                        <td style={{ padding: '10px' }}>
+                          <strong>{p.staff_id || 'N/A'}</strong><br/>
+                          <span style={{ color: '#0284c7' }}>{p.user_email}</span>
+                        </td>
+                        <td style={{ padding: '10px' }}>
+                          Dept: <strong>{p.assigned_department}</strong><br/>
+                          Site: <strong>{p.assigned_site}</strong>
+                        </td>
+                        <td style={{ padding: '10px', maxWidth: '300px' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                            {activePerms.map((ap, i) => (
+                              <span key={i} style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>{ap}</span>
+                            ))}
+                          </div>
+                        </td>
+                        <td style={{ padding: '10px' }}>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button onClick={() => {
+                              setTargetStaffId(p.staff_id || '');
+                              setTargetEmail(p.user_email || '');
+                              setTargetPassword(p.user_password || '');
+                              setTargetDept(p.assigned_department || 'All');
+                              setTargetSite(p.assigned_site || 'All');
+                              setPermDashboard(p.can_view_dashboard ?? true);
+                              setPermBulk(p.can_use_bulk ?? false);
+                              setPermViewWorkers(p.can_view_workers ?? true);
+                              setPermAddWorkers(p.can_add_workers ?? false);
+                              setPermEditWorkers(p.can_edit_workers ?? false);
+                              setPermDeleteWorkers(p.can_delete_workers ?? false);
+                              setPermTimesheetView(p.can_view_timesheet ?? true);
+                              setPermTimesheetEdit(p.can_edit_timesheet ?? true);
+                              setPermPayroll(p.can_view_payroll ?? false);
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }} style={{ padding: '5px 10px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Edit</button>
+                            <button onClick={() => handleDeleteUserPermission(p.user_email)} style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
-
-      </main>
-    </div>
-  );
-}
