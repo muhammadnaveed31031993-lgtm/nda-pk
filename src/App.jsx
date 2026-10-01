@@ -1078,23 +1078,6 @@ export default function App() {
           </div>
         )}
         <button 
-  onClick={() => setActiveTab('annual_leave')}
-  style={{
-    padding: '6px 12px',
-    backgroundColor: activeTab === 'annual_leave' ? '#2563eb' : '#1e293b',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '12px',
-    fontWeight: 'bold',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '5px'
-  }}
->
-  🏖️ Annual Leaves
-</button>
 
         {/* TAB 9: PERMISSIONS PANEL */}
         {activeTab === 'permissions' && userRole.is_admin && (
