@@ -1077,7 +1077,6 @@ export default function App() {
             </ul>
           </div>
         )}
-        <button 
 
         {/* TAB 9: PERMISSIONS PANEL */}
         {activeTab === 'permissions' && userRole.is_admin && (
