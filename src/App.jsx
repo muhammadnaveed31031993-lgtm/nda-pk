@@ -785,6 +785,120 @@ export default function App() {
                 </div>
               )}
             </div>
+            {/* TAB 1: DASHBOARD */}
+        {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
+          <div>
+            {/* Stats Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+              <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #2563eb' }}>
+                <span style={{ color: '#64748b', fontSize: '13px' }}>Filtered Workers</span>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{filteredWorkers.length}</div>
+              </div>
+              <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #16a34a' }}>
+                <span style={{ color: '#64748b', fontSize: '13px' }}>Present on {selectedTimesheetDate}</span>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#16a34a', marginTop: '4px' }}>{presentCountForDate}</div>
+              </div>
+              {(userRole.is_admin || userRole.can_view_payroll) && (
+                <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #0891b2' }}>
+                  <span style={{ color: '#64748b', fontSize: '13px' }}>Total Payroll</span>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{Math.round(grandTotalPayroll).toLocaleString()} {selectedCurrency}</div>
+                </div>
+              )}
+            </div>
+
+            {/* TAB / SECTION: Annual Leaves Management (YAHAN PASTE KAREIN) */}
+            <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginTop: '20px' }}>
+              <h3 style={{ margin: '0 0 15px 0', color: '#1e3c72', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                🏖️ Annual Leave & Vacation Tracking
+              </h3>
+              <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '15px' }}>
+                Track workers currently on vacation, manage return dates, extensions, and automated late salary deductions.
+              </p>
+
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#f1f5f9', color: '#334155', textAlign: 'left' }}>
+                      <th style={{ padding: '10px' }}>Worker ID & Name</th>
+                      <th style={{ padding: '10px' }}>Department</th>
+                      <th style={{ padding: '10px' }}>Leave Date</th>
+                      <th style={{ padding: '10px' }}>Return Date</th>
+                      <th style={{ padding: '10px' }}>Extension Days</th>
+                      <th style={{ padding: '10px' }}>Late Days</th>
+                      <th style={{ padding: '10px' }}>Monthly Deduction</th>
+                      <th style={{ padding: '10px' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {workers.filter(w => w.on_leave).length === 0 ? (
+                      <tr>
+                        <td colSpan="8" style={{ textAlign: 'center', padding: '20px', color: '#94a3b8' }}>
+                          No workers currently on annual leave.
+                        </td>
+                      </tr>
+                    ) : (
+                      workers.filter(w => w.on_leave).map((worker) => {
+                        const lateDays = worker.late_days || 0;
+                        const monthlyDeductionDays = lateDays > 0 ? 5 : 0;
+                        const dailySalary = worker.monthly_salary ? worker.monthly_salary / 30 : 0;
+                        const totalDeductionAmount = monthlyDeductionDays * dailySalary;
+
+                        return (
+                          <tr key={worker.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                            <td style={{ padding: '10px' }}>
+                              <strong>{worker.name}</strong><br />
+                              <span style={{ fontSize: '12px', color: '#64748b' }}>ID: {worker.worker_id}</span>
+                            </td>
+                            <td style={{ padding: '10px' }}>{worker.department}</td>
+                            <td style={{ padding: '10px' }}>{worker.leave_date || 'N/A'}</td>
+                            <td style={{ padding: '10px' }}>{worker.expected_return_date || 'N/A'}</td>
+                            <td style={{ padding: '10px' }}>
+                              <input 
+                                type="number" 
+                                defaultValue={worker.extension_days || 0} 
+                                style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                                onBlur={(e) => handleUpdateExtension(worker.id, e.target.value)}
+                              />
+                            </td>
+                            <td style={{ padding: '10px', color: '#dc2626', fontWeight: 'bold' }}>
+                              {lateDays} Days
+                            </td>
+                            <td style={{ padding: '10px', color: '#dc2626', fontWeight: 'bold' }}>
+                              -{monthlyDeductionDays} Days ({Math.round(totalDeductionAmount)} {selectedCurrency})
+                            </td>
+                            <td style={{ padding: '10px' }}>
+                              <button 
+                                onClick={() => handleMarkReturned(worker.id)}
+                                style={{ padding: '5px 10px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
+                              >
+                                Mark Returned
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Print Signature Footer */}
+            <div className="print-signature" style={{ display: 'none', marginTop: '50px', textAlign: 'right', paddingRight: '30px' }}>
+              <div style={{ borderTop: '1px solid #000', display: 'inline-block', minWidth: '200px', paddingTop: '5px', fontWeight: 'bold' }}>
+                Prepared by: M. Naveed
+              </div>
+            </div>
+
+            <style>{`
+              @media print {
+                .print-signature {
+                  display: block !important;
+                }
+              }
+            `}</style>
+          </div>
+        )}
 
             {/* Print Signature Footer */}
             <div className="print-signature" style={{ display: 'none', marginTop: '50px', textAlign: 'right', paddingRight: '30px' }}>
