@@ -148,6 +148,38 @@ export default function App() {
     const { data } = await supabase.from('attendance').select('*').order('date', { ascending: false });
     setAttendance(data || []);
   }
+  async function handleUpdateExtension(workerId, newExtensionDays) {
+    const { error } = await supabase
+      .from('workers')
+      .update({ extension_days: parseInt(newExtensionDays) || 0 })
+      .eq('id', workerId);
+    
+    if (error) {
+      alert('Error updating extension: ' + error.message);
+    } else {
+      fetchWorkers();
+    }
+  }
+
+  async function handleMarkReturned(workerId) {
+    const todayDate = new Date().toISOString().split('T')[0];
+    const { error } = await supabase
+      .from('workers')
+      .update({ 
+        on_leave: false, 
+        actual_return_date: todayDate,
+        extension_days: 0,
+        late_days: 0 
+      })
+      .eq('id', workerId);
+    
+    if (error) {
+      alert('Error updating return status: ' + error.message);
+    } else {
+      fetchWorkers();
+      alert('Worker marked as returned successfully!');
+    }
+  }
 
   async function handleDeleteUserPermission(emailToDelete) {
     if (!userRole.is_admin) return;
