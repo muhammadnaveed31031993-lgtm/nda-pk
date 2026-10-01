@@ -735,40 +735,7 @@ export default function App() {
        {/* TAB 1: DASHBOARD */}
         {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
           <div>
-            {/* Dashboard Admin Header - Topmost */}
-            <div style={{
-              background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
-              color: 'white',
-              padding: '20px 25px',
-              borderRadius: '12px',
-              marginBottom: '20px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              boxShadow: '0 4px 15px rgba(0,0,0,0.1)'
-            }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '24px', fontWeight: '700' }}>📊 Dashboard Overview</h2>
-                <p style={{ margin: '5px 0 0 0', opacity: 0.9, fontSize: '14px' }}>Welcome back to management portal</p>
-              </div>
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.15)',
-                padding: '10px 18px',
-                borderRadius: '30px',
-                backdropFilter: 'blur(5px)',
-                border: '1px solid rgba(255, 255, 255, 0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px'
-              }}>
-                <span style={{ fontSize: '18px' }}>👤</span>
-                <div>
-                  <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', opacity: 0.8 }}>Administrator</div>
-                  <div style={{ fontSize: '16px', fontWeight: 'bold' }}>Muhammad Naveed</div>
-                </div>
-              </div>
-            </div>
-
+           
             {/* Stats Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
               <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #2563eb' }}>
