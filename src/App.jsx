@@ -1068,7 +1068,7 @@ export default function App() {
                 </div>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Assigned Site</label>
-                  <select value={targetSite} onChange={e => targetSite !== e.target.value && setTargetSite(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                  <select value={targetSite} onChange={e => setTargetSite(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
                     <option value="All">All Sites</option>
                     {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
                   </select>
@@ -1181,3 +1181,8 @@ export default function App() {
             </div>
           </div>
         )}
+
+      </main>
+    </div>
+  );
+}
