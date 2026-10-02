@@ -284,6 +284,54 @@ export default function App() {
           response_format: { type: "json_object" }
         })
       });
+      // State for Annual Leave tracking
+  const [annualLeaveList, setAnnualLeaveList] = useState([]);
+  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
+  const [leaveWorkerId, setLeaveWorkerId] = useState('');
+  const [leaveStartDate, setLeaveStartDate] = useState('');
+  const [leaveExpectedReturnDate, setLeaveExpectedReturnDate] = useState('');
+  const [leaveActualReturnDate, setLeaveActualReturnDate] = useState('');
+  const [penaltyPerMonthDays, setPenaltyPerMonthDays] = useState(5); // Default 5 days deduction per month extra
+
+  // UAE Labor Law & Penalty Logic for Annual Leave
+  async function handleSaveAnnualLeave(e) {
+    e.preventDefault();
+    if (!leaveWorkerId || !leaveStartDate || !leaveExpectedReturnDate) {
+      return alert('Mukammal details enter karein!');
+    }
+
+    // Calculate overstay/penalty if actual return date is provided and is after expected date
+    let deductedDays = 0;
+    if (leaveActualReturnDate) {
+      const expected = new Date(leaveExpectedReturnDate);
+      const actual = new Date(leaveActualReturnDate);
+      const diffTime = actual - expected;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays > 0) {
+        deductedDays = diffDays * (penaltyPerMonthDays / 30); 
+        alert(`Worker late aya hai! ${diffDays} din overstay par UAE law / penalty ke mutabiq ${deductedDays.toFixed(1)} din ki salary deduction hogi.`);
+      }
+    }
+
+    const newLeaveRecord = {
+      worker_id: leaveWorkerId,
+      start_date: leaveStartDate,
+      expected_return: leaveExpectedReturnDate,
+      actual_return: leaveActualReturnDate || 'On Leave',
+      deduction_days: deductedDays.toFixed(1),
+      status: leaveActualReturnDate ? 'Returned' : 'On Leave'
+    };
+
+    setAnnualLeaveList([...annualLeaveList, newLeaveRecord]);
+    alert('Annual leave record successfully save ho gaya!');
+    
+    setLeaveWorkerId('');
+    setLeaveStartDate('');
+    setLeaveExpectedReturnDate('');
+    setLeaveActualReturnDate('');
+    setLeaveModalOpen(false);
+  }
 
       const data = await response.json();
       if (data.error) throw new Error(data.error.message);
