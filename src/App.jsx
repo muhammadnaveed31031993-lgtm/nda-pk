@@ -6,6 +6,14 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  // Annual Leave Tracking & Penalty States
+  const [annualLeaveList, setAnnualLeaveList] = useState([]);
+  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
+  const [leaveWorkerId, setLeaveWorkerId] = useState('');
+  const [leaveStartDate, setLeaveStartDate] = useState('');
+  const [leaveExpectedReturnDate, setLeaveExpectedReturnDate] = useState('');
+  const [leaveActualReturnDate, setLeaveActualReturnDate] = useState('');
+  const [penaltyPerMonthDays, setPenaltyPerMonthDays] = useState(5);
   
   // Password Change States
   const [currentPassInput, setCurrentPassInput] = useState('');
