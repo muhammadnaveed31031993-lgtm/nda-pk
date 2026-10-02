@@ -135,6 +135,53 @@ export default function App() {
     }
   }, [session]);
 
+  async function fetchAnnualLeaves() {
+    const { data, error } = await supabase.from('annual_leaves').select('*');
+    if (!error) setAnnualLeaveList(data || []);
+  }
+
+  async function handleSaveAnnualLeave(e) {
+    e.preventDefault();
+    if (!leaveWorkerId || !leaveStartDate || !leaveExpectedReturnDate) {
+      return alert('Mukammal details enter karein!');
+    }
+
+    let deductedDays = 0;
+    if (leaveActualReturnDate) {
+      const expected = new Date(leaveExpectedReturnDate);
+      const actual = new Date(leaveActualReturnDate);
+      const diffTime = actual - expected;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays > 0) {
+        deductedDays = diffDays * (penaltyPerMonthDays / 30); 
+        alert(`Worker late aya hai! ${diffDays} din overstay par UAE law ke mutabiq ${deductedDays.toFixed(1)} din ki salary deduction hogi.`);
+      }
+    }
+
+    const newLeaveRecord = {
+      worker_id: leaveWorkerId,
+      start_date: leaveStartDate,
+      expected_return: leaveExpectedReturnDate,
+      actual_return: leaveActualReturnDate || 'On Leave',
+      deduction_days: deductedDays.toFixed(1),
+      status: leaveActualReturnDate ? 'Returned' : 'On Leave'
+    };
+
+    const { error } = await supabase.from('annual_leaves').insert([newLeaveRecord]);
+    if (error) {
+      alert('Error saving leave record: ' + error.message);
+    } else {
+      setAnnualLeaveList([...annualLeaveList, newLeaveRecord]);
+      alert('Annual leave record successfully save ho gaya!');
+      setLeaveWorkerId('');
+      setLeaveStartDate('');
+      setLeaveExpectedReturnDate('');
+      setLeaveActualReturnDate('');
+      setLeaveModalOpen(false);
+      fetchAnnualLeaves();
+    }
+  }
   async function fetchPersonalDocs() {
     const { data } = await supabase.from('personal_docs').select('*').order('id', { ascending: false });
     setPersonalDocs(data || []);
