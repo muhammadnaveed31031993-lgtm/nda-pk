@@ -925,6 +925,7 @@ export default function App() {
             </div>
           </div>
         )}
+        
         // State for Annual Leave tracking
   const [annualLeaveList, setAnnualLeaveList] = useState([]);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
