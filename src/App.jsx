@@ -314,7 +314,6 @@ export default function App() {
       return alert('Mukammal details enter karein!');
     }
 
-    // Calculate overstay/penalty if actual return date is provided and is after expected date
     let deductedDays = 0;
     if (leaveActualReturnDate) {
       const expected = new Date(leaveExpectedReturnDate);
@@ -324,29 +323,33 @@ export default function App() {
 
       if (diffDays > 0) {
         deductedDays = diffDays * (penaltyPerMonthDays / 30); 
-        alert(`Worker late aya hai! ${diffDays} din overstay par UAE law / penalty ke mutabiq ${deductedDays.toFixed(1)} din ki salary deduction hogi.`);
+        alert(`Worker late aya hai! ${diffDays} din overstay par penalty ke mutabiq ${deductedDays.toFixed(1)} din ki salary deduction hogi.`);
       }
     }
 
     const newLeaveRecord = {
-      worker_id: leaveWorkerId,
+      worker_id: String(leaveWorkerId),
       start_date: leaveStartDate,
       expected_return: leaveExpectedReturnDate,
       actual_return: leaveActualReturnDate || 'On Leave',
-      deduction_days: deductedDays.toFixed(1),
+      deduction_days: Number(deductedDays.toFixed(1)),
       status: leaveActualReturnDate ? 'Returned' : 'On Leave'
     };
 
-    setAnnualLeaveList([...annualLeaveList, newLeaveRecord]);
-    alert('Annual leave record successfully save ho gaya!');
-    
-    setLeaveWorkerId('');
-    setLeaveStartDate('');
-    setLeaveExpectedReturnDate('');
-    setLeaveActualReturnDate('');
-    setLeaveModalOpen(false);
-  }
+    const { error } = await supabase.from('annual_leaves').insert([newLeaveRecord]);
 
+    if (error) {
+      alert('Error saving leave: ' + error.message);
+    } else {
+      alert('Annual leave record successfully database mein save ho gaya!');
+      setLeaveWorkerId('');
+      setLeaveStartDate('');
+      setLeaveExpectedReturnDate('');
+      setLeaveActualReturnDate('');
+      setLeaveModalOpen(false);
+      fetchAnnualLeaves(); // Refresh list
+    }
+  }
       const data = await response.json();
       if (data.error) throw new Error(data.error.message);
 
