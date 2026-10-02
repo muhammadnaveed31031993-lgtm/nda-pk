@@ -100,6 +100,15 @@ export default function App() {
   const [overtimeInputs, setOvertimeInputs] = useState({});
   const [timesheetSiteInputs, setTimesheetSiteInputs] = useState({});
 
+  // Annual Leave Tracking & Penalty States
+  const [annualLeaveList, setAnnualLeaveList] = useState([]);
+  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
+  const [leaveWorkerId, setLeaveWorkerId] = useState('');
+  const [leaveStartDate, setLeaveStartDate] = useState('');
+  const [leaveExpectedReturnDate, setLeaveExpectedReturnDate] = useState('');
+  const [leaveActualReturnDate, setLeaveActualReturnDate] = useState('');
+  const [penaltyPerMonthDays, setPenaltyPerMonthDays] = useState(5); // Default 5 days deduction per month extra
+
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth();
@@ -124,6 +133,7 @@ export default function App() {
       fetchAttendance();
       fetchPermissionsList();
       fetchPersonalDocs();
+      fetchAnnualLeaves();
     }
   }, [session]);
 
@@ -148,6 +158,16 @@ export default function App() {
     const { data } = await supabase.from('attendance').select('*').order('date', { ascending: false });
     setAttendance(data || []);
   }
+
+  async function fetchAnnualLeaves() {
+    const { data, error } = await supabase.from('annual_leaves').select('*');
+    if (error) {
+      console.error('Error fetching annual leaves:', error.message);
+    } else {
+      setAnnualLeaveList(data || []);
+    }
+  }
+
   async function handleUpdateExtension(workerId, newExtensionDays) {
     const { error } = await supabase
       .from('workers')
@@ -236,6 +256,49 @@ export default function App() {
     }
   }
 
+  async function handleSaveAnnualLeave(e) {
+    e.preventDefault();
+    if (!leaveWorkerId || !leaveStartDate || !leaveExpectedReturnDate) {
+      return alert('Mukammal details enter karein!');
+    }
+
+    let deductedDays = 0;
+    if (leaveActualReturnDate) {
+      const expected = new Date(leaveExpectedReturnDate);
+      const actual = new Date(leaveActualReturnDate);
+      const diffTime = actual - expected;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays > 0) {
+        deductedDays = diffDays * (penaltyPerMonthDays / 30); 
+        alert(`Worker late aya hai! ${diffDays} din overstay par UAE law / penalty ke mutabiq ${deductedDays.toFixed(1)} din ki salary deduction hogi.`);
+      }
+    }
+
+    const newLeaveRecord = {
+      worker_id: leaveWorkerId,
+      start_date: leaveStartDate,
+      expected_return: leaveExpectedReturnDate,
+      actual_return: leaveActualReturnDate || 'On Leave',
+      deduction_days: deductedDays.toFixed(1),
+      status: leaveActualReturnDate ? 'Returned' : 'On Leave'
+    };
+
+    const { error } = await supabase.from('annual_leaves').insert([newLeaveRecord]);
+    if (error) {
+      alert('Error saving leave record: ' + error.message);
+    } else {
+      setAnnualLeaveList([...annualLeaveList, newLeaveRecord]);
+      alert('Annual leave record successfully save ho gaya!');
+      setLeaveWorkerId('');
+      setLeaveStartDate('');
+      setLeaveExpectedReturnDate('');
+      setLeaveActualReturnDate('');
+      setLeaveModalOpen(false);
+      fetchAnnualLeaves();
+    }
+  }
+
   async function handleScanPaperSheet(event) {
     if (!userRole.is_admin && !userRole.can_edit_timesheet) {
       return alert('Aapko timesheet scan ki permission nahi hai!');
@@ -284,68 +347,6 @@ export default function App() {
           response_format: { type: "json_object" }
         })
       });
-      // State for Annual Leave tracking
-  const [annualLeaveList, setAnnualLeaveList] = useState([]);
-  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
-  const [leaveWorkerId, setLeaveWorkerId] = useState('');
-  const [leaveStartDate, setLeaveStartDate] = useState('');
-  const [leaveExpectedReturnDate, setLeaveExpectedReturnDate] = useState('');
-  const [leaveActualReturnDate, setLeaveActualReturnDate] = useState('');
-  const [penaltyPerMonthDays, setPenaltyPerMonthDays] = useState(5); // Default 5 days deduction per month extra
-
-  // Fetch Annual Leaves from Supabase on load
-  async function fetchAnnualLeaves() {
-    const { data, error } = await supabase.from('annual_leaves').select('*');
-    if (error) {
-      console.error('Error fetching annual leaves:', error.message);
-    } else {
-      setAnnualLeaveList(data || []);
-    }
-  }
-
-  // Component load hone par data fetch karne ke liye (Aap isay apne existing useEffect mein bhi call kar sakte hain)
-  useEffect(() => {
-    fetchAnnualLeaves();
-  }, []);
-  // UAE Labor Law & Penalty Logic for Annual Leave
-  async function handleSaveAnnualLeave(e) {
-    e.preventDefault();
-    if (!leaveWorkerId || !leaveStartDate || !leaveExpectedReturnDate) {
-      return alert('Mukammal details enter karein!');
-    }
-
-    // Calculate overstay/penalty if actual return date is provided and is after expected date
-    let deductedDays = 0;
-    if (leaveActualReturnDate) {
-      const expected = new Date(leaveExpectedReturnDate);
-      const actual = new Date(leaveActualReturnDate);
-      const diffTime = actual - expected;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      if (diffDays > 0) {
-        deductedDays = diffDays * (penaltyPerMonthDays / 30); 
-        alert(`Worker late aya hai! ${diffDays} din overstay par UAE law / penalty ke mutabiq ${deductedDays.toFixed(1)} din ki salary deduction hogi.`);
-      }
-    }
-
-    const newLeaveRecord = {
-      worker_id: leaveWorkerId,
-      start_date: leaveStartDate,
-      expected_return: leaveExpectedReturnDate,
-      actual_return: leaveActualReturnDate || 'On Leave',
-      deduction_days: deductedDays.toFixed(1),
-      status: leaveActualReturnDate ? 'Returned' : 'On Leave'
-    };
-
-    setAnnualLeaveList([...annualLeaveList, newLeaveRecord]);
-    alert('Annual leave record successfully save ho gaya!');
-    
-    setLeaveWorkerId('');
-    setLeaveStartDate('');
-    setLeaveExpectedReturnDate('');
-    setLeaveActualReturnDate('');
-    setLeaveModalOpen(false);
-  }
 
       const data = await response.json();
       if (data.error) throw new Error(data.error.message);
@@ -750,7 +751,6 @@ export default function App() {
           <span style={{ fontSize: '12px', color: '#94a3b8' }}>User: {session.user.email} {userRole.staff_id ? `(ID: ${userRole.staff_id})` : ''} | Days: <strong style={{color: '#38bdf8'}}>{totalDaysInCurrentMonth}</strong></span>
         </div>
 
-        {/* Admin Name - Merged in Top Row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(56, 189, 248, 0.1)', padding: '6px 16px', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
           <span style={{ fontSize: '16px' }}>👤</span>
           <div>
@@ -774,539 +774,218 @@ export default function App() {
           <button onClick={() => setActiveTab('workers')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'workers' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>👷 Workers Directory</button>
         )}
         {(userRole.is_admin || userRole.can_view_timesheet) && (
-          <button onClick={() => setActiveTab('attendance')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'attendance' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📅 Timesheet Entry</button>
+          <button onClick={() => setActiveTab('attendance')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'attendance' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📅 Timesheet</button>
         )}
         {(userRole.is_admin || userRole.can_view_payroll) && (
-          <button onClick={() => setActiveTab('payroll')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'payroll' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>💵 Payroll</button>
+          <button onClick={() => setActiveTab('payroll')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'payroll' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>💰 Payroll</button>
         )}
-        <button onClick={() => setActiveTab('changepass')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'changepass' ? '#0284c7' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🔑 Change Password</button>
+        <button onClick={() => setActiveTab('leaves')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'leaves' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🌴 Annual Leaves & Penalties</button>
         {userRole.is_admin && (
-          <button onClick={() => setActiveTab('sites')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'sites' ? '#059669' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🏗️ Working Sites</button>
-        )}
-        {userRole.is_admin && (
-          <button onClick={() => setActiveTab('departments')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'departments' ? '#7c3aed' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🏢 Departments</button>
-        )}
-        {userRole.is_admin && (
-          <button onClick={() => setActiveTab('permissions')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'permissions' ? '#d97706' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🔐 Permissions</button>
-        )}
-        {userRole.is_admin && (
-          <button onClick={() => setActiveTab('annualLeave')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'annualLeave' ? '#059669' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🌴 Annual Leave</button>
+          <button onClick={() => setActiveTab('settings')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'settings' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>⚙️ Admin & Sites</button>
         )}
       </div>
 
-      <main style={{ flex: 1, padding: '20px' }}>
+      {/* Main Container Content */}
+      <div style={{ padding: '20px', flex: 1, maxWidth: '1400px', width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
         
-        {/* Filters Bar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#fff', padding: '12px 18px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', flexWrap: 'wrap', gap: '10px' }}>
-          {userRole.is_admin ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#2563eb', marginRight: '5px' }}>Dept:</label>
-                <select value={selectedDeptFilter} onChange={e => setSelectedDeptFilter(e.target.value)} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #2563eb' }}>
-                  <option value="All">All Depts</option>
-                  {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#059669', marginRight: '5px' }}>Site:</label>
-                <select value={selectedSiteFilter} onChange={e => setSelectedSiteFilter(e.target.value)} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #059669' }}>
-                  <option value="All">All Sites</option>
-                  {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
-                </select>
-              </div>
-            </div>
-          ) : (
-            <span style={{ fontWeight: 'bold', color: '#0369a1' }}>Site: {userRole.assigned_site} | Dept: {userRole.assigned_department}</span>
-          )}
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <select value={selectedCurrency} onChange={e => setSelectedCurrency(e.target.value)} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-              <option value="AED">AED</option>
-              <option value="PKR">PKR</option>
-              <option value="USD">USD</option>
-            </select>
-            <button onClick={() => window.print()} style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>Print Page</button>
-          </div>
-        </div>
-
-       {/* TAB 1: DASHBOARD */}
-        {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
+        {/* DASHBOARD TAB */}
+        {activeTab === 'dashboard' && (
           <div>
-           
-            {/* Stats Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
-              <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #2563eb' }}>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>Filtered Workers</span>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{filteredWorkers.length}</div>
+            <h2 style={{ color: '#1e293b', marginBottom: '20px' }}>Dashboard Overview</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', marginBottom: '25px' }}>
+              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                <div style={{ color: '#64748b', fontSize: '13px' }}>Total Workers</div>
+                <div style={{ fontSize: '26px', fontWeight: 'bold', color: '#0f172a', marginTop: '5px' }}>{filteredWorkers.length}</div>
               </div>
-              <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #16a34a' }}>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>Present on {selectedTimesheetDate}</span>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#16a34a', marginTop: '4px' }}>{presentCountForDate}</div>
+              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                <div style={{ color: '#64748b', fontSize: '13px' }}>Present Today ({selectedTimesheetDate})</div>
+                <div style={{ fontSize: '26px', fontWeight: 'bold', color: '#16a34a', marginTop: '5px' }}>{presentCountForDate}</div>
               </div>
-              {(userRole.is_admin || userRole.can_view_payroll) && (
-                <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #0891b2' }}>
-                  <span style={{ color: '#64748b', fontSize: '13px' }}>Total Payroll</span>
-                  <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{Math.round(grandTotalPayroll).toLocaleString()} {selectedCurrency}</div>
-                </div>
-              )}
-            </div>
-           
-            {/* Print Signature Footer */}
-            <div className="print-signature" style={{ display: 'none', marginTop: '50px', textAlign: 'right', paddingRight: '30px' }}>
-              <div style={{ borderTop: '1px solid #000', display: 'inline-block', minWidth: '200px', paddingTop: '5px', fontWeight: 'bold' }}>
-                Prepared by: M. Naveed
+              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                <div style={{ color: '#64748b', fontSize: '13px' }}>Est. Monthly Payroll</div>
+                <div style={{ fontSize: '26px', fontWeight: 'bold', color: '#2563eb', marginTop: '5px' }}>{grandTotalPayroll.toFixed(2)} {selectedCurrency}</div>
               </div>
-            </div>
-
-            <style>{`
-              @media print {
-                .print-signature {
-                  display: block !important;
-                }
-              }
-            `}</style>
-          </div>
-        )}
-
-        {/* TAB 2: BULK & OCR */}
-        {activeTab === 'bulk' && (userRole.is_admin || userRole.can_use_bulk) && (
-          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ margin: '0 0 10px 0' }}>⚡ Bulk Attendance, Designation OT & Date Selection</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Select Date</label>
-                <input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Department</label>
-                <select value={bulkDepartment} onChange={e => setBulkDepartment(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                  {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Designation (Steel, Carpenter etc)</label>
-                <select value={bulkDesignation} onChange={e => setBulkDesignation(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                  <option value="All">All Designations</option>
-                  <option value="Steel Fixer">Steel Fixer</option>
-                  <option value="Carpenter">Carpenter</option>
-                  <option value="Plumber">Plumber</option>
-                  <option value="Electrician">Electrician</option>
-                  <option value="Worker">Worker</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Working Site</label>
-                <select value={bulkSite} onChange={e => setBulkSite(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                  {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Status</label>
-                <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                  <option value="Present">Present</option>
-                  <option value="Absent">Absent</option>
-                  <option value="Leave">Leave</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Overtime Hours</label>
-                <input type="number" value={bulkOT} onChange={e => setBulkOT(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                <button onClick={handleBulkAttendance} style={{ width: '100%', padding: '9px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Apply Bulk & Update</button>
-              </div>
-            </div>
-
-            <div style={{ marginTop: '25px', padding: '15px', backgroundColor: '#f1f5f9', borderRadius: '8px', border: '1px dashed #94a3b8' }}>
-              <h4 style={{ margin: '0 0 8px 0' }}>📸 OCR Scanner (For Date: {selectedTimesheetDate})</h4>
-              <input type="file" accept="image/*" onChange={handleScanPaperSheet} disabled={scanning} />
-              {scanning && <p style={{ color: '#2563eb', fontWeight: 'bold' }}>{scanStatus}</p>}
-              {!scanning && scanStatus && <p style={{ color: '#16a34a', fontWeight: 'bold' }}>{scanStatus}</p>}
             </div>
           </div>
         )}
 
-        {/* TAB 3: WORKERS DIRECTORY */}
-        {activeTab === 'workers' && (userRole.is_admin || userRole.can_view_workers) && (
+        {/* ANNUAL LEAVES TAB */}
+        {activeTab === 'leaves' && (
           <div>
-            {(userRole.is_admin || userRole.can_add_workers || userRole.can_edit_workers) && (
-              <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '25px' }}>
-                <h3 style={{ margin: '0 0 15px 0' }}>{editingWorkerId ? `✏️ Edit Worker #${editingWorkerId}` : '➕ Add New Worker'}</h3>
-                <form onSubmit={handleSaveWorker}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ color: '#1e293b', margin: 0 }}>UAE Labor Law: Annual Leave & Overstay Penalties</h2>
+              <button onClick={() => setLeaveModalOpen(true)} style={{ padding: '10px 18px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>+ Record Annual Leave</button>
+            </div>
+
+            {leaveModalOpen && (
+              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '20px' }}>
+                <h3 style={{ marginTop: 0, color: '#1e293b' }}>Add Worker Leave Record</h3>
+                <form onSubmit={handleSaveAnnualLeave}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '15px' }}>
                     <div>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Worker ID</label>
-                      <input type="number" value={workerIdInput} onChange={e => setWorkerIdInput(e.target.value)} placeholder="e.g. 101" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Full Name *</label>
-                      <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Worker Name" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Department</label>
-                      <select value={department} onChange={e => setDepartment(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                        {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
+                      <label style={{ fontSize: '12px', display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Select Worker</label>
+                      <select value={leaveWorkerId} onChange={e => setLeaveWorkerId(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required>
+                        <option value="">Choose Worker...</option>
+                        {workers.map(w => (
+                          <option key={w.id} value={w.id}>#{w.id} - {w.name} ({w.department})</option>
+                        ))}
                       </select>
                     </div>
                     <div>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Designation (Steel Fixer, Carpenter etc)</label>
-                      <input type="text" value={designation} onChange={e => setDesignation(e.target.value)} placeholder="e.g. Steel Fixer" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                      <label style={{ fontSize: '12px', display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Leave Start Date</label>
+                      <input type="date" value={leaveStartDate} onChange={e => setLeaveStartDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} required />
                     </div>
                     <div>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Working Site</label>
-                      <select value={workSite} onChange={e => setWorkSite(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                        {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
-                      </select>
+                      <label style={{ fontSize: '12px', display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Expected Return Date</label>
+                      <input type="date" value={leaveExpectedReturnDate} onChange={e => setLeaveExpectedReturnDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} required />
                     </div>
                     <div>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Monthly Salary ({selectedCurrency}) *</label>
-                      <input type="number" value={monthlySalary} onChange={e => setMonthlySalary(e.target.value)} placeholder="3000" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
+                      <label style={{ fontSize: '12px', display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Actual Return Date (Optional if returned)</label>
+                      <input type="date" value={leaveActualReturnDate} onChange={e => setLeaveActualReturnDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
                     </div>
                   </div>
-                  <button type="submit" style={{ marginTop: '20px', padding: '10px 20px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    {editingWorkerId ? 'Update Worker' : 'Save Worker'}
-                  </button>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button type="submit" style={{ padding: '8px 16px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Save Leave Record</button>
+                    <button type="button" onClick={() => setLeaveModalOpen(false)} style={{ padding: '8px 16px', backgroundColor: '#64748b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
+                  </div>
                 </form>
               </div>
             )}
 
-            <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
-              <h3 style={{ margin: '0 0 15px 0' }}>👷 Workers Directory</h3>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+            <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #cbd5e1', overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
-                  <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
-                    <th style={{ padding: '10px' }}>ID & Name</th>
-                    <th style={{ padding: '10px' }}>Dept / Designation</th>
-                    <th style={{ padding: '10px' }}>Working Site</th>
-                    <th style={{ padding: '10px' }}>Salary</th>
-                    <th style={{ padding: '10px' }}>Monthly OT Report & Actions</th>
+                  <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1' }}>
+                    <th style={{ padding: '12px' }}>Worker ID</th>
+                    <th style={{ padding: '12px' }}>Start Date</th>
+                    <th style={{ padding: '12px' }}>Expected Return</th>
+                    <th style={{ padding: '12px' }}>Actual Return</th>
+                    <th style={{ padding: '12px' }}>Penalty Deduction (Days)</th>
+                    <th style={{ padding: '12px' }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredWorkers.map(w => (
-                    <tr key={w.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                      <td style={{ padding: '10px', fontWeight: 'bold' }}>#{w.id} - {w.name}</td>
-                      <td style={{ padding: '10px' }}>{w.department} <br/><span style={{fontSize: '11px', color: '#64748b'}}>{w.designation || 'Worker'}</span></td>
-                      <td style={{ padding: '10px' }}><span style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '4px', fontWeight: 'bold' }}>{w.work_site || sitesList[0]}</span></td>
-                      <td style={{ padding: '10px' }}>{w.monthly_salary} {w.currency || selectedCurrency}</td>
-                      <td style={{ padding: '10px' }}>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          <button onClick={() => handlePrintWorkerMonthlyReport(w)} style={{ padding: '5px 10px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>📄 Monthly OT PDF / Print</button>
-                          {(userRole.is_admin || userRole.can_edit_workers) && (
-                            <button onClick={() => handleStartEditWorker(w)} style={{ padding: '5px 10px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Edit</button>
-                          )}
-                          {(userRole.is_admin || userRole.can_delete_workers) && (
-                            <button onClick={() => handleDeleteWorker(w.id)} style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Del</button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 4: TIMESHEET */}
-        {activeTab === 'attendance' && (userRole.is_admin || userRole.can_view_timesheet) && (
-          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
-              <h3 style={{ margin: 0 }}>📅 Daily Timesheet & Past Date Correction</h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#2563eb' }}>Select Attendance Date:</label>
-                <input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #2563eb', fontWeight: 'bold' }} />
-              </div>
-            </div>
-            <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '15px' }}>Aap yahan se koi bhi pichli date select kar ke kisi bhi worker ka attendance ya overtime manually change ya update kar sakte hain. Purana record automatically update ho jayega.</p>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
-                    <th style={{ padding: '10px' }}>Worker & Designation</th>
-                    <th style={{ padding: '10px' }}>Working Site for {selectedTimesheetDate}</th>
-                    <th style={{ padding: '10px' }}>Overtime (Hrs)</th>
-                    <th style={{ padding: '10px' }}>Attendance Status ({selectedTimesheetDate})</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredWorkers.map(worker => (
-                    <tr key={worker.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                      <td style={{ padding: '10px', fontWeight: 'bold' }}>
-                        #{worker.id} - {worker.name} <br/>
-                        <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'normal' }}>{worker.designation || 'Worker'} ({worker.department})</span>
-                      </td>
-                      <td style={{ padding: '10px' }}>
-                        <select 
-                          value={timesheetSiteInputs[worker.id] || worker.work_site || sitesList[0]} 
-                          onChange={e => setTimesheetSiteInputs({...timesheetSiteInputs, [worker.id]: e.target.value})}
-                          style={{ padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 'bold', color: '#0369a1' }}
-                        >
-                          {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
-                        </select>
-                      </td>
-                      <td style={{ padding: '10px' }}>
-                        <input type="number" placeholder="OT Hrs" value={overtimeInputs[worker.id] || ''} onChange={e => setOvertimeInputs({...overtimeInputs, [worker.id]: e.target.value})} style={{ width: '70px', padding: '5px' }} />
-                      </td>
-                      <td style={{ padding: '10px' }}>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <button onClick={() => handleMarkAttendance(worker.id, 'Present')} style={{ padding: '5px 10px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Present</button>
-                          <button onClick={() => handleMarkAttendance(worker.id, 'Absent')} style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Absent</button>
-                          <button onClick={() => handleMarkAttendance(worker.id, 'Leave')} style={{ padding: '5px 10px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Leave</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 5: PAYROLL */}
-        {activeTab === 'payroll' && (userRole.is_admin || userRole.can_view_payroll) && (
-          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-              <h3 style={{ margin: 0 }}>💵 Monthly Payroll</h3>
-              <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#2563eb' }}>Grand Total: {Math.round(grandTotalPayroll).toLocaleString()} {selectedCurrency}</div>
-            </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
-                  <th style={{ padding: '10px' }}>Worker</th>
-                  <th style={{ padding: '10px' }}>Site</th>
-                  <th style={{ padding: '10px' }}>Present Days</th>
-                  <th style={{ padding: '10px' }}>Total OT</th>
-                  <th style={{ padding: '10px' }}>Payable</th>
-                </tr>
-              </thead>
-              <tbody>
-                {salaryData.map(s => (
-                  <tr key={s.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ padding: '10px', fontWeight: 'bold' }}>#{s.id} - {s.name} <br/><span style={{fontSize: '11px', color: '#64748b'}}>{s.designation}</span></td>
-                    <td style={{ padding: '10px' }}>{s.work_site || sitesList[0]}</td>
-                    <td style={{ padding: '10px' }}>{s.presentDays}</td>
-                    <td style={{ padding: '10px' }}>{s.totalOT} hrs</td>
-                    <td style={{ padding: '10px', fontWeight: 'bold', color: '#16a34a' }}>{Math.round(s.totalPayable).toLocaleString()} {selectedCurrency}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* TAB 6: CHANGE PASSWORD */}
-        {activeTab === 'changepass' && (
-          <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', maxWidth: '450px', margin: '0 auto' }}>
-            <h3 style={{ margin: '0 0 15px 0', color: '#0f172a' }}>🔑 Change Password</h3>
-            <form onSubmit={handleChangePasswordSubmit}>
-              <div style={{ marginBottom: '15px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>New Password</label>
-                <input type="password" value={newPassInput} onChange={e => setNewPassInput(e.target.value)} placeholder="Enter new password" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} required />
-              </div>
-              <button type="submit" style={{ width: '100%', padding: '12px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Update Password</button>
-            </form>
-          </div>
-        )}
-
-        {/* TAB 7: WORKING SITES MANAGEMENT */}
-        {activeTab === 'sites' && userRole.is_admin && (
-          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', maxWidth: '500px' }}>
-            <h3 style={{ margin: '0 0 15px 0' }}>🏗️ Manage Working Sites</h3>
-            <form onSubmit={handleAddNewSite} style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-              <input type="text" value={newSiteInput} onChange={e => setNewSiteInput(e.target.value)} placeholder="e.g. Dubai Marina Site" style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
-              <button type="submit" style={{ padding: '8px 15px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Add Site</button>
-            </form>
-            <h4>Current Active Sites:</h4>
-            <ul>
-              {sitesList.map((site, index) => (
-                <li key={index} style={{ padding: '5px 0', fontWeight: '600', color: '#334155' }}>{site}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* TAB 8: DEPARTMENTS MANAGEMENT */}
-        {activeTab === 'departments' && userRole.is_admin && (
-          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', maxWidth: '500px' }}>
-            <h3 style={{ margin: '0 0 15px 0' }}>🏢 Manage Departments</h3>
-            <form onSubmit={handleAddNewDepartment} style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-              <input type="text" value={newDeptInput} onChange={e => setNewDeptInput(e.target.value)} placeholder="e.g. Mustafa / Carpentry" style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
-              <button type="submit" style={{ padding: '8px 15px', backgroundColor: '#7c3aed', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Add Dept</button>
-            </form>
-            <h4>Current Departments:</h4>
-            <ul>
-              {departmentsList.map((dept, index) => (
-                <li key={index} style={{ padding: '5px 0', fontWeight: '600', color: '#334155' }}>{dept}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* TAB 9: PERMISSIONS PANEL */}
-        {activeTab === 'permissions' && userRole.is_admin && (
-          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ margin: '0 0 15px 0' }}>🔐 Granular Staff Permissions & Staff ID Allocation</h3>
-            <form onSubmit={handleSavePermission} style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '8px', marginBottom: '25px', border: '1px solid #cbd5e1' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                <h4 style={{ margin: 0, color: '#1e293b' }}>{targetEmail ? `✏️ Edit Access for: ${targetEmail}` : '➕ Add New Staff Access'}</h4>
-                {targetEmail && (
-                  <button type="button" onClick={() => {
-                    setTargetStaffId('');
-                    setTargetEmail('');
-                    setTargetPassword('');
-                    setTargetDept('All');
-                    setTargetSite('All');
-                    setPermDashboard(true);
-                    setPermBulk(false);
-                    setPermViewWorkers(true);
-                    setPermAddWorkers(false);
-                    setPermEditWorkers(false);
-                    setPermDeleteWorkers(false);
-                    setPermTimesheetView(true);
-                    setPermTimesheetEdit(true);
-                    setPermPayroll(false);
-                  }} style={{ padding: '4px 10px', backgroundColor: '#64748b', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Cancel Edit</button>
-                )}
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '20px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Staff ID</label>
-                  <input type="text" value={targetStaffId} onChange={e => setTargetStaffId(e.target.value)} placeholder="e.g. STF-01" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Staff Email *</label>
-                  <input type="email" value={targetEmail} onChange={e => setTargetEmail(e.target.value)} placeholder="staff@nda.pk" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Password *</label>
-                  <input type="text" value={targetPassword} onChange={e => setTargetPassword(e.target.value)} placeholder="Password" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Assigned Dept</label>
-                  <select value={targetDept} onChange={e => setTargetDept(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                    <option value="All">All Depts</option>
-                    {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Assigned Site</label>
-                  <select value={targetSite} onChange={e => setTargetSite(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                    <option value="All">All Sites</option>
-                    {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              {/* Checkboxes Permissions */}
-              <h4 style={{ margin: '15px 0 10px 0', fontSize: '14px', color: '#334155' }}>Select Permissions:</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '20px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={permDashboard} onChange={e => setPermDashboard(e.target.checked)} /> Can View Dashboard
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={permBulk} onChange={e => setPermBulk(e.target.checked)} /> Can Use Bulk & OCR
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={permViewWorkers} onChange={e => setPermViewWorkers(e.target.checked)} /> Can View Workers
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={permAddWorkers} onChange={e => setPermAddWorkers(e.target.checked)} /> Can Add Workers
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={permEditWorkers} onChange={e => setPermEditWorkers(e.target.checked)} /> Can Edit Workers
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={permDeleteWorkers} onChange={e => setPermDeleteWorkers(e.target.checked)} /> Can Delete Workers
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={permTimesheetView} onChange={e => setPermTimesheetView(e.target.checked)} /> Can View Timesheet
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={permTimesheetEdit} onChange={e => setPermTimesheetEdit(e.target.checked)} /> Can Edit Timesheet
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={permPayroll} onChange={e => setPermPayroll(e.target.checked)} /> Can View Payroll
-                </label>
-              </div>
-
-              <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Save / Update Staff Access</button>
-            </form>
-
-            <h4 style={{ margin: '20px 0 10px 0' }}>Existing Staff Access List & Active Permissions</h4>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
-                    <th style={{ padding: '10px' }}>Staff ID & Email</th>
-                    <th style={{ padding: '10px' }}>Dept / Site Scope</th>
-                    <th style={{ padding: '10px' }}>Assigned Permissions Summary</th>
-                    <th style={{ padding: '10px' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {permissionsList.map((p, idx) => {
-                    const activePerms = [];
-                    if (p.can_view_dashboard) activePerms.push('Dashboard');
-                    if (p.can_use_bulk) activePerms.push('Bulk/OCR');
-                    if (p.can_view_workers) activePerms.push('View Workers');
-                    if (p.can_add_workers) activePerms.push('Add Worker');
-                    if (p.can_edit_workers) activePerms.push('Edit Worker');
-                    if (p.can_delete_workers) activePerms.push('Delete Worker');
-                    if (p.can_view_timesheet) activePerms.push('View Timesheet');
-                    if (p.can_edit_timesheet) activePerms.push('Edit Timesheet');
-                    if (p.can_view_payroll) activePerms.push('Payroll');
-
-                    return (
+                  {annualLeaveList.length === 0 ? (
+                    <tr><td colSpan="6" style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>No annual leave records found.</td></tr>
+                  ) : (
+                    annualLeaveList.map((leave, idx) => (
                       <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                        <td style={{ padding: '10px' }}>
-                          <strong>{p.staff_id || 'N/A'}</strong><br/>
-                          <span style={{ color: '#0284c7' }}>{p.user_email}</span>
+                        <td style={{ padding: '12px' }}>#{leave.worker_id}</td>
+                        <td style={{ padding: '12px' }}>{leave.start_date}</td>
+                        <td style={{ padding: '12px' }}>{leave.expected_return}</td>
+                        <td style={{ padding: '12px' }}>{leave.actual_return}</td>
+                        <td style={{ padding: '12px', color: Number(leave.deduction_days) > 0 ? '#dc2626' : 'inherit', fontWeight: Number(leave.deduction_days) > 0 ? 'bold' : 'normal' }}>
+                          {leave.deduction_days} Days
                         </td>
-                        <td style={{ padding: '10px' }}>
-                          Dept: <strong>{p.assigned_department}</strong><br/>
-                          Site: <strong>{p.assigned_site}</strong>
-                        </td>
-                        <td style={{ padding: '10px', maxWidth: '300px' }}>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                            {activePerms.map((ap, i) => (
-                              <span key={i} style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>{ap}</span>
-                            ))}
-                          </div>
-                        </td>
-                        <td style={{ padding: '10px' }}>
-                          <div style={{ display: 'flex', gap: '6px' }}>
-                            <button onClick={() => {
-                              setTargetStaffId(p.staff_id || '');
-                              setTargetEmail(p.user_email || '');
-                              setTargetPassword(p.user_password || '');
-                              setTargetDept(p.assigned_department || 'All');
-                              setTargetSite(p.assigned_site || 'All');
-                              setPermDashboard(p.can_view_dashboard ?? true);
-                              setPermBulk(p.can_use_bulk ?? false);
-                              setPermViewWorkers(p.can_view_workers ?? true);
-                              setPermAddWorkers(p.can_add_workers ?? false);
-                              setPermEditWorkers(p.can_edit_workers ?? false);
-                              setPermDeleteWorkers(p.can_delete_workers ?? false);
-                              setPermTimesheetView(p.can_view_timesheet ?? true);
-                              setPermTimesheetEdit(p.can_edit_timesheet ?? true);
-                              setPermPayroll(p.can_view_payroll ?? false);
-                              window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }} style={{ padding: '5px 10px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Edit</button>
-                            <button onClick={() => handleDeleteUserPermission(p.user_email)} style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Delete</button>
-                          </div>
+                        <td style={{ padding: '12px' }}>
+                          <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '11px', background: leave.status === 'Returned' ? '#dcfce7' : '#fef9c3', color: leave.status === 'Returned' ? '#166534' : '#854d0e' }}>
+                            {leave.status}
+                          </span>
                         </td>
                       </tr>
-                    );
-                  })}
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-      </main>
+        {/* WORKERS DIRECTORY TAB */}
+        {activeTab === 'workers' && (
+          <div>
+            <h2 style={{ color: '#1e293b', marginBottom: '20px' }}>Workers Directory</h2>
+            <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '20px' }}>
+              <p style={{ color: '#64748b', fontSize: '14px' }}>Manage worker profiles, documents, salaries, and assign departments or work sites.</p>
+              {/* Workers list table or cards component can go here */}
+              <div style={{ overflowX: 'auto', marginTop: '15px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1' }}>
+                      <th style={{ padding: '10px' }}>ID</th>
+                      <th style={{ padding: '10px' }}>Name</th>
+                      <th style={{ padding: '10px' }}>Department</th>
+                      <th style={{ padding: '10px' }}>Designation</th>
+                      <th style={{ padding: '10px' }}>Site</th>
+                      <th style={{ padding: '10px' }}>Salary ({selectedCurrency})</th>
+                      <th style={{ padding: '10px' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredWorkers.map(w => (
+                      <tr key={w.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                        <td style={{ padding: '10px' }}>#{w.id}</td>
+                        <td style={{ padding: '10px', fontWeight: 'bold' }}>{w.name}</td>
+                        <td style={{ padding: '10px' }}>{w.department}</td>
+                        <td style={{ padding: '10px' }}>{w.designation}</td>
+                        <td style={{ padding: '10px' }}>{w.work_site}</td>
+                        <td style={{ padding: '10px' }}>{w.monthly_salary}</td>
+                        <td style={{ padding: '10px', display: 'flex', gap: '8px' }}>
+                          <button onClick={() => handlePrintWorkerMonthlyReport(w)} style={{ padding: '4px 8px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Report</button>
+                          {(userRole.is_admin || userRole.can_delete_workers) && (
+                            <button onClick={() => handleDeleteWorker(w.id)} style={{ padding: '4px 8px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Delete</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* BULK & OCR SCANNER TAB */}
+        {activeTab === 'bulk' && (
+          <div>
+            <h2 style={{ color: '#1e293b', marginBottom: '20px' }}>Bulk Attendance & OCR Paper Sheet Scanner</h2>
+            <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '20px' }}>
+              <h3 style={{ marginTop: 0, color: '#1e293b' }}>Upload Attendance Paper Sheet (AI OCR)</h3>
+              <p style={{ color: '#64748b', fontSize: '13px' }}>Upload a photo or scanned copy of the daily attendance sheet. GPT-4o will automatically extract records.</p>
+              <input type="file" accept="image/*" onChange={handleScanPaperSheet} style={{ marginTop: '10px' }} />
+              {scanning && <p style={{ color: '#2563eb', fontWeight: 'bold', marginTop: '10px' }}>{scanStatus}</p>}
+              {!scanning && scanStatus && <p style={{ color: '#16a34a', fontWeight: 'bold', marginTop: '10px' }}>{scanStatus}</p>}
+            </div>
+          </div>
+        )}
+
+        {/* TIMESHEET TAB */}
+        {activeTab === 'attendance' && (
+          <div>
+            <h2 style={{ color: '#1e293b', marginBottom: '20px' }}>Daily Timesheet & Attendance</h2>
+            <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+              <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Select Timesheet Date</label>
+              <input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', marginBottom: '15px' }} />
+              <p style={{ color: '#64748b' }}>Showing attendance records for {selectedTimesheetDate}. Use the options above to mark present/absent and overtime hours.</p>
+            </div>
+          </div>
+        )}
+
+        {/* PAYROLL TAB */}
+        {activeTab === 'payroll' && (
+          <div>
+            <h2 style={{ color: '#1e293b', marginBottom: '20px' }}>Payroll & Salary Summary</h2>
+            <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+              <p style={{ fontSize: '16px', fontWeight: 'bold' }}>Grand Total Monthly Payroll: <span style={{ color: '#2563eb' }}>{grandTotalPayroll.toFixed(2)} {selectedCurrency}</span></p>
+            </div>
+          </div>
+        )}
+
+        {/* SETTINGS TAB */}
+        {activeTab === 'settings' && userRole.is_admin && (
+          <div>
+            <h2 style={{ color: '#1e293b', marginBottom: '20px' }}>Admin Settings & Site Management</h2>
+            <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '20px' }}>
+              <h3 style={{ marginTop: 0 }}>Add New Working Site</h3>
+              <form onSubmit={handleAddNewSite} style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                <input type="text" value={newSiteInput} onChange={e => setNewSiteInput(e.target.value)} placeholder="Site Name (e.g. Al Nahda Tower)" style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', flex: 1 }} />
+                <button type="submit" style={{ padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Add Site</button>
+              </form>
+            </div>
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }
