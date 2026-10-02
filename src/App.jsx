@@ -293,6 +293,20 @@ export default function App() {
   const [leaveActualReturnDate, setLeaveActualReturnDate] = useState('');
   const [penaltyPerMonthDays, setPenaltyPerMonthDays] = useState(5); // Default 5 days deduction per month extra
 
+  // Fetch Annual Leaves from Supabase on load
+  async function fetchAnnualLeaves() {
+    const { data, error } = await supabase.from('annual_leaves').select('*');
+    if (error) {
+      console.error('Error fetching annual leaves:', error.message);
+    } else {
+      setAnnualLeaveList(data || []);
+    }
+  }
+
+  // Component load hone par data fetch karne ke liye (Aap isay apne existing useEffect mein bhi call kar sakte hain)
+  useEffect(() => {
+    fetchAnnualLeaves();
+  }, []);
   // UAE Labor Law & Penalty Logic for Annual Leave
   async function handleSaveAnnualLeave(e) {
     e.preventDefault();
