@@ -925,6 +925,73 @@ export default function App() {
             </div>
           </div>
         )}
+        // State for Annual Leave tracking
+  const [annualLeaveList, setAnnualLeaveList] = useState([]);
+  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
+  const [leaveWorkerId, setLeaveWorkerId] = useState('');
+  const [leaveStartDate, setLeaveStartDate] = useState('');
+  const [leaveExpectedReturnDate, setLeaveExpectedReturnDate] = useState('');
+  const [leaveActualReturnDate, setLeaveActualReturnDate] = useState('');
+  const [penaltyPerMonthDays, setPenaltyPerMonthDays] = useState(5); // Default 5 days deduction per month extra
+
+  // Fetch Annual Leaves from Supabase on load
+  async function fetchAnnualLeaves() {
+    const { data, error } = await supabase.from('annual_leaves').select('*');
+    if (error) {
+      console.error('Error fetching annual leaves:', error.message);
+    } else {
+      setAnnualLeaveList(data || []);
+    }
+  }
+
+  // Component load hone par data fetch karne ke liye
+  useEffect(() => {
+    fetchAnnualLeaves();
+  }, []);
+
+  // UAE Labor Law & Penalty Logic for Annual Leave Saving
+  async function handleSaveAnnualLeave(e) {
+    e.preventDefault();
+    if (!leaveWorkerId || !leaveStartDate || !leaveExpectedReturnDate) {
+      return alert('Mukammal details enter karein!');
+    }
+
+    let deductedDays = 0;
+    if (leaveActualReturnDate) {
+      const expected = new Date(leaveExpectedReturnDate);
+      const actual = new Date(leaveActualReturnDate);
+      const diffTime = actual - expected;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays > 0) {
+        deductedDays = diffDays * (penaltyPerMonthDays / 30); 
+        alert(`Worker late aya hai! ${diffDays} din overstay par penalty ke mutabiq ${deductedDays.toFixed(1)} din ki salary deduction hogi.`);
+      }
+    }
+
+    const newLeaveRecord = {
+      worker_id: String(leaveWorkerId),
+      start_date: leaveStartDate,
+      expected_return: leaveExpectedReturnDate,
+      actual_return: leaveActualReturnDate || 'On Leave',
+      deduction_days: Number(deductedDays.toFixed(1)),
+      status: leaveActualReturnDate ? 'Returned' : 'On Leave'
+    };
+
+    const { error } = await supabase.from('annual_leaves').insert([newLeaveRecord]);
+
+    if (error) {
+      alert('Error saving leave: ' + error.message);
+    } else {
+      alert('Annual leave record successfully database mein save ho gaya!');
+      setLeaveWorkerId('');
+      setLeaveStartDate('');
+      setLeaveExpectedReturnDate('');
+      setLeaveActualReturnDate('');
+      setLeaveModalOpen(false);
+      fetchAnnualLeaves(); // Refresh list
+    }
+  }
 
         {/* TAB 3: WORKERS DIRECTORY */}
         {activeTab === 'workers' && (userRole.is_admin || userRole.can_view_workers) && (
