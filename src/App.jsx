@@ -981,7 +981,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 2: BULK & OCR */}
+       {/* TAB 2: BULK & OCR */}
         {activeTab === 'bulk' && (userRole.is_admin || userRole.can_use_bulk) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 10px 0' }}>⚡ Bulk Attendance, Designation OT & Date Selection</h3>
@@ -1035,6 +1035,60 @@ export default function App() {
               <input type="file" accept="image/*" onChange={handleScanPaperSheet} disabled={scanning} />
               {scanning && <p style={{ color: '#2563eb', fontWeight: 'bold' }}>{scanStatus}</p>}
               {!scanning && scanStatus && <p style={{ color: '#16a34a', fontWeight: 'bold' }}>{scanStatus}</p>}
+            </div>
+
+            {/* Individual Worker Attendance List for the Selected Date & Department */}
+            <div style={{ marginTop: '30px', backgroundColor: '#fff', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <h4 style={{ margin: '0 0 15px 0', color: '#0f172a' }}>
+                👥 Individual Attendance ({bulkDepartment} - {selectedTimesheetDate})
+              </h4>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #cbd5e1', textAlign: 'left' }}>
+                      <th style={{ padding: '8px' }}>ID</th>
+                      <th style={{ padding: '8px' }}>Worker Name</th>
+                      <th style={{ padding: '8px' }}>Designation</th>
+                      <th style={{ padding: '8px' }}>Status</th>
+                      <th style={{ padding: '8px' }}>OT Hours</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {workersList
+                      .filter(w => bulkDepartment === 'All' || w.department === bulkDepartment)
+                      .map((worker) => {
+                        const record = attendanceData[selectedTimesheetDate]?.[worker.id] || { status: 'Present', ot: 0 };
+                        
+                        return (
+                          <tr key={worker.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '8px', fontWeight: 'bold' }}>{worker.worker_id || worker.id}</td>
+                            <td style={{ padding: '8px' }}>{worker.name}</td>
+                            <td style={{ padding: '8px', color: '#64748b' }}>{worker.designation || '-'}</td>
+                            <td style={{ padding: '8px' }}>
+                              <select 
+                                value={record.status} 
+                                onChange={(e) => handleSingleAttendanceChange(worker.id, selectedTimesheetDate, e.target.value, record.ot)}
+                                style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 'bold', color: record.status === 'Present' ? '#16a34a' : record.status === 'Absent' ? '#dc2626' : '#d97706' }}
+                              >
+                                <option value="Present">Present</option>
+                                <option value="Absent">Absent</option>
+                                <option value="Leave">Leave</option>
+                              </select>
+                            </td>
+                            <td style={{ padding: '8px' }}>
+                              <input 
+                                type="number" 
+                                value={record.ot || 0} 
+                                onChange={(e) => handleSingleAttendanceChange(worker.id, selectedTimesheetDate, record.status, e.target.value)}
+                                style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid #cbd5e1' }} 
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
