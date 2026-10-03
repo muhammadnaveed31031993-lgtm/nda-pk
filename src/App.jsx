@@ -148,42 +148,56 @@ export default function App() {
     if (!error) setAnnualLeaveList(data || []);
   }
 
- async function handleSaveAnnualLeave(e) {
+ aasync function handleSaveAnnualLeave(e) {
     e.preventDefault();
     if (!leaveWorkerId || !leaveStartDate || !leaveExpectedReturnDate) {
       return alert('Mukammal details enter karein!');
     }
 
     let finalDeductionDays = 0;
+    let breakdownSummary = 'No Deduction';
+
     if (hasDeduction) {
-      finalDeductionDays = Number(manualDeductionDays) || 0;
+      let breakdownArr = [];
+      for (const [monthKey, days] of Object.entries(monthlyDeductions)) {
+        const d = Number(days) || 0;
+        if (d > 0) {
+          finalDeductionDays += d;
+          breakdownArr.push(`${monthKey}: ${d} days`);
+        }
+      }
+      if (breakdownArr.length > 0) {
+        breakdownSummary = breakdownArr.join(', ');
+      }
     }
 
-    const newLeaveRecord = {
+    const leaveData = {
       worker_id: leaveWorkerId,
       start_date: leaveStartDate,
       expected_return: leaveExpectedReturnDate,
       actual_return: leaveActualReturnDate || 'On Leave',
       has_deduction: hasDeduction,
-      deduction_breakdown: deductionBreakdownText || (hasDeduction ? `${finalDeductionDays} Days Total` : 'No Deduction'),
+      deduction_breakdown: breakdownSummary,
       deduction_days: finalDeductionDays.toFixed(1),
       status: leaveActualReturnDate ? 'Returned' : 'On Leave'
     };
 
-    const { error } = await supabase.from('annual_leaves').insert([newLeaveRecord]);
+    let error;
+    if (targetStaffId) {
+      const res = await supabase.from('annual_leaves').update(leaveData).eq('id', targetStaffId);
+      error = res.error;
+    } else {
+      const res = await supabase.from('annual_leaves').insert([leaveData]);
+      error = res.error;
+    }
+
     if (error) {
       alert('Error saving leave record: ' + error.message);
     } else {
-      setAnnualLeaveList([...annualLeaveList, newLeaveRecord]);
-      alert('Annual leave record successfully save ho gaya!');
-      setLeaveWorkerId('');
-      setLeaveStartDate('');
-      setLeaveExpectedReturnDate('');
-      setLeaveActualReturnDate('');
-      setHasDeduction(true);
-      setManualDeductionDays('');
-      setDeductionBreakdownText('');
+      alert('Leave record successfully save ho gaya!');
       setLeaveModalOpen(false);
+      setTargetStaffId('');
+      setMonthlyDeductions({});
       fetchAnnualLeaves();
     }
   }
