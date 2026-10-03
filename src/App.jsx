@@ -1382,27 +1382,26 @@ export default function App() {
             </div>
           </div>
         )}
-       {/* TAB 10: ANNUAL LEAVES, PENALTIES & ACCRUED BALANCE */}
+      {/* TAB 10: ANNUAL LEAVES, PENALTIES & 12-MONTH DEDUCTION */}
         {activeTab === 'annualLeave' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ color: '#1e293b', margin: 0 }}>UAE Labor Law: Annual Leave & Overstay Penalties</h2>
+              <h2 style={{ color: '#1e293b', margin: 0 }}>UAE Labor Law: Annual Leave & 12-Month Overstay Deductions</h2>
               <button onClick={() => {
-                setTargetStaffId(''); // Reset for new record
+                setTargetStaffId('');
                 setLeaveWorkerId('');
                 setLeaveStartDate('');
                 setLeaveExpectedReturnDate('');
                 setLeaveActualReturnDate('');
                 setHasDeduction(true);
-                setManualDeductionDays('');
-                setDeductionBreakdownText('');
+                setMonthlyDeductions({});
                 setLeaveModalOpen(true);
               }} style={{ padding: '10px 18px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>+ Record Annual Leave</button>
             </div>
 
             {leaveModalOpen && (
               <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-                <h3 style={{ marginTop: 0, color: '#1e293b' }}>{targetStaffId ? '✏️ Edit Leave Record' : 'Add Worker Leave Record & Custom Deductions'}</h3>
+                <h3 style={{ marginTop: 0, color: '#1e293b' }}>{targetStaffId ? '✏️ Edit Leave & 12-Month Deduction' : 'Add Leave & Multi-Month Deduction Breakdown'}</h3>
                 <form onSubmit={handleSaveAnnualLeave}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', marginBottom: '15px' }}>
                     <div>
@@ -1428,22 +1427,48 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Deduction Controls Section */}
+                  {/* Deduction Controls & 12-Month Breakdown Section */}
                   <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '15px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
                       <input type="checkbox" id="hasDeductionCheck" checked={hasDeduction} onChange={e => setHasDeduction(e.target.checked)} style={{ width: '16px', height: '16px', marginRight: '8px', cursor: 'pointer' }} />
                       <label htmlFor="hasDeductionCheck" style={{ fontSize: '13px', fontWeight: 'bold', color: '#1e293b', cursor: 'pointer' }}>Overstay Penalty / Deduction Applicable?</label>
                     </div>
 
                     {hasDeduction && (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', marginTop: '10px' }}>
-                        <div>
-                          <label style={{ fontSize: '12px', display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Total Deduction Days</label>
-                          <input type="number" step="0.5" value={manualDeductionDays} onChange={e => setManualDeductionDays(e.target.value)} placeholder="e.g. 11 (Month 1: 5 + Month 2: 6)" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                      <div>
+                        <label style={{ fontSize: '12px', display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#334155' }}>
+                          📅 Select Month-by-Month Deduction Days (Up to next 12 Months):
+                        </label>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', background: '#fff', padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                          {Array.from({ length: 12 }).map((_, i) => {
+                            const d = new Date();
+                            d.setMonth(d.getMonth() + i);
+                            const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                            const monthName = d.toLocaleString('default', { month: 'short', year: 'numeric' });
+
+                            return (
+                              <div key={monthKey} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                <label style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold' }}>{monthName}</label>
+                                <input 
+                                  type="number" 
+                                  step="0.5" 
+                                  min="0"
+                                  placeholder="Days (e.g. 5)" 
+                                  value={monthlyDeductions[monthKey] || ''} 
+                                  onChange={e => {
+                                    setMonthlyDeductions({
+                                      ...monthlyDeductions,
+                                      [monthKey]: e.target.value
+                                    });
+                                  }} 
+                                  style={{ padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '12px' }} 
+                                />
+                              </div>
+                            );
+                          })}
                         </div>
-                        <div>
-                          <label style={{ fontSize: '12px', display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Month-wise Breakdown Note</label>
-                          <input type="text" value={deductionBreakdownText} onChange={e => setDeductionBreakdownText(e.target.value)} placeholder="e.g. Month 1: 5 days, Month 2: 6 days" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                          * Jis mahine mein jitne din deduct karne hain wahan enter karein.
                         </div>
                       </div>
                     )}
@@ -1457,7 +1482,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Table View with Accrued Balance & Admin Actions */}
+            {/* Table View */}
             <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #cbd5e1', overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
@@ -1465,7 +1490,7 @@ export default function App() {
                     <th style={{ padding: '12px' }}>Worker ID</th>
                     <th style={{ padding: '12px' }}>Leave Period</th>
                     <th style={{ padding: '12px' }}>Actual Return</th>
-                    <th style={{ padding: '12px' }}>Deduction Note / Days</th>
+                    <th style={{ padding: '12px' }}>Deduction Breakdown / Total</th>
                     <th style={{ padding: '12px' }}>Accrued Leave Balance</th>
                     <th style={{ padding: '12px' }}>Status</th>
                     {userRole.is_admin && <th style={{ padding: '12px', textAlign: 'center' }}>Actions</th>}
@@ -1476,14 +1501,12 @@ export default function App() {
                     <tr><td colSpan={userRole.is_admin ? 7 : 6} style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>No annual leave records found.</td></tr>
                   ) : (
                     annualLeaveList.map((leave, idx) => {
-                      // Accrued Leave Balance calculation: from actual return date till today (~2.5 days per month)
                       let accruedDays = 0;
                       if (leave.actual_return && leave.actual_return !== 'On Leave') {
                         const returnDate = new Date(leave.actual_return);
                         const today = new Date();
                         const diffTime = today - returnDate;
                         const diffDays = diffTime > 0 ? diffTime / (1000 * 60 * 60 * 24) : 0;
-                        // Roughly 2.5 accrued annual leave days per 30 days worked after return
                         accruedDays = (diffDays * (30 / 365)).toFixed(1);
                       }
 
@@ -1497,11 +1520,11 @@ export default function App() {
                           <td style={{ padding: '12px' }}>{leave.actual_return}</td>
                           <td style={{ padding: '12px' }}>
                             <div style={{ fontWeight: Number(leave.deduction_days) > 0 ? 'bold' : 'normal', color: Number(leave.deduction_days) > 0 ? '#dc2626' : 'inherit' }}>
-                              {leave.deduction_days} Days
+                              Total: {leave.deduction_days} Days
                             </div>
-                            {leave.deduction_breakdown && (
-                              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{leave.deduction_breakdown}</div>
-                            )}
+                            <div style={{ fontSize: '11px', color: '#475569', marginTop: '2px' }}>
+                              {leave.deduction_breakdown || 'No Breakdown'}
+                            </div>
                           </td>
                           <td style={{ padding: '12px' }}>
                             {leave.actual_return && leave.actual_return !== 'On Leave' ? (
@@ -1521,14 +1544,13 @@ export default function App() {
                             <td style={{ padding: '12px', textAlign: 'center' }}>
                               <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
                                 <button onClick={() => {
-                                  setTargetStaffId(leave.id); // Using targetStaffId temporarily to hold editing record ID
+                                  setTargetStaffId(leave.id);
                                   setLeaveWorkerId(leave.worker_id);
                                   setLeaveStartDate(leave.start_date);
                                   setLeaveExpectedReturnDate(leave.expected_return);
                                   setLeaveActualReturnDate(leave.actual_return === 'On Leave' ? '' : leave.actual_return);
                                   setHasDeduction(leave.has_deduction ?? true);
-                                  setManualDeductionDays(leave.deduction_days || '');
-                                  setDeductionBreakdownText(leave.deduction_breakdown || '');
+                                  setMonthlyDeductions({});
                                   setLeaveModalOpen(true);
                                 }} style={{ padding: '4px 8px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Edit</button>
                                 <button onClick={async () => {
@@ -1537,7 +1559,7 @@ export default function App() {
                                     if (error) {
                                       alert('Error deleting record: ' + error.message);
                                     } else {
-                                      setAnnualLeaveList(annualLeaveList.index ? annualLeaveList.filter(l => l.id !== leave.id) : annualLeaveList.filter((_, i) => i !== idx));
+                                      setAnnualLeaveList(annualLeaveList.filter(l => l.id !== leave.id));
                                       alert('Record delete ho gaya!');
                                       fetchAnnualLeaves();
                                     }
