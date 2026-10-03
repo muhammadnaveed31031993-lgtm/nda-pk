@@ -148,7 +148,7 @@ export default function App() {
     if (!error) setAnnualLeaveList(data || []);
   }
 
- aasync function handleSaveAnnualLeave(e) {
+ async function handleSaveAnnualLeave(e) {
     e.preventDefault();
     if (!leaveWorkerId || !leaveStartDate || !leaveExpectedReturnDate) {
       return alert('Mukammal details enter karein!');
