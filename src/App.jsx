@@ -1374,10 +1374,10 @@ export default function App() {
             </div>
 
             {leaveModalOpen && (
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '20px' }}>
-                <h3 style={{ marginTop: 0, color: '#1e293b' }}>Add Worker Leave Record</h3>
+              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
+                <h3 style={{ marginTop: 0, color: '#1e293b' }}>Add Worker Leave Record & Custom Deductions</h3>
                 <form onSubmit={handleSaveAnnualLeave}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '15px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', marginBottom: '15px' }}>
                     <div>
                       <label style={{ fontSize: '12px', display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Select Worker</label>
                       <select value={leaveWorkerId} onChange={e => setLeaveWorkerId(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required>
@@ -1396,10 +1396,32 @@ export default function App() {
                       <input type="date" value={leaveExpectedReturnDate} onChange={e => setLeaveExpectedReturnDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} required />
                     </div>
                     <div>
-                      <label style={{ fontSize: '12px', display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Actual Return Date (Optional if returned)</label>
+                      <label style={{ fontSize: '12px', display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Actual Return Date (Optional)</label>
                       <input type="date" value={leaveActualReturnDate} onChange={e => setLeaveActualReturnDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
                     </div>
                   </div>
+
+                  {/* Deduction Controls Section */}
+                  <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '15px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+                      <input type="checkbox" id="hasDeductionCheck" checked={hasDeduction} onChange={e => setHasDeduction(e.target.checked)} style={{ width: '16px', height: '16px', marginRight: '8px', cursor: 'pointer' }} />
+                      <label htmlFor="hasDeductionCheck" style={{ fontSize: '13px', fontWeight: 'bold', color: '#1e293b', cursor: 'pointer' }}>Overstay Penalty / Deduction Applicable?</label>
+                    </div>
+
+                    {hasDeduction && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', marginTop: '10px' }}>
+                        <div>
+                          <label style={{ fontSize: '12px', display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Total Deduction Days (Manual/Calculated)</label>
+                          <input type="number" step="0.5" value={manualDeductionDays} onChange={e => setManualDeductionDays(e.target.value)} placeholder="e.g. 11 (e.g. 5 days M1 + 6 days M2)" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '12px', display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Month-wise Breakdown Note</label>
+                          <input type="text" value={deductionBreakdownText} onChange={e => setDeductionBreakdownText(e.target.value)} placeholder="e.g. Month 1: 5 days, Month 2: 6 days" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <button type="submit" style={{ padding: '8px 16px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Save Leave Record</button>
                     <button type="button" onClick={() => setLeaveModalOpen(false)} style={{ padding: '8px 16px', backgroundColor: '#64748b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
@@ -1408,6 +1430,7 @@ export default function App() {
               </div>
             )}
 
+            {/* Table View */}
             <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #cbd5e1', overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
@@ -1416,7 +1439,7 @@ export default function App() {
                     <th style={{ padding: '12px' }}>Start Date</th>
                     <th style={{ padding: '12px' }}>Expected Return</th>
                     <th style={{ padding: '12px' }}>Actual Return</th>
-                    <th style={{ padding: '12px' }}>Penalty Deduction (Days)</th>
+                    <th style={{ padding: '12px' }}>Deduction Note / Days</th>
                     <th style={{ padding: '12px' }}>Status</th>
                   </tr>
                 </thead>
@@ -1430,8 +1453,13 @@ export default function App() {
                         <td style={{ padding: '12px' }}>{leave.start_date}</td>
                         <td style={{ padding: '12px' }}>{leave.expected_return}</td>
                         <td style={{ padding: '12px' }}>{leave.actual_return}</td>
-                        <td style={{ padding: '12px', color: Number(leave.deduction_days) > 0 ? '#dc2626' : 'inherit', fontWeight: Number(leave.deduction_days) > 0 ? 'bold' : 'normal' }}>
-                          {leave.deduction_days} Days
+                        <td style={{ padding: '12px' }}>
+                          <div style={{ fontWeight: Number(leave.deduction_days) > 0 ? 'bold' : 'normal', color: Number(leave.deduction_days) > 0 ? '#dc2626' : 'inherit' }}>
+                            {leave.deduction_days} Days
+                          </div>
+                          {leave.deduction_breakdown && (
+                            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{leave.deduction_breakdown}</div>
+                          )}
                         </td>
                         <td style={{ padding: '12px' }}>
                           <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '11px', background: leave.status === 'Returned' ? '#dcfce7' : '#fef9c3', color: leave.status === 'Returned' ? '#166534' : '#854d0e' }}>
