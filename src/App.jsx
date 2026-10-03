@@ -1363,12 +1363,7 @@ export default function App() {
             </div>
           </div>
         )}
-
-      </main>
-    </div>
-  );
-}
-{/* TAB 10: ANNUAL LEAVES & PENALTIES */}
+        {/* TAB 10: ANNUAL LEAVES & PENALTIES */}
         {activeTab === 'annualLeave' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -1449,3 +1444,8 @@ export default function App() {
             </div>
           </div>
         )}
+
+      </main>
+    </div>
+  );
+}
