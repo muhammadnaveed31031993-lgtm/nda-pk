@@ -263,6 +263,22 @@ export default function App() {
       else fetchPermissionsList();
     }
   }
+  
+  function handleDeleteSite(siteToDelete) {
+    if (!userRole.is_admin) return alert('Access Denied!');
+    if (sitesList.length <= 1) {
+      return alert('Kam az kam ek working site honi lazmi hai!');
+    }
+    if (window.confirm(`Kya aap waqai '${siteToDelete}' site delete karna chahte hain?`)) {
+      const updatedSites = sitesList.filter(site => site !== siteToDelete);
+      setSitesList(updatedSites);
+      
+      if (selectedSiteFilter === siteToDelete) setSelectedSiteFilter('All');
+      if (workSite === siteToDelete) setWorkSite(updatedSites[0]);
+      
+      alert(`Site '${siteToDelete}' successfully delete ho gayi!`);
+    }
+  }
 
   async function handleAddNewSite(e) {
     e.preventDefault();
