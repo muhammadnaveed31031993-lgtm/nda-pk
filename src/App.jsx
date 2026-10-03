@@ -993,6 +993,7 @@ export default function App() {
               <div>
                 <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Department</label>
                 <select value={bulkDepartment} onChange={e => setBulkDepartment(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                  <option value="All">All Departments</option>
                   {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
                 </select>
               </div>
@@ -1054,7 +1055,7 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {workersList
+                    {workers && workers
                       .filter(w => bulkDepartment === 'All' || w.department === bulkDepartment)
                       .map((worker) => {
                         const record = attendanceData[selectedTimesheetDate]?.[worker.id] || { status: 'Present', ot: 0 };
