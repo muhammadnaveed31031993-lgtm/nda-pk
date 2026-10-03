@@ -1247,18 +1247,27 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 8: DEPARTMENTS MANAGEMENT */}
+        {/* TAB: DEPARTMENTS MANAGEMENT */}
         {activeTab === 'departments' && userRole.is_admin && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', maxWidth: '500px' }}>
             <h3 style={{ margin: '0 0 15px 0' }}>🏢 Manage Departments</h3>
             <form onSubmit={handleAddNewDepartment} style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-              <input type="text" value={newDeptInput} onChange={e => setNewDeptInput(e.target.value)} placeholder="e.g. Mustafa / Carpentry" style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
-              <button type="submit" style={{ padding: '8px 15px', backgroundColor: '#7c3aed', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Add Dept</button>
+              <input type="text" value={newDeptInput} onChange={e => setNewDeptInput(e.target.value)} placeholder="e.g. Mechanical" style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
+              <button type="submit" style={{ padding: '8px 15px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Add Dept</button>
             </form>
-            <h4>Current Departments:</h4>
-            <ul>
+            <h4>Current Active Departments:</h4>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {departmentsList.map((dept, index) => (
-                <li key={index} style={{ padding: '5px 0', fontWeight: '600', color: '#334155' }}>{dept}</li>
+                <li key={index} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', backgroundColor: '#f8fafc', marginBottom: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', fontWeight: '600', color: '#334155' }}>
+                  <span>{dept}</span>
+                  <button 
+                    type="button" 
+                    onClick={() => handleDeleteDepartment(dept)}
+                    style={{ backgroundColor: '#dc2626', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                  >
+                    Delete
+                  </button>
+                </li>
               ))}
             </ul>
           </div>
