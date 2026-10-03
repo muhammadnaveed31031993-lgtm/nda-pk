@@ -9,6 +9,11 @@ export default function App() {
   // Annual Leave Tracking & Penalty States
   const [annualLeaveList, setAnnualLeaveList] = useState([]);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
+  
+  // Manual & Custom Deduction States
+  const [hasDeduction, setHasDeduction] = useState(true);
+  const [manualDeductionDays, setManualDeductionDays] = useState('');
+  const [deductionBreakdownText, setDeductionBreakdownText] = useState('');
   const [leaveWorkerId, setLeaveWorkerId] = useState('');
   const [leaveStartDate, setLeaveStartDate] = useState('');
   const [leaveExpectedReturnDate, setLeaveExpectedReturnDate] = useState('');
