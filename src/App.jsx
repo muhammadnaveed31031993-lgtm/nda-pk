@@ -1211,9 +1211,18 @@ export default function App() {
               <button type="submit" style={{ padding: '8px 15px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Add Site</button>
             </form>
             <h4>Current Active Sites:</h4>
-            <ul>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {sitesList.map((site, index) => (
-                <li key={index} style={{ padding: '5px 0', fontWeight: '600', color: '#334155' }}>{site}</li>
+                <li key={index} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', backgroundColor: '#f8fafc', marginBottom: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', fontWeight: '600', color: '#334155' }}>
+                  <span>{site}</span>
+                  <button 
+                    type="button" 
+                    onClick={() => handleDeleteSite(site)}
+                    style={{ backgroundColor: '#dc2626', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                  >
+                    Delete
+                  </button>
+                </li>
               ))}
             </ul>
           </div>
