@@ -140,23 +140,15 @@ export default function App() {
     if (!error) setAnnualLeaveList(data || []);
   }
 
-  async function handleSaveAnnualLeave(e) {
+ async function handleSaveAnnualLeave(e) {
     e.preventDefault();
     if (!leaveWorkerId || !leaveStartDate || !leaveExpectedReturnDate) {
       return alert('Mukammal details enter karein!');
     }
 
-    let deductedDays = 0;
-    if (leaveActualReturnDate) {
-      const expected = new Date(leaveExpectedReturnDate);
-      const actual = new Date(leaveActualReturnDate);
-      const diffTime = actual - expected;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      if (diffDays > 0) {
-        deductedDays = diffDays * (penaltyPerMonthDays / 30); 
-        alert(`Worker late aya hai! ${diffDays} din overstay par UAE law ke mutabiq ${deductedDays.toFixed(1)} din ki salary deduction hogi.`);
-      }
+    let finalDeductionDays = 0;
+    if (hasDeduction) {
+      finalDeductionDays = Number(manualDeductionDays) || 0;
     }
 
     const newLeaveRecord = {
@@ -164,7 +156,9 @@ export default function App() {
       start_date: leaveStartDate,
       expected_return: leaveExpectedReturnDate,
       actual_return: leaveActualReturnDate || 'On Leave',
-      deduction_days: deductedDays.toFixed(1),
+      has_deduction: hasDeduction,
+      deduction_breakdown: deductionBreakdownText || (hasDeduction ? `${finalDeductionDays} Days Total` : 'No Deduction'),
+      deduction_days: finalDeductionDays.toFixed(1),
       status: leaveActualReturnDate ? 'Returned' : 'On Leave'
     };
 
@@ -178,6 +172,9 @@ export default function App() {
       setLeaveStartDate('');
       setLeaveExpectedReturnDate('');
       setLeaveActualReturnDate('');
+      setHasDeduction(true);
+      setManualDeductionDays('');
+      setDeductionBreakdownText('');
       setLeaveModalOpen(false);
       fetchAnnualLeaves();
     }
