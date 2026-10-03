@@ -305,6 +305,21 @@ export default function App() {
     alert(`New department '${newDeptInput.trim()}' added successfully!`);
     setNewDeptInput('');
   }
+  function handleDeleteDepartment(deptToDelete) {
+    if (!userRole.is_admin) return alert('Access Denied!');
+    if (departmentsList.length <= 1) {
+      return alert('Kam az kam ek department hona lazmi hai!');
+    }
+    if (window.confirm(`Kya aap waqai '${deptToDelete}' department delete karna chahte hain?`)) {
+      const updatedDepts = departmentsList.filter(dept => dept !== deptToDelete);
+      setDepartmentsList(updatedDepts);
+      
+      if (selectedDeptFilter === deptToDelete) setSelectedDeptFilter('All');
+      if (department === deptToDelete) setDepartment(updatedDepts[0]);
+      
+      alert(`Department '${deptToDelete}' successfully delete ho gaya!`);
+    }
+  }
 
   async function handleChangePasswordSubmit(e) {
     e.preventDefault();
