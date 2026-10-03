@@ -20,6 +20,9 @@ export default function App() {
   const [leaveActualReturnDate, setLeaveActualReturnDate] = useState('');
   const [penaltyPerMonthDays, setPenaltyPerMonthDays] = useState(5);
   
+  // 12 Months dynamic deduction days state
+  const [monthlyDeductions, setMonthlyDeductions] = useState({});
+  
   // Password Change States
   const [currentPassInput, setCurrentPassInput] = useState('');
   const [newPassInput, setNewPassInput] = useState('');
