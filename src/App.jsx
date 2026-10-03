@@ -1365,17 +1365,27 @@ export default function App() {
             </div>
           </div>
         )}
-        {/* TAB 10: ANNUAL LEAVES & PENALTIES */}
+       {/* TAB 10: ANNUAL LEAVES, PENALTIES & ACCRUED BALANCE */}
         {activeTab === 'annualLeave' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ color: '#1e293b', margin: 0 }}>UAE Labor Law: Annual Leave & Overstay Penalties</h2>
-              <button onClick={() => setLeaveModalOpen(true)} style={{ padding: '10px 18px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>+ Record Annual Leave</button>
+              <button onClick={() => {
+                setTargetStaffId(''); // Reset for new record
+                setLeaveWorkerId('');
+                setLeaveStartDate('');
+                setLeaveExpectedReturnDate('');
+                setLeaveActualReturnDate('');
+                setHasDeduction(true);
+                setManualDeductionDays('');
+                setDeductionBreakdownText('');
+                setLeaveModalOpen(true);
+              }} style={{ padding: '10px 18px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>+ Record Annual Leave</button>
             </div>
 
             {leaveModalOpen && (
               <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-                <h3 style={{ marginTop: 0, color: '#1e293b' }}>Add Worker Leave Record & Custom Deductions</h3>
+                <h3 style={{ marginTop: 0, color: '#1e293b' }}>{targetStaffId ? '✏️ Edit Leave Record' : 'Add Worker Leave Record & Custom Deductions'}</h3>
                 <form onSubmit={handleSaveAnnualLeave}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', marginBottom: '15px' }}>
                     <div>
@@ -1411,8 +1421,8 @@ export default function App() {
                     {hasDeduction && (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', marginTop: '10px' }}>
                         <div>
-                          <label style={{ fontSize: '12px', display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Total Deduction Days (Manual/Calculated)</label>
-                          <input type="number" step="0.5" value={manualDeductionDays} onChange={e => setManualDeductionDays(e.target.value)} placeholder="e.g. 11 (e.g. 5 days M1 + 6 days M2)" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                          <label style={{ fontSize: '12px', display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Total Deduction Days</label>
+                          <input type="number" step="0.5" value={manualDeductionDays} onChange={e => setManualDeductionDays(e.target.value)} placeholder="e.g. 11 (Month 1: 5 + Month 2: 6)" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
                         </div>
                         <div>
                           <label style={{ fontSize: '12px', display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Month-wise Breakdown Note</label>
@@ -1423,51 +1433,105 @@ export default function App() {
                   </div>
 
                   <div style={{ display: 'flex', gap: '10px' }}>
-                    <button type="submit" style={{ padding: '8px 16px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Save Leave Record</button>
+                    <button type="submit" style={{ padding: '8px 16px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>{targetStaffId ? 'Update Record' : 'Save Leave Record'}</button>
                     <button type="button" onClick={() => setLeaveModalOpen(false)} style={{ padding: '8px 16px', backgroundColor: '#64748b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
                   </div>
                 </form>
               </div>
             )}
 
-            {/* Table View */}
+            {/* Table View with Accrued Balance & Admin Actions */}
             <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #cbd5e1', overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1' }}>
                     <th style={{ padding: '12px' }}>Worker ID</th>
-                    <th style={{ padding: '12px' }}>Start Date</th>
-                    <th style={{ padding: '12px' }}>Expected Return</th>
+                    <th style={{ padding: '12px' }}>Leave Period</th>
                     <th style={{ padding: '12px' }}>Actual Return</th>
                     <th style={{ padding: '12px' }}>Deduction Note / Days</th>
+                    <th style={{ padding: '12px' }}>Accrued Leave Balance</th>
                     <th style={{ padding: '12px' }}>Status</th>
+                    {userRole.is_admin && <th style={{ padding: '12px', textAlign: 'center' }}>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {annualLeaveList.length === 0 ? (
-                    <tr><td colSpan="6" style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>No annual leave records found.</td></tr>
+                    <tr><td colSpan={userRole.is_admin ? 7 : 6} style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>No annual leave records found.</td></tr>
                   ) : (
-                    annualLeaveList.map((leave, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                        <td style={{ padding: '12px' }}>#{leave.worker_id}</td>
-                        <td style={{ padding: '12px' }}>{leave.start_date}</td>
-                        <td style={{ padding: '12px' }}>{leave.expected_return}</td>
-                        <td style={{ padding: '12px' }}>{leave.actual_return}</td>
-                        <td style={{ padding: '12px' }}>
-                          <div style={{ fontWeight: Number(leave.deduction_days) > 0 ? 'bold' : 'normal', color: Number(leave.deduction_days) > 0 ? '#dc2626' : 'inherit' }}>
-                            {leave.deduction_days} Days
-                          </div>
-                          {leave.deduction_breakdown && (
-                            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{leave.deduction_breakdown}</div>
+                    annualLeaveList.map((leave, idx) => {
+                      // Accrued Leave Balance calculation: from actual return date till today (~2.5 days per month)
+                      let accruedDays = 0;
+                      if (leave.actual_return && leave.actual_return !== 'On Leave') {
+                        const returnDate = new Date(leave.actual_return);
+                        const today = new Date();
+                        const diffTime = today - returnDate;
+                        const diffDays = diffTime > 0 ? diffTime / (1000 * 60 * 60 * 24) : 0;
+                        // Roughly 2.5 accrued annual leave days per 30 days worked after return
+                        accruedDays = (diffDays * (30 / 365)).toFixed(1);
+                      }
+
+                      return (
+                        <tr key={leave.id || idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                          <td style={{ padding: '12px' }}>#{leave.worker_id}</td>
+                          <td style={{ padding: '12px', fontSize: '13px' }}>
+                            <div><strong>Start:</strong> {leave.start_date}</div>
+                            <div><strong>Expected:</strong> {leave.expected_return}</div>
+                          </td>
+                          <td style={{ padding: '12px' }}>{leave.actual_return}</td>
+                          <td style={{ padding: '12px' }}>
+                            <div style={{ fontWeight: Number(leave.deduction_days) > 0 ? 'bold' : 'normal', color: Number(leave.deduction_days) > 0 ? '#dc2626' : 'inherit' }}>
+                              {leave.deduction_days} Days
+                            </div>
+                            {leave.deduction_breakdown && (
+                              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{leave.deduction_breakdown}</div>
+                            )}
+                          </td>
+                          <td style={{ padding: '12px' }}>
+                            {leave.actual_return && leave.actual_return !== 'On Leave' ? (
+                              <span style={{ padding: '4px 8px', borderRadius: '4px', background: '#eff6ff', color: '#1d4ed8', fontWeight: 'bold', fontSize: '12px' }}>
+                                🟢 {accruedDays} Days Accumulated
+                              </span>
+                            ) : (
+                              <span style={{ color: '#94a3b8', fontSize: '12px' }}>Pending Return</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '12px' }}>
+                            <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '11px', background: leave.status === 'Returned' ? '#dcfce7' : '#fef9c3', color: leave.status === 'Returned' ? '#166534' : '#854d0e' }}>
+                              {leave.status}
+                            </span>
+                          </td>
+                          {userRole.is_admin && (
+                            <td style={{ padding: '12px', textAlign: 'center' }}>
+                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                <button onClick={() => {
+                                  setTargetStaffId(leave.id); // Using targetStaffId temporarily to hold editing record ID
+                                  setLeaveWorkerId(leave.worker_id);
+                                  setLeaveStartDate(leave.start_date);
+                                  setLeaveExpectedReturnDate(leave.expected_return);
+                                  setLeaveActualReturnDate(leave.actual_return === 'On Leave' ? '' : leave.actual_return);
+                                  setHasDeduction(leave.has_deduction ?? true);
+                                  setManualDeductionDays(leave.deduction_days || '');
+                                  setDeductionBreakdownText(leave.deduction_breakdown || '');
+                                  setLeaveModalOpen(true);
+                                }} style={{ padding: '4px 8px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Edit</button>
+                                <button onClick={async () => {
+                                  if (confirm('Kya aap waqai is leave record ko delete karna chahte hain?')) {
+                                    const { error } = await supabase.from('annual_leaves').delete().eq('id', leave.id);
+                                    if (error) {
+                                      alert('Error deleting record: ' + error.message);
+                                    } else {
+                                      setAnnualLeaveList(annualLeaveList.index ? annualLeaveList.filter(l => l.id !== leave.id) : annualLeaveList.filter((_, i) => i !== idx));
+                                      alert('Record delete ho gaya!');
+                                      fetchAnnualLeaves();
+                                    }
+                                  }
+                                }} style={{ padding: '4px 8px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Delete</button>
+                              </div>
+                            </td>
                           )}
-                        </td>
-                        <td style={{ padding: '12px' }}>
-                          <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '11px', background: leave.status === 'Returned' ? '#dcfce7' : '#fef9c3', color: leave.status === 'Returned' ? '#166534' : '#854d0e' }}>
-                            {leave.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
