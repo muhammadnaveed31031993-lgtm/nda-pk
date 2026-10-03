@@ -144,8 +144,12 @@ export default function App() {
   }, [session]);
 
   async function fetchAnnualLeaves() {
-    const { data, error } = await supabase.from('annual_leaves').select('*');
-    if (!error) setAnnualLeaveList(data || []);
+    const { data, error } = await supabase.from('annual_leaves').select('*').order('id', { ascending: false });
+    if (error) {
+      console.error('Error fetching annual leaves:', error.message);
+    } else if (data) {
+      setAnnualLeaveList(data);
+    }
   }
 
  async function handleSaveAnnualLeave(e) {
