@@ -140,6 +140,7 @@ export default function App() {
       fetchAttendance();
       fetchPermissionsList();
       fetchPersonalDocs();
+      fetchAnnualLeaves();
     }
   }, [session]);
 
