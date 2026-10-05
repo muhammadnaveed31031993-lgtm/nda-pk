@@ -1850,7 +1850,7 @@ export default function App() {
     </div>
   </div>
 )}
-       {/* 👁 SINGLE WORKER TIMESHEET PREVIEW MODAL */}
+      {/* 👁 SINGLE WORKER TIMESHEET PREVIEW MODAL */}
 {viewingWorkerTimesheet && (
   <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000 }}>
     <div style={{ backgroundColor: '#fff', padding: '30px', borderRadius: '10px', width: '90%', maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 4px 10px rgba(0,0,0,0.2)' }}>
@@ -1876,40 +1876,48 @@ export default function App() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', fontSize: '13px' }}>
           <div><b>Designation:</b> {viewingWorkerTimesheet.designation || 'Worker'}</div>
           <div><b>Working Site:</b> {viewingWorkerTimesheet.work_site || 'N/A'}</div>
-          <div><b>Monthly Salary:</b> {viewingWorkerTimesheet.monthly_salary || 'N/A'}</div>
+          <div><b>Monthly Salary:</b> {viewingWorkerTimesheet.monthly_salary || 'N/A'} {viewingWorkerTimesheet.currency || 'AED'}</div>
         </div>
       </div>
 
-      {/* Timesheet Table Preview */}
+      {/* Timesheet Table Preview using real attendance data */}
       <div style={{ marginBottom: '20px', maxHeight: '350px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
           <thead style={{ backgroundColor: '#f1f5f9', position: 'sticky', top: 0, zIndex: 1 }}>
             <tr>
-              <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Date / Day</th>
-              <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Status / Attendance</th>
-              <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Overtime (OT)</th>
-              <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Remarks</th>
+              <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Date</th>
+              <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Status</th>
+              <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Overtime Hours</th>
+              <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Site</th>
             </tr>
           </thead>
           <tbody>
-            {/* Generating days of the selected month dynamically */}
-            {Array.from({ length: new Date(selectedYear, selectedMonth + 1, 0).getDate() }, (_, index) => {
-              const dayNum = index + 1;
-              const dateStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+            {(() => {
+              const workerAttendance = attendance.filter(a => a.worker_id === viewingWorkerTimesheet.id);
               
-              return (
-                <tr key={dayNum} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '8px 10px', fontWeight: '500' }}>{dateStr}</td>
+              if (workerAttendance.length === 0) {
+                return (
+                  <tr>
+                    <td colSpan="4" style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
+                      No attendance records found for this worker.
+                    </td>
+                  </tr>
+                );
+              }
+
+              return workerAttendance.map((att, idx) => (
+                <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '8px 10px', fontWeight: '500' }}>{att.date}</td>
                   <td style={{ padding: '8px 10px' }}>
                     <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', backgroundColor: '#dcfce7', color: '#166534', fontWeight: 'bold' }}>
-                      Present (Full Day)
+                      {att.status}
                     </span>
                   </td>
-                  <td style={{ padding: '8px 10px', color: '#475569' }}>-</td>
-                  <td style={{ padding: '8px 10px', color: '#64748b' }}>Regular</td>
+                  <td style={{ padding: '8px 10px', color: '#475569' }}>{att.overtime_hours || 0} Hours</td>
+                  <td style={{ padding: '8px 10px', color: '#64748b' }}>{att.work_site || viewingWorkerTimesheet.work_site || 'N/A'}</td>
                 </tr>
-              );
-            })}
+              ));
+            })()}
           </tbody>
         </table>
       </div>
