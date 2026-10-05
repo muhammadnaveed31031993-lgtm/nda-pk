@@ -1558,38 +1558,21 @@ export default function App() {
             </div>
           </div>
         )}
-      {/* TAB 10: ANNUAL LEAVES, PENALTIES & 12-MONTH DEDUCTION */}
+     {/* TAB 10: ANNUAL LEAVES, PENALTIES & 12-MONTH DEDUCTION */}
         {activeTab === 'annualLeave' && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ color: '#1e293b', margin: 0 }}>UAE Labor Law: Annual Leave & 12-Month Overstay Deductions</h2>
-              
-              <div style={{ display: 'flex', gap: '10px' }}>
-                {/* Monthly Timesheet Button */}
-                <button 
-                  onClick={() => setShowMonthlyTimesheetModal(true)} 
-                  style={{ padding: '10px 18px', backgroundColor: '#0f172a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
-                >
-                  📊 Monthly Timesheet
-                </button>
-
-                {/* Record Annual Leave Button */}
-                <button 
-                  onClick={() => {
-                    setTargetStaffId('');
-                    setLeaveWorkerId('');
-                    setLeaveStartDate('');
-                    setLeaveExpectedReturnDate('');
-                    setLeaveActualReturnDate('');
-                    setHasDeduction(true);
-                    setMonthlyDeductions({});
-                    setLeaveModalOpen(true);
-                  }} 
-                  style={{ padding: '10px 18px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
-                >
-                  + Record Annual Leave
-                </button>
-              </div>
+              <button onClick={() => {
+                setTargetStaffId('');
+                setLeaveWorkerId('');
+                setLeaveStartDate('');
+                setLeaveExpectedReturnDate('');
+                setLeaveActualReturnDate('');
+                setHasDeduction(true);
+                setMonthlyDeductions({});
+                setLeaveModalOpen(true);
+              }} style={{ padding: '10px 18px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>+ Record Annual Leave</button>
             </div>
 
             {leaveModalOpen && (
@@ -1619,7 +1602,6 @@ export default function App() {
                       <input type="date" value={leaveActualReturnDate} onChange={e => setLeaveActualReturnDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
                     </div>
                   </div>
-
                  
                   {/* Deduction Controls & 12-Month Breakdown Section */}
                   <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '15px' }}>
