@@ -1298,14 +1298,6 @@ export default function App() {
           </div>
         )}
         
-        {/* Open Monthly Timesheet Button */}
-<button 
-  onClick={() => setShowMonthlyTimesheetModal(true)}
-  className="bg-slate-900 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow hover:bg-slate-800 transition"
->
-  📊 Open Monthly Timesheet
-</button>
-
         {/* TAB 5: PAYROLL */}
         {activeTab === 'payroll' && (userRole.is_admin || userRole.can_view_payroll) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
