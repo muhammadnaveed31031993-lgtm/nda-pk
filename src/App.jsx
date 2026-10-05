@@ -1717,6 +1717,91 @@ export default function App() {
             </div>
           </div>
         )}
+        {/* 📊 MONTHLY TIMESHEET MODAL WITH PRINT & DOWNLOAD OPTIONS */}
+{showMonthlyTimesheetModal && (
+  <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
+    <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '10px', width: '90%', maxWidth: '950px', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+      
+      {/* Modal Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+        <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>📊 Monthly Timesheet & OT Report</h2>
+        <button 
+          onClick={() => setShowMonthlyTimesheetModal(false)}
+          style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+        >
+          ✕ Close
+        </button>
+      </div>
+
+      {/* Month & Year Selection + Print All Option */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+          <div>
+            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Select Month</label>
+            <select 
+              value={selectedMonth} 
+              onChange={e => setSelectedMonth(Number(e.target.value))}
+              style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+            >
+              {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((m, idx) => (
+                <option key={idx} value={idx}>{m}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Select Year</label>
+            <input 
+              type="number" 
+              value={selectedYear} 
+              onChange={e => setSelectedYear(Number(e.target.value))}
+              style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', width: '100px' }} 
+            />
+          </div>
+        </div>
+
+        {/* Global Print / Download Button */}
+        <button 
+          onClick={() => window.print()} 
+          style={{ padding: '8px 16px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
+        >
+          🖨️ Print Full Timesheet Report
+        </button>
+      </div>
+
+      {/* Workers List inside Modal with Print/Download Action */}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+          <thead>
+            <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+              <th style={{ padding: '10px' }}>Worker ID & Name</th>
+              <th style={{ padding: '10px' }}>Department</th>
+              <th style={{ padding: '10px' }}>Working Site</th>
+              <th style={{ padding: '10px', textAlign: 'center' }}>Download / Print Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredWorkers.map(w => (
+              <tr key={w.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                <td style={{ padding: '10px', fontWeight: 'bold' }}>#{w.id} - {w.name}</td>
+                <td style={{ padding: '10px' }}>{w.department}</td>
+                <td style={{ padding: '10px' }}>{w.work_site || sitesList[0]}</td>
+                <td style={{ padding: '10px', textAlign: 'center' }}>
+                  <button 
+                    onClick={() => handlePrintWorkerMonthlyReport(w)} 
+                    style={{ padding: '6px 12px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                  >
+                    📄 Monthly OT PDF / Print
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+)}
 
       </main>
     </div>
