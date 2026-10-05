@@ -930,6 +930,12 @@ export default function App() {
         {userRole.is_admin && (
           <button onClick={() => setActiveTab('annualLeave')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'annualLeave' ? '#059669' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🌴 Annual Leave</button>
         )}
+        <button 
+  onClick={() => setShowMonthlyTimesheetModal(true)} 
+  style={{ padding: '8px 14px', backgroundColor: '#334155', color: '#fff', border: '1px solid #475569', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap', fontWeight: 'bold' }}
+>
+  📊 Monthly Timesheet
+</button>
       </div>
 
       <main style={{ flex: 1, padding: '20px' }}>
