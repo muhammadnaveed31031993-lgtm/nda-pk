@@ -1611,6 +1611,146 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* Monthly Timesheet & Overtime Modal */}
+{showMonthlyTimesheetModal && (
+  <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50 p-4">
+    <div className="bg-white w-full max-w-[1250px] max-h-[90vh] rounded-xl p-6 flex flex-col shadow-2xl">
+      
+      {/* Header & Dropdowns */}
+      <div className="flex justify-between items-center mb-4 border-b pb-3">
+        <h3 className="text-lg font-bold text-slate-800">📅 Monthly Timesheet & Overtime Report</h3>
+        
+        <div className="flex gap-3 items-center">
+          {/* Month Dropdown */}
+          <select 
+            value={selectedMonth} 
+            onChange={(e) => setSelectedMonth(Number(e.target.value))}
+            className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-white"
+          >
+            {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((m, idx) => (
+              <option key={idx} value={idx}>{m}</option>
+            ))}
+          </select>
+
+          {/* Year Dropdown */}
+          <select 
+            value={selectedYear} 
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+            className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-white"
+          >
+            {[2024, 2025, 2026, 2027].map(yr => (
+              <option key={yr} value={yr}>{yr}</option>
+            ))}
+          </select>
+
+          {/* Close Button */}
+          <button 
+            onClick={() => setShowMonthlyTimesheetModal(false)}
+            className="bg-rose-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-rose-700"
+          >
+            ✕ Close
+          </button>
+        </div>
+      </div>
+
+      {/* Table Content */}
+      <div className="overflow-x-auto flex-1">
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr className="bg-slate-100 text-slate-700">
+              <th className="border p-2 sticky left-0 bg-slate-100 z-20 min-w-[160px] text-left">ID & Worker Name</th>
+              
+              {/* Dynamic Days Generation */}
+              {Array.from({ length: new Date(selectedYear, selectedMonth + 1, 0).getDate() }, (_, i) => {
+                const dayNum = i + 1;
+                const dateStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                const isSun = isSunday(dateStr);
+                return (
+                  <th key={dayNum} className={`border p-1 text-center min-w-[32px] ${isSun ? 'bg-red-50 text-red-600' : ''}`}>
+                    {dayNum}
+                    <div className="text-[9px] font-normal">{isSun ? 'Sun' : ''}</div>
+                  </th>
+                );
+              })}
+              <th className="border p-2 bg-slate-200 text-center">Total OT</th>
+            </tr>
+          </thead>
+          <tbody>
+            {workers.map(worker => {
+              let totalMonthlyOT = 0;
+              const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+
+              return (
+                <tr key={worker.id} className="hover:bg-slate-50">
+                  <td className="border p-2 font-bold sticky left-0 bg-white z-10 whitespace-nowrap">
+                    #{worker.id} - {worker.name}
+                    <div className="text-[10px] text-slate-500 font-normal">{worker.department}</div>
+                  </td>
+
+                  {Array.from({ length: daysInMonth }, (_, i) => {
+                    const dayNum = i + 1;
+                    const dateStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                    
+                    const isSun = isSunday(dateStr);
+                    const isLeave = getWorkerLeaveStatus(worker.id, dateStr);
+                    const record = attendanceData[dateStr]?.[worker.id];
+                    
+                    const otHours = record?.ot || 0;
+                    totalMonthlyOT += otHours;
+
+                    // Cell Color and Text Rules
+                    let cellBg = 'bg-white';
+                    let cellText = record?.status || (isSun ? 'OFF' : '-');
+                    let textColor = 'text-slate-600';
+                    let isBold = false;
+
+                    if (isLeave) {
+                      cellBg = 'bg-amber-100'; // Highlight Annual Leave
+                      cellText = 'AL';
+                      textColor = 'text-amber-800';
+                      isBold = true;
+                    } else if (isSun) {
+                      if (otHours > 0) {
+                        cellBg = 'bg-blue-50'; // Sunday Overtime Duty
+                        cellText = `${otHours}h`;
+                        textColor = 'text-blue-600';
+                        isBold = true;
+                      } else {
+                        cellBg = 'bg-red-50/50'; // Sunday Off
+                        cellText = 'OFF';
+                        textColor = 'text-red-400';
+                      }
+                    } else if (record?.status === 'Absent') {
+                      cellBg = 'bg-rose-50';
+                      textColor = 'text-rose-600';
+                    } else if (otHours > 0) {
+                      cellText = `${otHours}h`;
+                      textColor = 'text-emerald-600';
+                      cellBg = 'bg-emerald-50/50';
+                      isBold = true;
+                    }
+
+                    return (
+                      <td key={dayNum} className={`border p-1 text-center ${cellBg} ${textColor} ${isBold ? 'font-bold' : ''}`}>
+                        {cellText}
+                      </td>
+                    );
+                  })}
+
+                  <td className="border p-2 text-center font-bold bg-slate-100 text-blue-600">
+                    {totalMonthlyOT} hrs
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+)}
+
                   {/* Deduction Controls & 12-Month Breakdown Section */}
                   <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '15px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
