@@ -1297,6 +1297,14 @@ export default function App() {
             </div>
           </div>
         )}
+        
+        {/* Open Monthly Timesheet Button */}
+<button 
+  onClick={() => setShowMonthlyTimesheetModal(true)}
+  className="bg-slate-900 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow hover:bg-slate-800 transition"
+>
+  📊 Open Monthly Timesheet
+</button>
 
         {/* TAB 5: PAYROLL */}
         {activeTab === 'payroll' && (userRole.is_admin || userRole.can_view_payroll) && (
