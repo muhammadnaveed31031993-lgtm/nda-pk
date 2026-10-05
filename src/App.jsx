@@ -10,7 +10,8 @@ export default function App() {
   const [showMonthlyTimesheetModal, setShowMonthlyTimesheetModal] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); // 0 = Jan, 11 = Dec
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear()); // e.g. 2026
-  const [timesheetSearchQuery, setTimesheetSearchQuery] = useState(''); // <-- Bas yeh line yahan add kar dein
+  const [timesheetSearchQuery, setTimesheetSearchQuery] = useState(''); // 
+  const [viewingWorkerTimesheet, setViewingWorkerTimesheet] = useState(null);
   // Annual Leave Tracking & Penalty States
   const [annualLeaveList, setAnnualLeaveList] = useState([]);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
