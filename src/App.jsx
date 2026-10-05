@@ -667,6 +667,7 @@ export default function App() {
     }
   }
 
+  // 1. Print Individual Worker Monthly Report
   function handlePrintWorkerMonthlyReport(worker) {
     const workerAttendance = attendance.filter(a => a.worker_id === worker.id);
     const printWindow = window.open('', '_blank');
@@ -712,33 +713,93 @@ export default function App() {
     printWindow.document.close();
   }
 
+  // 2. Handle Bulk Attendance & Overtime (Supports 'All' Departments & Designations)
   async function handleBulkAttendance() {
     if (!userRole.is_admin && !userRole.can_edit_timesheet) return;
     
-    let deptWorkers = workers.filter(w => w.department.toLowerCase() === bulkDepartment.toLowerCase());
-    if (bulkDesignation !== 'All') {
-      deptWorkers = deptWorkers.filter(w => w.designation?.toLowerCase() === bulkDesignation.toLowerCase());
-    }
+    let deptWorkers = workers.filter(w => {
+      const matchDept = bulkDepartment === 'All' || (w.department && w.department.toLowerCase() === bulkDepartment.toLowerCase());
+      const matchDesig = bulkDesignation === 'All' || (w.designation && w.designation.toLowerCase() === bulkDesignation.toLowerCase());
+      return matchDept && matchDesig;
+    });
 
-    if (deptWorkers.length === 0) return alert(`No workers found matching department and designation!`);
+    if (deptWorkers.length === 0) {
+      return alert(`No workers found matching department (${bulkDepartment}) and designation (${bulkDesignation})!`);
+    }
 
     const records = deptWorkers.map(w => ({
       worker_id: w.id,
       date: selectedTimesheetDate,
       status: bulkStatus,
-      overtime_hours: Number(bulkOT),
+      overtime_hours: Number(bulkOT) || 0,
       department: w.department,
       work_site: bulkSite
     }));
 
     const { error } = await supabase.from('attendance').upsert(records, { onConflict: 'worker_id,date' });
-    if (error) alert('Error: ' + error.message);
-    else {
+    
+    if (error) {
+      alert('Error: ' + error.message);
+    } else {
+      // Update local state instantly for UI & Monthly Timesheet
+      setAttendanceData(prev => {
+        const updated = { ...prev };
+        if (!updated[selectedTimesheetDate]) updated[selectedTimesheetDate] = {};
+        
+        deptWorkers.forEach(w => {
+          updated[selectedTimesheetDate][w.id] = {
+            status: bulkStatus,
+            ot: Number(bulkOT) || 0,
+            site: bulkSite
+          };
+        });
+        return updated;
+      });
+
       alert(`Attendance saved successfully for date ${selectedTimesheetDate} (${deptWorkers.length} workers)!`);
       fetchAttendance();
     }
   }
 
+  // 3. Handle Single Attendance & OT Change (Auto-saves to DB and updates Monthly Timesheet)
+  async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt) {
+    setAttendanceData(prev => ({
+      ...prev,
+      [dateStr]: {
+        ...(prev[dateStr] || {}),
+        [workerId]: { 
+          status: newStatus, 
+          ot: Number(newOt) || 0 
+        }
+      }
+    }));
+
+    const worker = workers.find(w => w.id === workerId);
+    const assignedSite = worker?.work_site || sitesList[0] || 'Sharjah Mamzar';
+
+    try {
+      const { error } = await supabase
+        .from('attendance')
+        .upsert([
+          { 
+            worker_id: workerId, 
+            date: dateStr, 
+            status: newStatus, 
+            overtime_hours: Number(newOt) || 0,
+            department: worker?.department,
+            work_site: assignedSite
+          }
+        ], { onConflict: 'worker_id,date' });
+
+      if (error) {
+        console.error('Error auto-saving attendance:', error.message);
+      }
+    } catch (err) {
+      console.error('Exception during attendance auto-save:', err);
+    }
+  }
+
+  // 4. Handle Mark Single Attendance (For timesheet table)
   async function handleMarkAttendance(workerId, status) {
     if (!userRole.is_admin && !userRole.can_edit_timesheet) return;
     const otHours = Number(overtimeInputs[workerId] || 0);
@@ -753,6 +814,7 @@ export default function App() {
     else fetchAttendance();
   }
 
+  // 5. Handle Save Staff Permissions
   async function handleSavePermission(e) {
     e.preventDefault();
     if (!targetEmail || !targetPassword) return;
