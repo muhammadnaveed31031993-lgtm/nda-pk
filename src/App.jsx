@@ -115,6 +115,7 @@ export default function App() {
 
   const [overtimeInputs, setOvertimeInputs] = useState({});
   const [timesheetSiteInputs, setTimesheetSiteInputs] = useState({});
+  const [attendanceData, setAttendanceData] = useState({});
 
   const now = new Date();
   const currentYear = now.getFullYear();
