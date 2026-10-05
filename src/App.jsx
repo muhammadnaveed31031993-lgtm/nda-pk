@@ -1850,6 +1850,62 @@ export default function App() {
     </div>
   </div>
 )}
+        {/* 👁 SINGLE WORKER TIMESHEET PREVIEW MODAL */}
+{viewingWorkerTimesheet && (
+  <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000 }}>
+    <div style={{ backgroundColor: '#fff', padding: '30px', borderRadius: '10px', width: '90%', maxWidth: '850px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 4px 10px rgba(0,0,0,0.2)' }}>
+      
+      {/* Modal Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>
+        <div>
+          <h2 style={{ margin: '0 0 5px 0', fontSize: '20px', fontWeight: 'bold' }}>📄 Monthly Timesheet Details</h2>
+          <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
+            Worker: <b>#{viewingWorkerTimesheet.id} - {viewingWorkerTimesheet.name}</b> | Dept: {viewingWorkerTimesheet.department} | Month: {selectedMonth + 1} / {selectedYear}
+          </p>
+        </div>
+        <button 
+          onClick={() => setViewingWorkerTimesheet(null)}
+          style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+        >
+          ✕ Close View
+        </button>
+      </div>
+
+      {/* Timesheet Content Preview Area */}
+      <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '20px' }}>
+        <h3 style={{ marginTop: 0, fontSize: '16px', color: '#1e293b' }}>Attendance & Overtime Summary</h3>
+        <p style={{ color: '#475569', fontSize: '13px' }}>
+          Selected Month: {selectedMonth + 1} / {selectedYear}
+        </p>
+        
+        <div style={{ background: '#fff', padding: '15px', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', fontSize: '13px' }}>
+            <div><b>Designation:</b> {viewingWorkerTimesheet.designation || 'Worker'}</div>
+            <div><b>Working Site:</b> {viewingWorkerTimesheet.work_site || 'N/A'}</div>
+            <div><b>Monthly Salary:</b> {viewingWorkerTimesheet.monthly_salary}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Action Buttons inside View Modal */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+        <button 
+          onClick={() => handlePrintWorkerMonthlyReport(viewingWorkerTimesheet)}
+          style={{ padding: '8px 16px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
+        >
+          🖨️ Print / Download PDF
+        </button>
+        <button 
+          onClick={() => setViewingWorkerTimesheet(null)}
+          style={{ padding: '8px 16px', backgroundColor: '#64748b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
+        >
+          Close
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
       </main>
     </div>
   );
