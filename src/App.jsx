@@ -6,10 +6,11 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
-  // Monthly Timesheet Modal & Date Selection States
+ // Monthly Timesheet Modal & Date Selection States
   const [showMonthlyTimesheetModal, setShowMonthlyTimesheetModal] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); // 0 = Jan, 11 = Dec
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear()); // e.g. 2026
+  const [timesheetSearchQuery, setTimesheetSearchQuery] = useState(''); // <-- Bas yeh line yahan add kar dein
   // Annual Leave Tracking & Penalty States
   const [annualLeaveList, setAnnualLeaveList] = useState([]);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
