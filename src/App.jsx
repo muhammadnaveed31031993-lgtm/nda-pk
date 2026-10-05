@@ -1190,7 +1190,7 @@ export default function App() {
                       <td style={{ padding: '10px' }}>{w.monthly_salary} {w.currency || selectedCurrency}</td>
                       <td style={{ padding: '10px' }}>
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          <button onClick={() => handlePrintWorkerMonthlyReport(w)} style={{ padding: '5px 10px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>📄 Monthly OT PDF / Print</button>
+                          
                           {(userRole.is_admin || userRole.can_edit_workers) && (
                             <button onClick={() => handleStartEditWorker(w)} style={{ padding: '5px 10px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Edit</button>
                           )}
