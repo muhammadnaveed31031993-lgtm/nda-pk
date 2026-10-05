@@ -1850,10 +1850,10 @@ export default function App() {
     </div>
   </div>
 )}
-        {/* 👁 SINGLE WORKER TIMESHEET PREVIEW MODAL */}
+       {/* 👁 SINGLE WORKER TIMESHEET PREVIEW MODAL */}
 {viewingWorkerTimesheet && (
   <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000 }}>
-    <div style={{ backgroundColor: '#fff', padding: '30px', borderRadius: '10px', width: '90%', maxWidth: '850px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 4px 10px rgba(0,0,0,0.2)' }}>
+    <div style={{ backgroundColor: '#fff', padding: '30px', borderRadius: '10px', width: '90%', maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 4px 10px rgba(0,0,0,0.2)' }}>
       
       {/* Modal Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>
@@ -1871,20 +1871,47 @@ export default function App() {
         </button>
       </div>
 
-      {/* Timesheet Content Preview Area */}
-      <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '20px' }}>
-        <h3 style={{ marginTop: 0, fontSize: '16px', color: '#1e293b' }}>Attendance & Overtime Summary</h3>
-        <p style={{ color: '#475569', fontSize: '13px' }}>
-          Selected Month: {selectedMonth + 1} / {selectedYear}
-        </p>
-        
-        <div style={{ background: '#fff', padding: '15px', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '10px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', fontSize: '13px' }}>
-            <div><b>Designation:</b> {viewingWorkerTimesheet.designation || 'Worker'}</div>
-            <div><b>Working Site:</b> {viewingWorkerTimesheet.work_site || 'N/A'}</div>
-            <div><b>Monthly Salary:</b> {viewingWorkerTimesheet.monthly_salary}</div>
-          </div>
+      {/* Worker Basic Info Card */}
+      <div style={{ padding: '15px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '15px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', fontSize: '13px' }}>
+          <div><b>Designation:</b> {viewingWorkerTimesheet.designation || 'Worker'}</div>
+          <div><b>Working Site:</b> {viewingWorkerTimesheet.work_site || 'N/A'}</div>
+          <div><b>Monthly Salary:</b> {viewingWorkerTimesheet.monthly_salary || 'N/A'}</div>
         </div>
+      </div>
+
+      {/* Timesheet Table Preview */}
+      <div style={{ marginBottom: '20px', maxHeight: '350px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+          <thead style={{ backgroundColor: '#f1f5f9', position: 'sticky', top: 0, zIndex: 1 }}>
+            <tr>
+              <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Date / Day</th>
+              <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Status / Attendance</th>
+              <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Overtime (OT)</th>
+              <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Remarks</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* Generating days of the selected month dynamically */}
+            {Array.from({ length: new Date(selectedYear, selectedMonth + 1, 0).getDate() }, (_, index) => {
+              const dayNum = index + 1;
+              const dateStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+              
+              return (
+                <tr key={dayNum} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '8px 10px', fontWeight: '500' }}>{dateStr}</td>
+                  <td style={{ padding: '8px 10px' }}>
+                    <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', backgroundColor: '#dcfce7', color: '#166534', fontWeight: 'bold' }}>
+                      Present (Full Day)
+                    </span>
+                  </td>
+                  <td style={{ padding: '8px 10px', color: '#475569' }}>-</td>
+                  <td style={{ padding: '8px 10px', color: '#64748b' }}>Regular</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
       {/* Action Buttons inside View Modal */}
