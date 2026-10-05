@@ -1826,9 +1826,7 @@ export default function App() {
                   
                   {/* View Timesheet Button */}
                   <button 
-                    onClick={() => {
-                      alert(`Viewing Monthly Timesheet for #${w.id} - ${w.name}`);
-                    }} 
+                    onClick={() => setViewingWorkerTimesheet(w)} 
                     style={{ padding: '6px 10px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
                   >
                     👁️ View Timesheet
