@@ -53,6 +53,8 @@ export default function App() {
   const [selectedSiteFilter, setSelectedSiteFilter] = useState('All');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loading, setLoading] = useState(false);
+  const [modalDepartment, setModalDepartment] = useState(null);
+  const [modalLocationTab, setModalLocationTab] = useState('All');
 
   // Data States
   const [workers, setWorkers] = useState([]);
