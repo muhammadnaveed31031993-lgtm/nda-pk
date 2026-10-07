@@ -1072,7 +1072,25 @@ export default function App() {
           Close X
         </button>
       </div>
+      {/* Modal Workers List */}
+      <div style={{ marginTop: '10px' }}>
+        {workers
+          .filter(w => w.department === modalDepartment)
+          .map(w => (
+            <div key={w.id} style={{ padding: '10px 0', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <strong>#{w.id} - {w.name}</strong> <br/>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>{w.designation || 'Worker'}</span>
+              </div>
+              <span style={{ color: '#0284c7', fontWeight: 'bold', fontSize: '13px' }}>Site: {w.work_site || 'Not Assigned'}</span>
+            </div>
+          ))}
+      </div>
 
+    </div>
+  </div>
+)}
+        
                   {/* Location Filter Tabs inside Modal */}
                   <div style={{ marginBottom: '15px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button 
