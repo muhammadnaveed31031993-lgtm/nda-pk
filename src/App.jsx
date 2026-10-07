@@ -1025,7 +1025,7 @@ export default function App() {
                     <p style={{ margin: '5px 0', color: '#0f172a', fontSize: '15px' }}>Total Workers: <strong>{totalCount}</strong></p>
                     <hr style={{ border: '0', borderTop: '1px solid #e2e8f0', margin: '12px 0' }} />
                     
-                    {{/* Department & Location Wise Boxes Grid */}
+                   {/* Department & Location Wise Boxes Grid */}
             <h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#1e293b' }}>Departments & Site Locations Wise Worker Count</h3>
             <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>Kisi bhi department ke box par click karein taake sirf usi department ke workers show hon.</p>
 
@@ -1033,6 +1033,7 @@ export default function App() {
               {departmentsList.map(dept => {
                 const deptWorkers = workers.filter(w => w.department === dept);
                 const totalCount = deptWorkers.length;
+                const designations = Array.from(new Set(deptWorkers.map(w => w.designation || 'General')));
 
                 return (
                   <div 
@@ -1052,12 +1053,10 @@ export default function App() {
                     <p style={{ margin: '5px 0', color: '#0f172a', fontSize: '15px' }}>Total Workers: <strong>{totalCount}</strong></p>
                     <hr style={{ border: '0', borderTop: '1px solid #e2e8f0', margin: '12px 0' }} />
                     
-                    {/* Designation & Site-wise Breakdown */}
-                    {(() => {
-                      const designations = Array.from(new Set(deptWorkers.map(w => w.designation || 'General')));
-                      if (designations.length === 0) return <div style={{ fontSize: '12px', color: '#64748b' }}>No workers</div>;
-
-                      return designations.map(desig => {
+                    {designations.length === 0 ? (
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>No workers</div>
+                    ) : (
+                      designations.map(desig => {
                         const desigWorkers = deptWorkers.filter(w => (w.designation || 'General') === desig);
                         
                         return (
@@ -1081,14 +1080,13 @@ export default function App() {
                             </div>
                           </div>
                         );
-                      });
-                    })()}
+                      })
+                    )}
 
                   </div>
                 );
               })}
             </div>
-
             {/* Modal / Popup for Specific Department Workers */}
             {modalDepartment && (
               <div style={{
