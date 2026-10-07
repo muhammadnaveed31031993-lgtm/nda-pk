@@ -977,10 +977,10 @@ export default function App() {
           </div>
         </div>
 
-       {/* TAB 1: DASHBOARD */}
+      {/* TAB 1: DASHBOARD */}
         {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
           <div>
-           
+            
             {/* Stats Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
               <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #2563eb' }}>
@@ -998,34 +998,8 @@ export default function App() {
                 </div>
               )}
             </div>
+
             {/* Department & Location Wise Boxes Grid */}
-            <h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#1e293b' }}>Departments & Site Locations Wise Worker Count</h3>
-            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>Kisi bhi department ke box par click karein taake sirf usi department ke workers show hon.</p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '20px' }}>
-              {departmentsList.map(dept => {
-                const deptWorkers = workers.filter(w => w.department === dept);
-                const totalCount = deptWorkers.length;
-
-                return (
-                  <div 
-                    key={dept} 
-                    onClick={() => setModalDepartment(dept)}
-                    style={{ 
-                      background: '#ffffff', 
-                      border: '1px solid #cbd5e1', 
-                      padding: '20px', 
-                      borderRadius: '8px', 
-                      cursor: 'pointer',
-                      boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-                      transition: 'transform 0.2s'
-                    }}
-                  >
-                    <h3 style={{ margin: '0 0 10px 0', color: '#1e293b' }}>{dept}</h3>
-                    <p style={{ margin: '5px 0', color: '#0f172a', fontSize: '15px' }}>Total Workers: <strong>{totalCount}</strong></p>
-                    <hr style={{ border: '0', borderTop: '1px solid #e2e8f0', margin: '12px 0' }} />
-                    
-                   {/* Department & Location Wise Boxes Grid */}
             <h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#1e293b' }}>Departments & Site Locations Wise Worker Count</h3>
             <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>Kisi bhi department ke box par click karein taake sirf usi department ke workers show hon.</p>
 
@@ -1087,6 +1061,9 @@ export default function App() {
                 );
               })}
             </div>
+
+          </div>
+        )}            </div>
             {/* Modal / Popup for Specific Department Workers */}
             {modalDepartment && (
               <div style={{
