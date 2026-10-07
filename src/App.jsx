@@ -977,10 +977,10 @@ export default function App() {
           </div>
         </div>
 
-      {/* TAB 1: DASHBOARD */}
+       {/* TAB 1: DASHBOARD */}
         {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
           <div>
-            
+           
             {/* Stats Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
               <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #2563eb' }}>
@@ -994,130 +994,12 @@ export default function App() {
               {(userRole.is_admin || userRole.can_view_payroll) && (
                 <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #0891b2' }}>
                   <span style={{ color: '#64748b', fontSize: '13px' }}>Total Payroll</span>
-                  <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{Math.round(grandTotalPayroll || 0).toLocaleString()} {selectedCurrency}</div>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{Math.round(grandTotalPayroll).toLocaleString()} {selectedCurrency}</div>
                 </div>
               )}
             </div>
-
-            {/* Department & Location Wise Boxes Grid */}
-            <h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#1e293b' }}>Departments & Site Locations Wise Worker Count</h3>
-            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>Kisi bhi department ke box par click karein taake sirf usi department ke workers show hon.</p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '20px' }}>
-              {departmentsList.map(dept => {
-                const deptWorkers = workers.filter(w => w.department === dept);
-                const totalCount = deptWorkers.length;
-
-                return (
-                  <div 
-                    key={dept} 
-                    onClick={() => setModalDepartment(dept)}
-                    style={{ 
-                      background: '#ffffff', 
-                      border: '1px solid #cbd5e1', 
-                      padding: '20px', 
-                      borderRadius: '8px', 
-                      cursor: 'pointer',
-                      boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-                      transition: 'transform 0.2s'
-                    }}
-                  >
-                    <h3 style={{ margin: '0 0 10px 0', color: '#1e293b' }}>{dept}</h3>
-                    <p style={{ margin: '5px 0', color: '#0f172a', fontSize: '15px' }}>Total Workers: <strong>{totalCount}</strong></p>
-                    <hr style={{ border: '0', borderTop: '1px solid #e2e8f0', margin: '12px 0' }} />
-                    
-                    {sitesList.map(site => {
-                      const siteCount = deptWorkers.filter(w => w.work_site === site).length;
-                      return (
-                        <p key={site} style={{ margin: '4px 0', fontSize: '13px', color: '#475569' }}>
-                          {site}: <strong>{siteCount}</strong>
-                        </p>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Modal / Popup for Specific Department Workers */}
-            {modalDepartment && (
-              <div style={{
-                position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-                background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
-              }}>
-                <div style={{ background: '#fff', padding: '25px', borderRadius: '8px', width: '90%', maxWidth: '750px', maxHeight: '80vh', overflowY: 'auto' }}>
-                  
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                    <h2 style={{ margin: 0, color: '#1e293b' }}>{modalDepartment} - Workers Detail</h2>
-                    <button 
-                      onClick={() => setModalDepartment(null)} 
-                      style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-                    >
-                      Close X
-                    </button>
-                  </div>
-
-                  {/* Location Filter Tabs inside Modal */}
-                  <div style={{ marginBottom: '15px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <button 
-                      onClick={() => setModalLocationTab('All')}
-                      style={{ 
-                        background: modalLocationTab === 'All' ? '#2563eb' : '#e2e8f0', 
-                        color: modalLocationTab === 'All' ? '#fff' : '#000', 
-                        border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' 
-                      }}
-                    >
-                      All Locations
-                    </button>
-                    {sitesList.map(site => (
-                      <button 
-                        key={site}
-                        onClick={() => setModalLocationTab(site)}
-                        style={{ 
-                          background: modalLocationTab === site ? '#2563eb' : '#e2e8f0', 
-                          color: modalLocationTab === site ? '#fff' : '#000', 
-                          border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' 
-                        }}
-                      >
-                        {site}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Filtered Workers Table */}
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                      <thead>
-                        <tr style={{ background: '#f1f5f9' }}>
-                          <th style={{ border: '1px solid #cbd5e1', padding: '10px', fontSize: '13px' }}>ID</th>
-                          <th style={{ border: '1px solid #cbd5e1', padding: '10px', fontSize: '13px' }}>Name</th>
-                          <th style={{ border: '1px solid #cbd5e1', padding: '10px', fontSize: '13px' }}>Designation</th>
-                          <th style={{ border: '1px solid #cbd5e1', padding: '10px', fontSize: '13px' }}>Site / Location</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {workers
-                          .filter(w => w.department === modalDepartment)
-                          .filter(w => modalLocationTab === 'All' || w.work_site === modalLocationTab)
-                          .map(worker => (
-                            <tr key={worker.id}>
-                              <td style={{ border: '1px solid #cbd5e1', padding: '9px', fontSize: '13px' }}>#{worker.id}</td>
-                              <td style={{ border: '1px solid #cbd5e1', padding: '9px', fontSize: '13px' }}>{worker.name}</td>
-                              <td style={{ border: '1px solid #cbd5e1', padding: '9px', fontSize: '13px' }}>{worker.designation || 'N/A'}</td>
-                              <td style={{ border: '1px solid #cbd5e1', padding: '9px', fontSize: '13px' }}>{worker.work_site || 'N/A'}</td>
-                            </tr>
-                          ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                </div>
-              </div>
-            )}
-
-          </div>
-        )}
-        {/* Print Signature Footer */}
+           
+            {/* Print Signature Footer */}
             <div className="print-signature" style={{ display: 'none', marginTop: '50px', textAlign: 'right', paddingRight: '30px' }}>
               <div style={{ borderTop: '1px solid #000', display: 'inline-block', minWidth: '200px', paddingTop: '5px', fontWeight: 'bold' }}>
                 Prepared by: M. Naveed
