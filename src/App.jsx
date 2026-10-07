@@ -1358,38 +1358,91 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredWorkers.map(worker => (
-                    <tr key={worker.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                      <td style={{ padding: '10px', fontWeight: 'bold' }}>
-                        #{worker.id} - {worker.name} <br/>
-                        <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'normal' }}>{worker.designation || 'Worker'} ({worker.department})</span>
-                      </td>
-                      <td style={{ padding: '10px' }}>
-                        <select 
-                          value={timesheetSiteInputs[worker.id] || worker.work_site || sitesList[0]} 
-                          onChange={e => setTimesheetSiteInputs({...timesheetSiteInputs, [worker.id]: e.target.value})}
-                          style={{ padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 'bold', color: '#0369a1' }}
-                        >
-                          {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
-                        </select>
-                      </td>
-                      <td style={{ padding: '10px' }}>
-                        <input type="number" placeholder="OT Hrs" value={overtimeInputs[worker.id] || ''} onChange={e => setOvertimeInputs({...overtimeInputs, [worker.id]: e.target.value})} style={{ width: '70px', padding: '5px' }} />
-                      </td>
-                      <td style={{ padding: '10px' }}>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <button onClick={() => handleMarkAttendance(worker.id, 'Present')} style={{ padding: '5px 10px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Present</button>
-                          <button onClick={() => handleMarkAttendance(worker.id, 'Absent')} style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Absent</button>
-                          <button onClick={() => handleMarkAttendance(worker.id, 'Leave')} style={{ padding: '5px 10px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Leave</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+                  <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff' }}>
+  <thead>
+    <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1', textAlign: 'left' }}>
+      <th style={{ padding: '10px' }}>Worker Name</th>
+      <th style={{ padding: '10px' }}>Site</th>
+      <th style={{ padding: '10px' }}>Overtime (Hrs)</th>
+      <th style={{ padding: '10px' }}>Status</th>
+      <th style={{ padding: '10px' }}>Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {filteredWorkers.map(worker => (
+      <tr key={worker.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+        
+        {/* 1. Worker Name & Details */}
+        <td style={{ padding: '10px', fontWeight: 'bold' }}>
+          #{worker.id} - {worker.name} <br/>
+          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'normal' }}>
+            {worker.designation || 'Worker'} ({worker.department})
+          </span>
+        </td>
+        
+        {/* 2. Site Option (Dropdown) */}
+        <td style={{ padding: '10px' }}>
+          <select 
+            value={timesheetSiteInputs[worker.id] || worker.work_site || sitesList[0]} 
+            onChange={e => setTimesheetSiteInputs({...timesheetSiteInputs, [worker.id]: e.target.value})}
+            style={{ padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 'bold', color: '#0369a1' }}
+          >
+            {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
+          </select>
+        </td>
+
+        {/* 3. Overtime Input */}
+        <td style={{ padding: '10px' }}>
+          <input 
+            type="number" 
+            placeholder="OT Hrs" 
+            value={overtimeInputs[worker.id] || ''} 
+            onChange={e => setOvertimeInputs({...overtimeInputs, [worker.id]: e.target.value})} 
+            style={{ width: '70px', padding: '5px' }} 
+          />
+        </td>
+
+        {/* 4. Status Dropdown (Present / Absent / Leave) */}
+        <td style={{ padding: '10px' }}>
+          <select 
+            id={`status-${worker.id}`}
+            defaultValue="Present"
+            style={{ padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+          >
+            <option value="Present">Present</option>
+            <option value="Absent">Absent</option>
+            <option value="Leave">Leave</option>
+          </select>
+        </td>
+
+        {/* 5. Row-level Update Button */}
+        <td style={{ padding: '10px' }}>
+          <button 
+            onClick={() => {
+              const statusDropdown = document.getElementById(`status-${worker.id}`);
+              const selectedStatus = statusDropdown ? statusDropdown.value : 'Present';
+              
+              // Yeh function site, OT aur status sab ko database mein update kar dega
+              handleMarkAttendance(worker.id, selectedStatus);
+            }} 
+            style={{ 
+              padding: '6px 14px', 
+              backgroundColor: '#2563eb', 
+              color: '#fff', 
+              border: 'none', 
+              borderRadius: '4px', 
+              cursor: 'pointer', 
+              fontWeight: 'bold' 
+            }}
+          >
+            Update
+          </button>
+        </td>
+
+      </tr>
+    ))}
+  </tbody>
+</table>
         
         {/* TAB 5: PAYROLL */}
         {activeTab === 'payroll' && (userRole.is_admin || userRole.can_view_payroll) && (
