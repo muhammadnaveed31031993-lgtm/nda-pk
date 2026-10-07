@@ -1025,17 +1025,43 @@ export default function App() {
                     <p style={{ margin: '5px 0', color: '#0f172a', fontSize: '15px' }}>Total Workers: <strong>{totalCount}</strong></p>
                     <hr style={{ border: '0', borderTop: '1px solid #e2e8f0', margin: '12px 0' }} />
                     
-                    {sitesList.map(site => {
-                      const siteCount = deptWorkers.filter(w => w.work_site === site).length;
-                      return (
-                        <p key={site} style={{ margin: '4px 0', fontSize: '13px', color: '#475569' }}>
-                          {site}: <strong>{siteCount}</strong>
-                        </p>
-                      );
-                    })}
-                  </div>
-                );
-              })}
+                   {/* Designation & Site-wise Breakdown */}
+                    {(() => {
+                      const designations = Array.from(new Set(deptWorkers.map(w => w.designation || 'General/Other')));
+
+                      if (designations.length === 0) {
+                        return <div style={{ fontSize: '12px', color: '#64748b' }}>No workers found</div>;
+                      }
+
+                      return designations.map(desig => {
+                        const desigWorkers = deptWorkers.filter(w => (w.designation || 'General/Other') === desig);
+                        
+                        return (
+                          <div key={desig} style={{ marginBottom: '10px', borderTop: '1px dashed #e2e8f0', paddingTop: '6px' }}>
+                            {/* Designation Name & Total */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold', color: '#1e293b' }}>
+                              <span>🛠️ {desig}:</span>
+                              <span>{desigWorkers.length}</span>
+                            </div>
+
+                            {/* Sites breakdown for this designation */}
+                            <div style={{ paddingLeft: '10px', marginTop: '3px' }}>
+                              {sitesList.map(site => {
+                                const siteCount = desigWorkers.filter(w => w.work_site === site).length;
+                                if (siteCount === 0) return null; // Agar is site par worker nahi hai toh line nahi dikhegi
+
+                                return (
+                                  <div key={site} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#475569', margin: '2px 0' }}>
+                                    <span>• {site}:</span>
+                                    <strong>{siteCount}</strong>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
             </div>
 
             {/* Modal / Popup for Specific Department Workers */}
