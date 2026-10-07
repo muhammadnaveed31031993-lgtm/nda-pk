@@ -1025,17 +1025,27 @@ export default function App() {
                     <p style={{ margin: '5px 0', color: '#0f172a', fontSize: '15px' }}>Total Workers: <strong>{totalCount}</strong></p>
                     <hr style={{ border: '0', borderTop: '1px solid #e2e8f0', margin: '12px 0' }} />
                     
-                    {sitesList.map(site => {
-                      const siteCount = deptWorkers.filter(w => w.work_site === site).length;
+                    {Array.from(new Set(deptWorkers.map(w => w.designation || 'General'))).map(desig => {
+                      const desigWorkers = deptWorkers.filter(w => (w.designation || 'General') === desig);
                       return (
-                        <p key={site} style={{ margin: '4px 0', fontSize: '13px', color: '#475569' }}>
-                          {site}: <strong>{siteCount}</strong>
-                        </p>
+                        <div key={desig} style={{ marginTop: '8px', borderTop: '1px dashed #cbd5e1', paddingTop: '4px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold', color: '#1e293b' }}>
+                            <span>🛠️ {desig}:</span>
+                            <span>{desigWorkers.length}</span>
+                          </div>
+                          {sitesList.map(site => {
+                            const sc = desigWorkers.filter(w => w.work_site === site).length;
+                            if (sc === 0) return null;
+                            return (
+                              <div key={site} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', paddingLeft: '8px', color: '#475569', margin: '2px 0' }}>
+                                <span>• {site}:</span>
+                                <strong>{sc}</strong>
+                              </div>
+                            );
+                          })}
+                        </div>
                       );
                     })}
-                  </div>
-                );
-              })}
             </div>
 
             {/* Modal / Popup for Specific Department Workers */}
