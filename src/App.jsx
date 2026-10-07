@@ -1040,17 +1040,25 @@ export default function App() {
                               <div key={site} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', paddingLeft: '8px', color: '#475569', margin: '2px 0' }}>
                                 <span>• {site}:</span>
                                 <strong>{sc}</strong>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+)}
 
-            {/* Modal / Popup for Specific Department Workers */}
-            {modalDepartment && (
-              <div style={{
+{/* Modal / Popup for Specific Department Workers */}
+{modalDepartment && (
+  <div style={{
                 position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
                 background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
               }}>
