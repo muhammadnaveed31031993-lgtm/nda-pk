@@ -978,99 +978,100 @@ export default function App() {
         </div>
 
        {/* TAB 1: DASHBOARD */}
-        {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
-          <div>
-           
-            {/* Stats Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
-              <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #2563eb' }}>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>Filtered Workers</span>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{filteredWorkers.length}</div>
-              </div>
-              <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #16a34a' }}>
-                <span style={{ color: '#64748b', fontSize: '13px' }}>Present on {selectedTimesheetDate}</span>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#16a34a', marginTop: '4px' }}>{presentCountForDate}</div>
-              </div>
-              {(userRole.is_admin || userRole.can_view_payroll) && (
-                <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #0891b2' }}>
-                  <span style={{ color: '#64748b', fontSize: '13px' }}>Total Payroll</span>
-                  <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{Math.round(grandTotalPayroll).toLocaleString()} {selectedCurrency}</div>
-                </div>
-              )}
-            </div>
-            {/* Department & Location Wise Boxes Grid */}
-            <h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#1e293b' }}>Departments & Site Locations Wise Worker Count</h3>
-            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>Kisi bhi department ke box par click karein taake sirf usi department ke workers show hon.</p>
+{activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
+  <div>
+    
+    {/* Stats Grid */}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+      <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #2563eb' }}>
+        <span style={{ color: '#64748b', fontSize: '13px' }}>Filtered Workers</span>
+        <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{filteredWorkers.length}</div>
+      </div>
+      <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #16a34a' }}>
+        <span style={{ color: '#64748b', fontSize: '13px' }}>Present on {selectedTimesheetDate}</span>
+        <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#16a34a', marginTop: '4px' }}>{presentCountForDate}</div>
+      </div>
+      {(userRole.is_admin || userRole.can_view_payroll) && (
+        <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #0891b2' }}>
+          <span style={{ color: '#64748b', fontSize: '13px' }}>Total Payroll</span>
+          <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{Math.round(grandTotalPayroll).toLocaleString()} {selectedCurrency}</div>
+        </div>
+      )}
+    </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '20px' }}>
-              {departmentsList.map(dept => {
-                const deptWorkers = workers.filter(w => w.department === dept);
-                const totalCount = deptWorkers.length;
+    {/* Department & Location Wise Boxes Grid */}
+    <h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#1e293b' }}>Departments & Site Locations Wise Worker Count</h3>
+    <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>Kisi bhi department ke box par click karein taake sirf usi department ke workers show hon.</p>
 
-                return (
-                  <div 
-                    key={dept} 
-                    onClick={() => setModalDepartment(dept)}
-                    style={{ 
-                      background: '#ffffff', 
-                      border: '1px solid #cbd5e1', 
-                      padding: '20px', 
-                      borderRadius: '8px', 
-                      cursor: 'pointer',
-                      boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-                      transition: 'transform 0.2s'
-                    }}
-                  >
-                    <h3 style={{ margin: '0 0 10px 0', color: '#1e293b' }}>{dept}</h3>
-                    <p style={{ margin: '5px 0', color: '#0f172a', fontSize: '15px' }}>Total Workers: <strong>{totalCount}</strong></p>
-                    <hr style={{ border: '0', borderTop: '1px solid #e2e8f0', margin: '12px 0' }} />
-                    
-                    {Array.from(new Set(deptWorkers.map(w => w.designation || 'General'))).map(desig => {
-                      const desigWorkers = deptWorkers.filter(w => (w.designation || 'General') === desig);
-                      return (
-                        <div key={desig} style={{ marginTop: '8px', borderTop: '1px dashed #cbd5e1', paddingTop: '4px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold', color: '#1e293b' }}>
-                            <span>🛠️ {desig}:</span>
-                            <span>{desigWorkers.length}</span>
-                          </div>
-                          {sitesList.map(site => {
-                            const sc = desigWorkers.filter(w => w.work_site === site).length;
-                            if (sc === 0) return null;
-                            return (
-                              <div key={site} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', paddingLeft: '8px', color: '#475569', margin: '2px 0' }}>
-                              <span>• {site}:</span>
-                              <strong>{sc}</strong>
-                            </div>
-                          );
-                        })}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '20px' }}>
+      {departmentsList.map(dept => {
+        const deptWorkers = workers.filter(w => w.department === dept);
+        const totalCount = deptWorkers.length;
+
+        return (
+          <div 
+            key={dept} 
+            onClick={() => setModalDepartment(dept)}
+            style={{ 
+              background: '#ffffff', 
+              border: '1px solid #cbd5e1', 
+              padding: '20px', 
+              borderRadius: '8px', 
+              cursor: 'pointer',
+              boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+              transition: 'transform 0.2s'
+            }}
+          >
+            <h3 style={{ margin: '0 0 10px 0', color: '#1e293b' }}>{dept}</h3>
+            <p style={{ margin: '5px 0', color: '#0f172a', fontSize: '15px' }}>Total Workers: <strong>{totalCount}</strong></p>
+            <hr style={{ border: '0', borderTop: '1px solid #e2e8f0', margin: '12px 0' }} />
+            
+            {Array.from(new Set(deptWorkers.map(w => w.designation || 'General'))).map(desig => {
+              const desigWorkers = deptWorkers.filter(w => (w.designation || 'General') === desig);
+              return (
+                <div key={desig} style={{ marginTop: '8px', borderTop: '1px dashed #cbd5e1', paddingTop: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold', color: '#1e293b' }}>
+                    <span>🛠️ {desig}:</span>
+                    <span>{desigWorkers.length}</span>
+                  </div>
+                  {sitesList.map(site => {
+                    const sc = desigWorkers.filter(w => w.work_site === site).length;
+                    if (sc === 0) return null;
+                    return (
+                      <div key={site} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', paddingLeft: '8px', color: '#475569', margin: '2px 0' }}>
+                        <span>• {site}:</span>
+                        <strong>{sc}</strong>
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    )}
-
-    {/* Modal / Popup for Specific Department Workers */}
-    {modalDepartment && (
-      <div style={{
-        position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-        background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
-      }}>
-        <div style={{ background: '#fff', padding: '25px', borderRadius: '8px', width: '90%', maxWidth: '750px', maxHeight: '80vh', overflowY: 'auto' }}>
-          
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <h2 style={{ margin: 0, color: '#1e293b' }}>{modalDepartment} - Workers Detail</h2>
-            <button 
-              onClick={() => setModalDepartment(null)} 
-              style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-            >
-              Close X
-            </button>
+              );
+            })}
           </div>
+        );
+      })}
+    </div>
+
+  </div>
+)}
+
+{/* Modal / Popup for Specific Department Workers */}
+{modalDepartment && (
+  <div style={{
+    position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+    background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
+  }}>
+    <div style={{ background: '#fff', padding: '25px', borderRadius: '8px', width: '90%', maxWidth: '750px', maxHeight: '80vh', overflowY: 'auto' }}>
+      
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+        <h2 style={{ margin: 0, color: '#1e293b' }}>{modalDepartment} - Workers Detail</h2>
+        <button 
+          onClick={() => setModalDepartment(null)} 
+          style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+        >
+          Close X
+        </button>
+      </div>
 
                   {/* Location Filter Tabs inside Modal */}
                   <div style={{ marginBottom: '15px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
