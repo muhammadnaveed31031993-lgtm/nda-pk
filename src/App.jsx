@@ -1117,7 +1117,6 @@ export default function App() {
 
           </div>
         )}
-        </div>
            
             {/* Print Signature Footer */}
             <div className="print-signature" style={{ display: 'none', marginTop: '50px', textAlign: 'right', paddingRight: '30px' }}>
