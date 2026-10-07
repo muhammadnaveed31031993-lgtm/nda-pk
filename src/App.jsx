@@ -977,10 +977,10 @@ export default function App() {
           </div>
         </div>
 
-      {/* TAB 1: DASHBOARD */}
+       {/* TAB 1: DASHBOARD */}
         {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
           <div>
-            
+           
             {/* Stats Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
               <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #2563eb' }}>
@@ -998,7 +998,6 @@ export default function App() {
                 </div>
               )}
             </div>
-
             {/* Department & Location Wise Boxes Grid */}
             <h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#1e293b' }}>Departments & Site Locations Wise Worker Count</h3>
             <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>Kisi bhi department ke box par click karein taake sirf usi department ke workers show hon.</p>
@@ -1007,7 +1006,6 @@ export default function App() {
               {departmentsList.map(dept => {
                 const deptWorkers = workers.filter(w => w.department === dept);
                 const totalCount = deptWorkers.length;
-                const designations = Array.from(new Set(deptWorkers.map(w => w.designation || 'General')));
 
                 return (
                   <div 
@@ -1027,43 +1025,19 @@ export default function App() {
                     <p style={{ margin: '5px 0', color: '#0f172a', fontSize: '15px' }}>Total Workers: <strong>{totalCount}</strong></p>
                     <hr style={{ border: '0', borderTop: '1px solid #e2e8f0', margin: '12px 0' }} />
                     
-                    {designations.length === 0 ? (
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>No workers</div>
-                    ) : (
-                      designations.map(desig => {
-                        const desigWorkers = deptWorkers.filter(w => (w.designation || 'General') === desig);
-                        
-                        return (
-                          <div key={desig} style={{ marginTop: '8px', borderTop: '1px dashed #cbd5e1', paddingTop: '6px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold', color: '#1e293b' }}>
-                              <span>🛠️ {desig}:</span>
-                              <span>{desigWorkers.length}</span>
-                            </div>
-                            
-                            <div style={{ paddingLeft: '8px', marginTop: '2px' }}>
-                              {sitesList.map(site => {
-                                const siteCount = desigWorkers.filter(w => w.work_site === site).length;
-                                if (siteCount === 0) return null;
-                                return (
-                                  <div key={site} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#475569' }}>
-                                    <span>• {site}:</span>
-                                    <strong>{siteCount}</strong>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-
+                    {sitesList.map(site => {
+                      const siteCount = deptWorkers.filter(w => w.work_site === site).length;
+                      return (
+                        <p key={site} style={{ margin: '4px 0', fontSize: '13px', color: '#475569' }}>
+                          {site}: <strong>{siteCount}</strong>
+                        </p>
+                      );
+                    })}
                   </div>
                 );
               })}
             </div>
 
-          </div>
-        )}            </div>
             {/* Modal / Popup for Specific Department Workers */}
             {modalDepartment && (
               <div style={{
