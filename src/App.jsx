@@ -1054,23 +1054,23 @@ export default function App() {
       </div>
     )}
 
-{/* Modal / Popup for Specific Department Workers */}
-{modalDepartment && (
-  <div style={{
-    position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-    background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
-  }}>
-    <div style={{ background: '#fff', padding: '25px', borderRadius: '8px', width: '90%', maxWidth: '750px', maxHeight: '80vh', overflowY: 'auto' }}>
-      
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-        <h2 style={{ margin: 0, color: '#1e293b' }}>{modalDepartment} - Workers Detail</h2>
-        <button 
-          onClick={() => setModalDepartment(null)} 
-          style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-        >
-          Close X
-        </button>
-      </div>
+    {/* Modal / Popup for Specific Department Workers */}
+    {modalDepartment && (
+      <div style={{
+        position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+        background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
+      }}>
+        <div style={{ background: '#fff', padding: '25px', borderRadius: '8px', width: '90%', maxWidth: '750px', maxHeight: '80vh', overflowY: 'auto' }}>
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h2 style={{ margin: 0, color: '#1e293b' }}>{modalDepartment} - Workers Detail</h2>
+            <button 
+              onClick={() => setModalDepartment(null)} 
+              style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+            >
+              Close X
+            </button>
+          </div>
 
                   {/* Location Filter Tabs inside Modal */}
                   <div style={{ marginBottom: '15px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
