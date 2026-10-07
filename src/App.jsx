@@ -1025,17 +1025,37 @@ export default function App() {
                     <p style={{ margin: '5px 0', color: '#0f172a', fontSize: '15px' }}>Total Workers: <strong>{totalCount}</strong></p>
                     <hr style={{ border: '0', borderTop: '1px solid #e2e8f0', margin: '12px 0' }} />
                     
-                    {sitesList.map(site => {
-                      const siteCount = deptWorkers.filter(w => w.work_site === site).length;
-                      return (
-                        <p key={site} style={{ margin: '4px 0', fontSize: '13px', color: '#475569' }}>
-                          {site}: <strong>{siteCount}</strong>
-                        </p>
-                      );
-                    })}
-                  </div>
-                );
-              })}
+                    {/* Designation & Site-wise Breakdown */}
+                    {(() => {
+                      const designations = Array.from(new Set(deptWorkers.map(w => w.designation || 'General')));
+                      if (designations.length === 0) return null;
+
+                      return designations.map(desig => {
+                        const desigWorkers = deptWorkers.filter(w => (w.designation || 'General') === desig);
+                        
+                        return (
+                          <div key={desig} style={{ marginTop: '8px', borderTop: '1px dashed #cbd5e1', paddingTop: '6px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold', color: '#1e293b' }}>
+                              <span>🛠️ {desig}:</span>
+                              <span>{desigWorkers.length}</span>
+                            </div>
+                            
+                            <div style={{ paddingLeft: '8px', marginTop: '2px' }}>
+                              {sitesList.map(site => {
+                                const siteCount = desigWorkers.filter(w => w.work_site === site).length;
+                                if (siteCount === 0) return null;
+                                return (
+                                  <div key={site} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#475569' }}>
+                                    <span>• {site}:</span>
+                                    <strong>{siteCount}</strong>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
             </div>
 
             {/* Modal / Popup for Specific Department Workers */}
