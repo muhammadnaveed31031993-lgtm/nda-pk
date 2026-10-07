@@ -375,7 +375,7 @@ export default function App() {
       });
 
       const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-      if (!apiKey) throw new Error("OpenAI API Key nahi mili!");
+      if (!apiKey) throw new Error("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");
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
