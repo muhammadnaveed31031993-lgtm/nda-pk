@@ -1140,16 +1140,16 @@ export default function App() {
                               <td style={{ border: '1px solid #cbd5e1', padding: '9px', fontSize: '13px' }}>{worker.designation || 'N/A'}</td>
                               <td style={{ border: '1px solid #cbd5e1', padding: '9px', fontSize: '13px' }}>{worker.work_site || 'N/A'}</td>
                             </tr>
-                          ))}
-                      </tbody>
-                    </table>
-                  </div>
-
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
+
               </div>
-            )}
-           
-            {/* Print Signature Footer */}
+            </div>
+          )}
+
+          {/* Print Signature Footer */}
             <div className="print-signature" style={{ display: 'none', marginTop: '50px', textAlign: 'right', paddingRight: '30px' }}>
               <div style={{ borderTop: '1px solid #000', display: 'inline-block', minWidth: '200px', paddingTop: '5px', fontWeight: 'bold' }}>
                 Prepared by: M. Naveed
