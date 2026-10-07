@@ -977,7 +977,7 @@ export default function App() {
           </div>
         </div>
 
-       {/* TAB 1: DASHBOARD */}
+      {/* TAB 1: DASHBOARD */}
         {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
           <div>
             
@@ -1117,8 +1117,7 @@ export default function App() {
 
           </div>
         )}
-           
-            {/* Print Signature Footer */}
+        {/* Print Signature Footer */}
             <div className="print-signature" style={{ display: 'none', marginTop: '50px', textAlign: 'right', paddingRight: '30px' }}>
               <div style={{ borderTop: '1px solid #000', display: 'inline-block', minWidth: '200px', paddingTop: '5px', fontWeight: 'bold' }}>
                 Prepared by: M. Naveed
