@@ -1457,16 +1457,6 @@ export default function App() {
             </div>
             <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '15px' }}>Aap yahan se koi bhi pichli date select kar ke kisi bhi worker ka attendance ya overtime manually change ya update kar sakte hain. Purana record automatically update ho jayega.</p>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
-                    <th style={{ padding: '10px' }}>Worker & Designation</th>
-                    <th style={{ padding: '10px' }}>Working Site for {selectedTimesheetDate}</th>
-                    <th style={{ padding: '10px' }}>Overtime (Hrs)</th>
-                    <th style={{ padding: '10px' }}>Attendance Status ({selectedTimesheetDate})</th>
-                  </tr>
-                </thead>
-                <tbody>
                   <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff' }}>
   <thead>
     <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1', textAlign: 'left' }}>
@@ -1553,6 +1543,10 @@ export default function App() {
   </tbody>
 </table>
         
+             </div>
+           </div>
+         )}
+
         {/* TAB 5: PAYROLL */}
         {activeTab === 'payroll' && (userRole.is_admin || userRole.can_view_payroll) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
