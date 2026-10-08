@@ -978,7 +978,7 @@ export default function App() {
         </div>
 {/* TAB 1: DASHBOARD */}
 {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
-  <div>
+  <div style={{ width: '100%' }}>
     
     {/* Stats Grid */}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
@@ -1029,7 +1029,7 @@ export default function App() {
 
             <hr style={{ border: '0', borderTop: '1px solid #e2e8f0', margin: '10px 0' }} />
 
-            {designationsInDept.map(desig => {
+ISSUE_FIX: {designationsInDept.map(desig => {
               const desigWorkers = deptWorkers.filter(w => (w.designation || 'Worker') === desig);
               
               return (
@@ -1061,7 +1061,6 @@ export default function App() {
     </div>
 
   </div>
-)}
 )}
 {/* Modal / Popup for Specific Department Workers */}
 {modalDepartment && (
