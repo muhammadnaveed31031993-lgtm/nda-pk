@@ -976,9 +976,10 @@ export default function App() {
             <button onClick={() => window.print()} style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>Print Page</button>
           </div>
         </div>
+        
 {/* TAB 1: DASHBOARD */}
 {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
-  <div style={{ width: '100%' }}>
+  <>
     
     {/* Stats Grid */}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
@@ -1029,7 +1030,7 @@ export default function App() {
 
             <hr style={{ border: '0', borderTop: '1px solid #e2e8f0', margin: '10px 0' }} />
 
-ISSUE_FIX: {designationsInDept.map(desig => {
+            {designationsInDept.map(desig => {
               const desigWorkers = deptWorkers.filter(w => (w.designation || 'Worker') === desig);
               
               return (
@@ -1060,8 +1061,9 @@ ISSUE_FIX: {designationsInDept.map(desig => {
       })}
     </div>
 
-  </div>
+  </>
 )}
+        
 {/* Modal / Popup for Specific Department Workers */}
 {modalDepartment && (
   <div style={{
