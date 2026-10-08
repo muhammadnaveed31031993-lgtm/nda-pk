@@ -999,76 +999,79 @@ export default function App() {
       )}
     </div>
 
-    {/* Department & Location Wise Boxes Grid */}
-<h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#1e293b' }}>Departments, Designations & Site Locations Wise Breakdown</h3>
-<p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
-  Har department ke andar designations (jaise Carpenter, Helper) aur har site (jaise Sharjah Mamzar, Ajman Aaliya) ke mutabiq workers ki ginti alag alag show ho rahi hai. Kisi bhi department ke box par click kar ke aap complete list bhi dekh sakte hain.
-</p>
+    {/* Department, Designation & Location Wise Boxes Grid */}
+    <h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#1e293b' }}>Departments, Designations & Site Locations Wise Breakdown</h3>
+    <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
+      Har department ke andar designations (jaise Carpenter, Helper) aur har site (jaise Sharjah Mamzar, Ajman Aaliya) ke mutabiq workers ki ginti alag alag show ho rahi hai. Kisi bhi department ke box par click kar ke aap complete list bhi dekh sakte hain.
+    </p>
 
-<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
-  {departmentsList.map(dept => {
-    const deptWorkers = workers.filter(w => w.department === dept);
-    const totalCount = deptWorkers.length;
-    const designationsInDept = Array.from(new Set(deptWorkers.map(w => w.designation || 'Worker')));
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
+      {departmentsList.map(dept => {
+        const deptWorkers = workers.filter(w => w.department === dept);
+        const totalCount = deptWorkers.length;
+        const designationsInDept = Array.from(new Set(deptWorkers.map(w => w.designation || 'Worker')));
 
-    return (
-      <div 
-        key={dept} 
-        style={{ 
-          background: '#ffffff', 
-          border: '1px solid #cbd5e1', 
-          padding: '20px', 
-          borderRadius: '8px', 
-          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
-        }}
-      >
-        {/* Clickable Department Header to open modal */}
-        <div onClick={() => setModalDepartment(dept)} style={{ cursor: 'pointer' }}>
-          <h3 style={{ margin: '0 0 5px 0', color: '#1e293b', borderBottom: '2px solid #2563eb', paddingBottom: '6px' }}>
-            🏢 {dept}
-          </h3>
-          <p style={{ margin: '6px 0 12px 0', color: '#0f172a', fontSize: '14px' }}>
-            Total Workers: <strong>{totalCount}</strong>
-          </p>
-        </div>
+        return (
+          <div 
+            key={dept} 
+            style={{ 
+              background: '#ffffff', 
+              border: '1px solid #cbd5e1', 
+              padding: '20px', 
+              borderRadius: '8px', 
+              boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
+            }}
+          >
+            {/* Clickable Department Header to open modal */}
+            <div onClick={() => setModalDepartment(dept)} style={{ cursor: 'pointer' }}>
+              <h3 style={{ margin: '0 0 5px 0', color: '#1e293b', borderBottom: '2px solid #2563eb', paddingBottom: '6px' }}>
+                🏢 {dept}
+              </h3>
+              <p style={{ margin: '6px 0 12px 0', color: '#0f172a', fontSize: '14px' }}>
+                Total Workers: <strong>{totalCount}</strong>
+              </p>
+            </div>
 
-        <hr style={{ border: '0', borderTop: '1px solid #e2e8f0', margin: '10px 0' }} />
+            <hr style={{ border: '0', borderTop: '1px solid #e2e8f0', margin: '10px 0' }} />
 
-        {designationsInDept.length === 0 ? (
-          <div style={{ fontSize: '12px', color: '#94a3b8' }}>No workers assigned.</div>
-        ) : (
-          designationsInDept.map(desig => {
-            const desigWorkers = deptWorkers.filter(w => (w.designation || 'Worker') === desig);
-            
-            return (
-              <div key={desig} style={{ marginTop: '10px', backgroundColor: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold', color: '#1e293b', marginBottom: '6px' }}>
-                  <span>🛠️ {desig}:</span>
-                  <span style={{ backgroundColor: '#2563eb', color: '#fff', padding: '1px 6px', borderRadius: '4px', fontSize: '11px' }}>
-                    {desigWorkers.length} Total
-                  </span>
-                </div>
-
-                {/* Site-wise breakdown (Mamzar, Ajman, etc. alag alag) */}
-                {sitesList.map(site => {
-                  const siteWorkersCount = desigWorkers.filter(w => (w.work_site || sitesList[0]) === site).length;
-                  if (siteWorkersCount === 0) return null;
-
-                  return (
-                    <div key={site} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', paddingLeft: '8px', color: '#334155', margin: '3px 0', borderLeft: '3px solid #0ea5e9' }}>
-                      <span>📍 {site}:</span>
-                      <strong style={{ color: '#0284c7', fontSize: '13px' }}>{siteWorkersCount} Workers</strong>
+            {designationsInDept.length === 0 ? (
+              <div style={{ fontSize: '12px', color: '#94a3b8' }}>No workers assigned.</div>
+            ) : (
+              designationsInDept.map(desig => {
+                const desigWorkers = deptWorkers.filter(w => (w.designation || 'Worker') === desig);
+                
+                return (
+                  <div key={desig} style={{ marginTop: '10px', backgroundColor: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold', color: '#1e293b', marginBottom: '6px' }}>
+                      <span>🛠️ {desig}:</span>
+                      <span style={{ backgroundColor: '#2563eb', color: '#fff', padding: '1px 6px', borderRadius: '4px', fontSize: '11px' }}>
+                        {desigWorkers.length} Total
+                      </span>
                     </div>
-                  );
-                })}
-              </div>
-            );
-          })
-        )}
-      </div>
-    );
-  })}
-</div>
+
+                    {/* Site-wise breakdown (Mamzar, Ajman, etc. alag alag) */}
+                    {sitesList.map(site => {
+                      const siteWorkersCount = desigWorkers.filter(w => (w.work_site || sitesList[0]) === site).length;
+                      if (siteWorkersCount === 0) return null;
+
+                      return (
+                        <div key={site} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', paddingLeft: '8px', color: '#334155', margin: '3px 0', borderLeft: '3px solid #0ea5e9' }}>
+                          <span>📍 {site}:</span>
+                          <strong style={{ color: '#0284c7', fontSize: '13px' }}>{siteWorkersCount} Workers</strong>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        );
+      })}
+    </div>
+
+  </div>
+)}
 {/* Modal / Popup for Specific Department Workers */}
 {modalDepartment && (
   <div style={{
