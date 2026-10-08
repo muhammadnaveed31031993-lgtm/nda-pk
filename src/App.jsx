@@ -1069,7 +1069,6 @@ export default function App() {
 
   </div>
 )}
-
 {/* Modal / Popup for Specific Department Workers */}
 {modalDepartment && (
   <div style={{
