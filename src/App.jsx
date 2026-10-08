@@ -977,7 +977,7 @@ export default function App() {
           </div>
         </div>
 
-       {/* TAB 1: DASHBOARD */}
+{/* TAB 1: DASHBOARD */}
 {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
   <div>
     
@@ -1014,23 +1014,22 @@ export default function App() {
         return (
           <div 
             key={dept} 
+            onClick={() => setModalDepartment(dept)}
             style={{ 
               background: '#ffffff', 
               border: '1px solid #cbd5e1', 
               padding: '20px', 
               borderRadius: '8px', 
+              cursor: 'pointer',
               boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
             }}
           >
-            {/* Clickable Department Header to open modal */}
-            <div onClick={() => setModalDepartment(dept)} style={{ cursor: 'pointer' }}>
-              <h3 style={{ margin: '0 0 5px 0', color: '#1e293b', borderBottom: '2px solid #2563eb', paddingBottom: '6px' }}>
-                🏢 {dept}
-              </h3>
-              <p style={{ margin: '6px 0 12px 0', color: '#0f172a', fontSize: '14px' }}>
-                Total Workers: <strong>{totalCount}</strong>
-              </p>
-            </div>
+            <h3 style={{ margin: '0 0 5px 0', color: '#1e293b', borderBottom: '2px solid #2563eb', paddingBottom: '6px' }}>
+              🏢 {dept}
+            </h3>
+            <p style={{ margin: '6px 0 12px 0', color: '#0f172a', fontSize: '14px' }}>
+              Total Workers: <strong>{totalCount}</strong>
+            </p>
 
             <hr style={{ border: '0', borderTop: '1px solid #e2e8f0', margin: '10px 0' }} />
 
@@ -1072,6 +1071,7 @@ export default function App() {
 
   </div>
 )}
+
 {/* Modal / Popup for Specific Department Workers */}
 {modalDepartment && (
   <div style={{
@@ -1089,6 +1089,7 @@ export default function App() {
           Close X
         </button>
       </div>
+      
       {/* Modal Workers List */}
       <div style={{ marginTop: '10px' }}>
         {workers
@@ -1107,7 +1108,6 @@ export default function App() {
     </div>
   </div>
 )}
-        
                   {/* Location Filter Tabs inside Modal */}
                   <div style={{ marginBottom: '15px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button 
