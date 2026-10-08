@@ -976,7 +976,6 @@ export default function App() {
             <button onClick={() => window.print()} style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>Print Page</button>
           </div>
         </div>
-
 {/* TAB 1: DASHBOARD */}
 {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
   <div>
@@ -999,7 +998,7 @@ export default function App() {
       )}
     </div>
 
-  {/* Department, Designation & Location Wise Boxes Grid */}
+    {/* Department, Designation & Location Wise Boxes Grid */}
     <h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#1e293b' }}>Departments, Designations & Site Locations Wise Breakdown</h3>
     <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
       Har department ke andar designations (jaise Carpenter, Helper) aur har site (jaise Sharjah Mamzar, Ajman Aaliya) ke mutabiq workers ki ginti alag alag show ho rahi hai.
@@ -1067,6 +1066,9 @@ export default function App() {
         );
       })}
     </div>
+
+  </div>
+)}
 
 {/* Modal / Popup for Specific Department Workers */}
 {modalDepartment && (
