@@ -1409,9 +1409,32 @@ export default function App() {
               </div>
 
               <div>
-                <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>ID Card</label>
-                <input type="file" onChange={(e) => alert('ID Card selected!')} style={{ fontSize: '11px' }} />
-              </div>
+  <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>ID Card</label>
+  <input 
+    type="file" 
+    onChange={async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `idcard_${Date.now()}.${fileExt}`;
+        
+        const { error: uploadError } = await supabase.storage.from('worker-documents').upload(fileName, file);
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage.from('worker-documents').getPublicUrl(fileName);
+        const publicUrl = data.publicUrl;
+
+        setIdCardFileUrl(publicUrl);
+        alert('ID Card uploaded successfully!');
+      } catch (err) {
+        alert('Upload Error: ' + err.message);
+      }
+    }} 
+    style={{ fontSize: '11px' }} 
+  />
+  {idCardFileUrl && <div style={{ fontSize: '10px', color: '#16a34a', marginTop: '2px' }}>✔ Saved & Ready</div>}
+</div>
 
               <div>
                 <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Visa Copy</label>
