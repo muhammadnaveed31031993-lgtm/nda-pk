@@ -999,10 +999,10 @@ export default function App() {
       )}
     </div>
 
-    {/* Department, Designation & Location Wise Boxes Grid */}
+  {/* Department, Designation & Location Wise Boxes Grid */}
     <h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#1e293b' }}>Departments, Designations & Site Locations Wise Breakdown</h3>
     <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
-      Har department ke andar designations (jaise Carpenter, Helper) aur har site (jaise Sharjah Mamzar, Ajman Aaliya) ke mutabiq workers ki ginti alag alag show ho rahi hai. Kisi bhi department ke box par click kar ke aap complete list bhi dekh sakte hain.
+      Har department ke andar designations (jaise Carpenter, Helper) aur har site (jaise Sharjah Mamzar, Ajman Aaliya) ke mutabiq workers ki ginti alag alag show ho rahi hai.
     </p>
 
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
@@ -1048,7 +1048,6 @@ export default function App() {
                       </span>
                     </div>
 
-                    {/* Site-wise breakdown (Mamzar, Ajman, etc. alag alag) */}
                     {sitesList.map(site => {
                       const siteWorkersCount = desigWorkers.filter(w => (w.work_site || sitesList[0]) === site).length;
                       if (siteWorkersCount === 0) return null;
@@ -1068,9 +1067,6 @@ export default function App() {
         );
       })}
     </div>
-
-  </div>
-)}
 
 {/* Modal / Popup for Specific Department Workers */}
 {modalDepartment && (
