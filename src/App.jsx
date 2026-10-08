@@ -1238,9 +1238,7 @@ export default function App() {
     }
   }
 `}</style>
-          </div>
-        )}
-
+   
        {/* TAB 2: BULK & OCR */}
         {activeTab === 'bulk' && (userRole.is_admin || userRole.can_use_bulk) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
