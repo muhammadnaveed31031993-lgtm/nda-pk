@@ -2188,6 +2188,7 @@ export default function App() {
                 );
               }
 
+    
               return workerAttendance.map((att, idx) => (
                 <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                   <td style={{ padding: '8px 10px', fontWeight: '500' }}>{att.date}</td>
