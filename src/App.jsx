@@ -1375,7 +1375,7 @@ export default function App() {
               </select>
             </div>
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Designation (Steel Fixer, Carpenter etc)</label>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Designation</label>
               <input type="text" value={designation} onChange={e => setDesignation(e.target.value)} placeholder="e.g. Steel Fixer" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
             </div>
             <div>
@@ -1385,37 +1385,40 @@ export default function App() {
               </select>
             </div>
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Monthly Salary ({selectedCurrency}) *</label>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Monthly Salary *</label>
               <input type="number" value={monthlySalary} onChange={e => setMonthlySalary(e.target.value)} placeholder="3000" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
             </div>
           </div>
 
-          {/* File Upload for Worker Document (Passport / ID) */}
-          <div style={{ marginTop: '15px', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px', color: '#1e293b' }}>
-              📁 Upload Document (Passport / ID Copy)
-            </label>
-            <input 
-              type="file" 
-              onChange={async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                try {
-                  const fileExt = file.name.split('.').pop();
-                  const fileName = `${Date.now()}.${fileExt}`;
-                  const { error } = await supabase.storage.from('worker-documents').upload(fileName, file);
-                  if (error) throw error;
-                  const { data: { publicUrl } } = supabase.storage.from('worker-documents').getPublicUrl(fileName);
-                  
-                  // Agar aapke paas document URL save karne ke liye state hai toh yahan set kar sakte hain
-                  alert('Document uploaded successfully!');
-                  console.log('Doc URL:', publicUrl);
-                } catch (err) {
-                  alert('Upload failed: ' + err.message);
-                }
-              }} 
-              style={{ fontSize: '12px' }} 
-            />
+          {/* DOCUMENTS UPLOAD SECTION */}
+          <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+            <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#1e293b' }}>📁 Worker Documents Upload</h4>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+              
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Passport Copy</label>
+                <input type="file" onChange={async (e) => {
+                  const file = e.target.files[0]; if (!file) return;
+                  const { error } = await supabase.storage.from('worker-documents').upload(`pass_${Date.now()}.${file.name.split('.').pop()}`, file);
+                  if (!error) {
+                    const { data } = supabase.storage.from('worker-documents').getPublicUrl(`pass_${Date.now()}.${file.name.split('.').pop()}`);
+                    // Note: Supabase getPublicUrl direct path se bhi mil jata hai
+                  }
+                  alert('Passport selected!');
+                }} style={{ fontSize: '11px' }} />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>ID Card</label>
+                <input type="file" onChange={(e) => alert('ID Card selected!')} style={{ fontSize: '11px' }} />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Visa Copy</label>
+                <input type="file" onChange={(e) => alert('Visa selected!')} style={{ fontSize: '11px' }} />
+              </div>
+
+            </div>
           </div>
 
           <button type="submit" style={{ marginTop: '20px', padding: '10px 20px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
@@ -1425,6 +1428,7 @@ export default function App() {
       </div>
     )}
 
+    {/* WORKERS DIRECTORY TABLE */}
     <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
       <h3 style={{ margin: '0 0 15px 0' }}>👷 Workers Directory</h3>
       <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
@@ -1433,7 +1437,7 @@ export default function App() {
             <th style={{ padding: '10px' }}>ID & Name</th>
             <th style={{ padding: '10px' }}>Dept / Designation</th>
             <th style={{ padding: '10px' }}>Salary</th>
-            <th style={{ padding: '10px' }}>Documents & Files</th>
+            <th style={{ padding: '10px' }}>Documents View</th>
             <th style={{ padding: '10px' }}>Actions</th>
           </tr>
         </thead>
@@ -1444,9 +1448,11 @@ export default function App() {
               <td style={{ padding: '10px' }}>{w.department} <br/><span style={{fontSize: '11px', color: '#64748b'}}>{w.designation || 'Worker'}</span></td>
               <td style={{ padding: '10px' }}>{w.monthly_salary} {w.currency || selectedCurrency}</td>
               <td style={{ padding: '10px' }}>
-                <span style={{ fontSize: '12px', color: '#0284c7', background: '#e0f2fe', padding: '2px 6px', borderRadius: '4px' }}>
-                  📄 View / Upload Doc
-                </span>
+                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                  {w.passport_file_url ? (
+                    <a href={w.passport_file_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', color: '#0284c7', background: '#e0f2fe', padding: '3px 6px', borderRadius: '4px', textDecoration: 'none' }}>Passport</a>
+                  ) : <span style={{ fontSize: '11px', color: '#94a3b8' }}>No Passport</span>}
+                </div>
               </td>
               <td style={{ padding: '10px' }}>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -1465,7 +1471,6 @@ export default function App() {
     </div>
   </div>
 )}
-
         {/* TAB 4: TIMESHEET */}
         {activeTab === 'attendance' && (userRole.is_admin || userRole.can_view_timesheet) && (
           <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
