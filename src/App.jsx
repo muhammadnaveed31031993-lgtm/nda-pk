@@ -1238,15 +1238,6 @@ export default function App() {
     }
   }
 `}</style>
-
-{/* Print Styles */}
-<style>{`
-  @media print {
-    .print-signature {
-      display: block !important;
-    }
-  }
-`}</style>
           </div>
         )}
 
