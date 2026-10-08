@@ -1352,87 +1352,119 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 3: WORKERS DIRECTORY */}
-        {activeTab === 'workers' && (userRole.is_admin || userRole.can_view_workers) && (
-          <div>
-            {(userRole.is_admin || userRole.can_add_workers || userRole.can_edit_workers) && (
-              <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '25px' }}>
-                <h3 style={{ margin: '0 0 15px 0' }}>{editingWorkerId ? `✏️ Edit Worker #${editingWorkerId}` : '➕ Add New Worker'}</h3>
-                <form onSubmit={handleSaveWorker}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
-                    <div>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Worker ID</label>
-                      <input type="number" value={workerIdInput} onChange={e => setWorkerIdInput(e.target.value)} placeholder="e.g. 101" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Full Name *</label>
-                      <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Worker Name" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Department</label>
-                      <select value={department} onChange={e => setDepartment(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                        {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Designation (Steel Fixer, Carpenter etc)</label>
-                      <input type="text" value={designation} onChange={e => setDesignation(e.target.value)} placeholder="e.g. Steel Fixer" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Working Site</label>
-                      <select value={workSite} onChange={e => setWorkSite(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                        {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Monthly Salary ({selectedCurrency}) *</label>
-                      <input type="number" value={monthlySalary} onChange={e => setMonthlySalary(e.target.value)} placeholder="3000" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
-                    </div>
-                  </div>
-                  <button type="submit" style={{ marginTop: '20px', padding: '10px 20px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    {editingWorkerId ? 'Update Worker' : 'Save Worker'}
-                  </button>
-                </form>
-              </div>
-            )}
-
-            <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
-              <h3 style={{ margin: '0 0 15px 0' }}>👷 Workers Directory</h3>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
-                    <th style={{ padding: '10px' }}>ID & Name</th>
-                    <th style={{ padding: '10px' }}>Dept / Designation</th>
-                    <th style={{ padding: '10px' }}>Working Site</th>
-                    <th style={{ padding: '10px' }}>Salary</th>
-                    <th style={{ padding: '10px' }}>Monthly OT Report & Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredWorkers.map(w => (
-                    <tr key={w.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                      <td style={{ padding: '10px', fontWeight: 'bold' }}>#{w.id} - {w.name}</td>
-                      <td style={{ padding: '10px' }}>{w.department} <br/><span style={{fontSize: '11px', color: '#64748b'}}>{w.designation || 'Worker'}</span></td>
-                      <td style={{ padding: '10px' }}><span style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '4px', fontWeight: 'bold' }}>{w.work_site || sitesList[0]}</span></td>
-                      <td style={{ padding: '10px' }}>{w.monthly_salary} {w.currency || selectedCurrency}</td>
-                      <td style={{ padding: '10px' }}>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          
-                          {(userRole.is_admin || userRole.can_edit_workers) && (
-                            <button onClick={() => handleStartEditWorker(w)} style={{ padding: '5px 10px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Edit</button>
-                          )}
-                          {(userRole.is_admin || userRole.can_delete_workers) && (
-                            <button onClick={() => handleDeleteWorker(w.id)} style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Del</button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+       {/* TAB 3: WORKERS DIRECTORY */}
+{activeTab === 'workers' && (userRole.is_admin || userRole.can_view_workers) && (
+  <div>
+    {(userRole.is_admin || userRole.can_add_workers || userRole.can_edit_workers) && (
+      <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '25px' }}>
+        <h3 style={{ margin: '0 0 15px 0' }}>{editingWorkerId ? `✏️ Edit Worker #${editingWorkerId}` : '➕ Add New Worker'}</h3>
+        <form onSubmit={handleSaveWorker}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Worker ID</label>
+              <input type="number" value={workerIdInput} onChange={e => setWorkerIdInput(e.target.value)} placeholder="e.g. 101" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Full Name *</label>
+              <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Worker Name" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Department</label>
+              <select value={department} onChange={e => setDepartment(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Designation (Steel Fixer, Carpenter etc)</label>
+              <input type="text" value={designation} onChange={e => setDesignation(e.target.value)} placeholder="e.g. Steel Fixer" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Working Site</label>
+              <select value={workSite} onChange={e => setWorkSite(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Monthly Salary ({selectedCurrency}) *</label>
+              <input type="number" value={monthlySalary} onChange={e => setMonthlySalary(e.target.value)} placeholder="3000" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
             </div>
           </div>
-        )}
+
+          {/* File Upload for Worker Document (Passport / ID) */}
+          <div style={{ marginTop: '15px', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px', color: '#1e293b' }}>
+              📁 Upload Document (Passport / ID Copy)
+            </label>
+            <input 
+              type="file" 
+              onChange={async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                try {
+                  const fileExt = file.name.split('.').pop();
+                  const fileName = `${Date.now()}.${fileExt}`;
+                  const { error } = await supabase.storage.from('worker-documents').upload(fileName, file);
+                  if (error) throw error;
+                  const { data: { publicUrl } } = supabase.storage.from('worker-documents').getPublicUrl(fileName);
+                  
+                  // Agar aapke paas document URL save karne ke liye state hai toh yahan set kar sakte hain
+                  alert('Document uploaded successfully!');
+                  console.log('Doc URL:', publicUrl);
+                } catch (err) {
+                  alert('Upload failed: ' + err.message);
+                }
+              }} 
+              style={{ fontSize: '12px' }} 
+            />
+          </div>
+
+          <button type="submit" style={{ marginTop: '20px', padding: '10px 20px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
+            {editingWorkerId ? 'Update Worker' : 'Save Worker'}
+          </button>
+        </form>
+      </div>
+    )}
+
+    <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
+      <h3 style={{ margin: '0 0 15px 0' }}>👷 Workers Directory</h3>
+      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+        <thead>
+          <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+            <th style={{ padding: '10px' }}>ID & Name</th>
+            <th style={{ padding: '10px' }}>Dept / Designation</th>
+            <th style={{ padding: '10px' }}>Salary</th>
+            <th style={{ padding: '10px' }}>Documents & Files</th>
+            <th style={{ padding: '10px' }}>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredWorkers.map(w => (
+            <tr key={w.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+              <td style={{ padding: '10px', fontWeight: 'bold' }}>#{w.id} - {w.name}</td>
+              <td style={{ padding: '10px' }}>{w.department} <br/><span style={{fontSize: '11px', color: '#64748b'}}>{w.designation || 'Worker'}</span></td>
+              <td style={{ padding: '10px' }}>{w.monthly_salary} {w.currency || selectedCurrency}</td>
+              <td style={{ padding: '10px' }}>
+                <span style={{ fontSize: '12px', color: '#0284c7', background: '#e0f2fe', padding: '2px 6px', borderRadius: '4px' }}>
+                  📄 View / Upload Doc
+                </span>
+              </td>
+              <td style={{ padding: '10px' }}>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {(userRole.is_admin || userRole.can_edit_workers) && (
+                    <button onClick={() => handleStartEditWorker(w)} style={{ padding: '5px 10px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Edit</button>
+                  )}
+                  {(userRole.is_admin || userRole.can_delete_workers) && (
+                    <button onClick={() => handleDeleteWorker(w.id)} style={{ padding: '5px 10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Del</button>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}
 
         {/* TAB 4: TIMESHEET */}
         {activeTab === 'attendance' && (userRole.is_admin || userRole.can_view_timesheet) && (
