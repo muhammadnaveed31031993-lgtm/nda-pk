@@ -232,10 +232,38 @@ export default function App() {
     setLoading(false);
   }
 
-  async function fetchAttendance() {
-    const { data } = await supabase.from('attendance').select('*').order('date', { ascending: false });
-    setAttendance(data || []);
+async function fetchAttendance() {
+  const { data, error } = await supabase
+    .from('attendance')
+    .select('*')
+    .order('date', { ascending: false });
+
+  if (error) {
+    console.error('Attendance load error:', error.message);
+    alert('Attendance load nahi hui: ' + error.message);
+    return;
   }
+
+  setAttendance(data || []);
+
+  // Dashboard aur Timesheet ke liye date-wise attendance state
+  const dateMap = {};
+
+  (data || []).forEach(record => {
+    if (!dateMap[record.date]) {
+      dateMap[record.date] = {};
+    }
+
+    dateMap[record.date][record.worker_id] = {
+      status: record.status,
+      ot: Number(record.overtime_hours) || 0,
+      site: record.work_site || '',
+      work_site: record.work_site || ''
+    };
+  });
+
+  setAttendanceData(dateMap);
+}
   async function handleUpdateExtension(workerId, newExtensionDays) {
     const { error } = await supabase
       .from('workers')
