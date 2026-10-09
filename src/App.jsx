@@ -1327,6 +1327,27 @@ export default function App() {
                             <td style={{ padding: '8px' }}>{worker.name}</td>
                             <td style={{ padding: '8px', color: '#64748b' }}>{worker.designation || '-'}</td>
                             <td style={{ padding: '8px' }}>
+  <select
+    value={record.site || worker.work_site || sitesList[0] || 'Sharjah Mamzar'}
+    onChange={(e) =>
+      handleSingleAttendanceChange(
+        worker.id,
+        selectedTimesheetDate,
+        record.status,
+        record.ot,
+        e.target.value
+      )
+    }
+    style={{ padding: '6px', borderRadius: '4px', minWidth: '130px' }}
+  >
+    {sitesList.map((site) => (
+      <option key={site} value={site}>
+        {site}
+      </option>
+    ))}
+  </select>
+</td>
+                            <td style={{ padding: '8px' }}>
                               <select 
                                 value={record.status} 
                                 onChange={(e) => handleSingleAttendanceChange(worker.id, selectedTimesheetDate, e.target.value, record.ot)}
