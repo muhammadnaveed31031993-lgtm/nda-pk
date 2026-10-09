@@ -2560,6 +2560,19 @@ if (actualReturnDate) {
                               <span style={{ color: '#94a3b8', fontSize: '12px' }}>Pending Return</span>
                             )}
                           </td>
+                          
+<td style={{ padding: '12px' }}>
+  <span style={{
+    padding: '4px 8px',
+    borderRadius: '4px',
+    background: '#fff7ed',
+    color: '#c2410c',
+    fontWeight: 'bold',
+    fontSize: '12px'
+  }}>
+    {leaveDaysUsed} Days
+  </span>
+</td>
                           <td style={{ padding: '12px' }}>
                             <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '11px', background: leave.status === 'Returned' ? '#dcfce7' : '#fef9c3', color: leave.status === 'Returned' ? '#166534' : '#854d0e' }}>
                               {leave.status}
