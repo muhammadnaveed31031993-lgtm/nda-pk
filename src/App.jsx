@@ -71,6 +71,22 @@ export default function App() {
   const [department, setDepartment] = useState('Plumbing');
   const [workSite, setWorkSite] = useState('Sharjah Mamzar');
   const [designation, setDesignation] = useState('Plumber');
+  const [designationsList, setDesignationsList] = useState([
+  'Carpenter',
+  'Carpenter Helper',
+  'Steel Fixer',
+  'Steel Fixer Helper',
+  'Plumber',
+  'Mason',
+  'Electrician',
+  'Painter',
+  'Helper',
+  'Foreman',
+  'Driver',
+  'Office Boy',
+  'Timekeeper'
+]);
+const [newDesignation, setNewDesignation] = useState('');
   const [monthlySalary, setMonthlySalary] = useState('');
   const [religion, setReligion] = useState('Muslim');
   
