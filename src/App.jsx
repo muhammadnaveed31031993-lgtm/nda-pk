@@ -1752,107 +1752,278 @@ const otherLeaveCount = desigWorkers.filter(
     </div>
   </div>
 )}
-        {/* TAB 4: TIMESHEET */}
-        {activeTab === 'attendance' && (userRole.is_admin || userRole.can_view_timesheet) && (
-          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
-              <h3 style={{ margin: 0 }}>📅 Daily Timesheet & Past Date Correction</h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#2563eb' }}>Select Attendance Date:</label>
-                <input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #2563eb', fontWeight: 'bold' }} />
-              </div>
-            </div>
-            <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '15px' }}>Aap yahan se koi bhi pichli date select kar ke kisi bhi worker ka attendance ya overtime manually change ya update kar sakte hain. Purana record automatically update ho jayega.</p>
-            <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff' }}>
-  <thead>
-    <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1', textAlign: 'left' }}>
-      <th style={{ padding: '10px' }}>Worker Name</th>
-      <th style={{ padding: '10px' }}>Site</th>
-      <th style={{ padding: '10px' }}>Overtime (Hrs)</th>
-      <th style={{ padding: '10px' }}>Status</th>
-      <th style={{ padding: '10px' }}>Action</th>
-    </tr>
-  </thead>
-  <tbody>
-    {filteredWorkers.map(worker => (
-      <tr key={worker.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-        
-        {/* 1. Worker Name & Details */}
-        <td style={{ padding: '10px', fontWeight: 'bold' }}>
-          #{worker.id} - {worker.name} <br/>
-          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'normal' }}>
-            {worker.designation || 'Worker'} ({worker.department})
-          </span>
-        </td>
-        
-        {/* 2. Site Option (Dropdown) */}
-        <td style={{ padding: '10px' }}>
-          <select 
-            value={timesheetSiteInputs[worker.id] || worker.work_site || sitesList[0]} 
-            onChange={e => setTimesheetSiteInputs({...timesheetSiteInputs, [worker.id]: e.target.value})}
-            style={{ padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 'bold', color: '#0369a1' }}
-          >
-            {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
-          </select>
-        </td>
+       
+{/* TAB 4: TIMESHEET */}
+{activeTab === 'attendance' &&
+ (userRole.is_admin || userRole.can_view_timesheet) &&
+ (() => {
+   const reportWorkers = workers.filter(w => {
+     const deptScope = userRole.is_admin
+       ? selectedDeptFilter
+       : userRole.assigned_department;
 
-        {/* 3. Overtime Input */}
-        <td style={{ padding: '10px' }}>
-          <input 
-            type="number" 
-            placeholder="OT Hrs" 
-            value={overtimeInputs[worker.id] || ''} 
-            onChange={e => setOvertimeInputs({...overtimeInputs, [worker.id]: e.target.value})} 
-            style={{ width: '70px', padding: '5px' }} 
-          />
-        </td>
+     return !deptScope ||
+       deptScope === 'All' ||
+       w.department?.toLowerCase() === deptScope.toLowerCase();
+   });
 
-        {/* 4. Status Dropdown (Present / Absent / Leave) */}
-        <td style={{ padding: '10px' }}>
-          <select 
-            id={`status-${worker.id}`}
-            defaultValue="Present"
-            style={{ padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-          >
-            <option value="Present">Present</option>
-            <option value="Absent">Absent</option>
-            <option value="Leave">Leave</option>
-          </select>
-        </td>
+   const getRecord = worker =>
+     attendanceData[selectedTimesheetDate]?.[worker.id] ||
+     attendance.find(a =>
+       String(a.worker_id) === String(worker.id) &&
+       a.date === selectedTimesheetDate
+     ) || {};
 
-        {/* 5. Row-level Update Button */}
-        <td style={{ padding: '10px' }}>
-          <button 
-            onClick={() => {
-              const statusDropdown = document.getElementById(`status-${worker.id}`);
-              const selectedStatus = statusDropdown ? statusDropdown.value : 'Present';
-              
-              // Yeh function site, OT aur status sab ko database mein update kar dega
-              handleMarkAttendance(worker.id, selectedStatus);
-            }} 
-            style={{ 
-              padding: '6px 14px', 
-              backgroundColor: '#2563eb', 
-              color: '#fff', 
-              border: 'none', 
-              borderRadius: '4px', 
-              cursor: 'pointer', 
-              fontWeight: 'bold' 
-            }}
-          >
-            Update
-          </button>
-        </td>
+   const getStatus = worker =>
+     String(getRecord(worker).status || '').toLowerCase().replace(/_/g, ' ').trim();
 
-      </tr>
-    ))}
-  </tbody>
-</table>
-        
+   const getSite = worker =>
+     getRecord(worker).site ||
+     getRecord(worker).work_site ||
+     worker.work_site ||
+     'Unassigned';
+
+   const presentCount = reportWorkers.filter(w =>
+     getStatus(w) === 'present'
+   ).length;
+
+   const absentWorkers = reportWorkers.filter(w =>
+     getStatus(w) === 'absent'
+   );
+
+   const annualLeaveCount = reportWorkers.filter(w =>
+     ['annual leave', 'annual-leave'].includes(getStatus(w))
+   ).length;
+
+   const otherLeaveCount = reportWorkers.filter(w =>
+     ['leave', 'sick leave', 'other leave'].includes(getStatus(w))
+   ).length;
+
+   const mamzarAbsent = absentWorkers.filter(w =>
+     getSite(w).toLowerCase().includes('mamzar')
+   ).length;
+
+   const otherSiteAbsent = absentWorkers.filter(w =>
+     !getSite(w).toLowerCase().includes('mamzar')
+   ).length;
+
+   return (
+     <div style={{
+       background: '#fff',
+       padding: '20px',
+       borderRadius: '10px',
+       boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+     }}>
+       <div style={{
+         display: 'flex',
+         justifyContent: 'space-between',
+         alignItems: 'center',
+         flexWrap: 'wrap',
+         gap: '12px',
+         marginBottom: '18px'
+       }}>
+         <div>
+           <h3 style={{ margin: 0 }}>📅 Daily Attendance Report</h3>
+           <p style={{ color: '#64748b', fontSize: '12px', marginBottom: 0 }}>
+             Department-wise and site-wise attendance
+           </p>
+         </div>
+
+         <div>
+           <label style={{
+             fontWeight: 'bold',
+             color: '#2563eb',
+             marginRight: '8px'
+           }}>
+             Select Date:
+           </label>
+           <input
+             type="date"
+             value={selectedTimesheetDate}
+             onChange={e => setSelectedTimesheetDate(e.target.value)}
+             style={{
+               padding: '8px',
+               borderRadius: '6px',
+               border: '1px solid #2563eb'
+             }}
+           />
+         </div>
+       </div>
+
+       {userRole.is_admin && (
+         <div style={{ marginBottom: '16px' }}>
+           <label style={{ fontWeight: 'bold', marginRight: '8px' }}>
+             Department:
+           </label>
+           <select
+             value={selectedDeptFilter}
+             onChange={e => setSelectedDeptFilter(e.target.value)}
+             style={{ padding: '8px', borderRadius: '6px' }}
+           >
+             <option value="All">All Departments</option>
+             {departmentsList.map((d, i) => (
+               <option key={i} value={d}>{d}</option>
+             ))}
+           </select>
+         </div>
+       )}
+
+       <div style={{
+         display: 'grid',
+         gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))',
+         gap: '10px',
+         marginBottom: '20px'
+       }}>
+         {[
+           { label: 'Total Workers', value: reportWorkers.length, color: '#334155', bg: '#f1f5f9' },
+           { label: 'Present', value: presentCount, color: '#166534', bg: '#dcfce7' },
+           { label: 'Absent', value: absentWorkers.length, color: '#991b1b', bg: '#fee2e2' },
+           { label: 'Annual Leave', value: annualLeaveCount, color: '#92400e', bg: '#fef3c7' },
+           { label: 'Other Leave', value: otherLeaveCount, color: '#1e40af', bg: '#dbeafe' },
+           { label: 'Mamzar Absent', value: mamzarAbsent, color: '#9f1239', bg: '#ffe4e6' },
+           { label: 'Other Site Absent', value: otherSiteAbsent, color: '#6b21a8', bg: '#f3e8ff' }
+         ].map(item => (
+           <div key={item.label} style={{
+             padding: '13px',
+             borderRadius: '8px',
+             background: item.bg,
+             color: item.color
+           }}>
+             <div style={{ fontSize: '12px', fontWeight: 'bold' }}>
+               {item.label}
+             </div>
+             <div style={{ fontSize: '25px', fontWeight: 'bold', marginTop: '5px' }}>
+               {item.value}
              </div>
            </div>
-         )}
+         ))}
+       </div>
+
+       <div style={{ overflowX: 'auto' }}>
+         <table style={{
+           width: '100%',
+           borderCollapse: 'collapse',
+           minWidth: '720px'
+         }}>
+           <thead>
+             <tr style={{
+               background: '#1e293b',
+               color: '#fff',
+               textAlign: 'left'
+             }}>
+               <th style={{ padding: '10px' }}>Worker</th>
+               <th style={{ padding: '10px' }}>Department</th>
+               <th style={{ padding: '10px' }}>Site</th>
+               <th style={{ padding: '10px' }}>OT Hours</th>
+               <th style={{ padding: '10px' }}>Status</th>
+               <th style={{ padding: '10px' }}>Action</th>
+             </tr>
+           </thead>
+
+           <tbody>
+             {reportWorkers.map(worker => {
+               const record = getRecord(worker);
+               const savedStatus = record.status || 'Present';
+               const savedSite = getSite(worker);
+               const savedOT = record.ot ?? record.overtime_hours ?? 0;
+
+               return (
+                 <tr key={worker.id} style={{
+                   borderBottom: '1px solid #e2e8f0'
+                 }}>
+                   <td style={{ padding: '10px', fontWeight: 'bold' }}>
+                     #{worker.id} - {worker.name}
+                     <div style={{
+                       fontSize: '11px',
+                       color: '#64748b',
+                       fontWeight: 'normal'
+                     }}>
+                       {worker.designation || 'Worker'}
+                     </div>
+                   </td>
+
+                   <td style={{ padding: '10px' }}>
+                     {worker.department || '-'}
+                   </td>
+
+                   <td style={{ padding: '10px' }}>
+                     <select
+                       value={timesheetSiteInputs[worker.id] || savedSite}
+                       onChange={e => setTimesheetSiteInputs(prev => ({
+                         ...prev,
+                         [worker.id]: e.target.value
+                       }))}
+                       style={{ padding: '6px', maxWidth: '160px' }}
+                     >
+                       {!sitesList.includes(savedSite) && (
+                         <option value={savedSite}>{savedSite}</option>
+                       )}
+                       {sitesList.map((site, i) => (
+                         <option key={i} value={site}>{site}</option>
+                       ))}
+                     </select>
+                   </td>
+
+                   <td style={{ padding: '10px' }}>
+                     <input
+                       type="number"
+                       min="0"
+                       value={overtimeInputs[worker.id] ?? savedOT}
+                       onChange={e => setOvertimeInputs(prev => ({
+                         ...prev,
+                         [worker.id]: e.target.value
+                       }))}
+                       style={{ width: '70px', padding: '6px' }}
+                     />
+                   </td>
+
+                   <td style={{ padding: '10px' }}>
+                     <select
+                       id={`status-${worker.id}`}
+                       key={`${worker.id}-${selectedTimesheetDate}-${savedStatus}`}
+                       defaultValue={savedStatus}
+                       style={{ padding: '6px', borderRadius: '4px' }}
+                     >
+                       <option value="Present">Present</option>
+                       <option value="Absent">Absent</option>
+                       <option value="Annual Leave">Annual Leave</option>
+                       <option value="Sick Leave">Sick Leave</option>
+                       <option value="Leave">Leave</option>
+                       <option value="Other Leave">Other Leave</option>
+                     </select>
+                   </td>
+
+                   <td style={{ padding: '10px' }}>
+                     <button
+                       onClick={() => {
+                         const dropdown = document.getElementById(`status-${worker.id}`);
+                         handleMarkAttendance(
+                           worker.id,
+                           dropdown ? dropdown.value : savedStatus
+                         );
+                       }}
+                       style={{
+                         padding: '7px 12px',
+                         background: '#2563eb',
+                         color: '#fff',
+                         border: 'none',
+                         borderRadius: '5px',
+                         cursor: 'pointer',
+                         fontWeight: 'bold'
+                       }}
+                     >
+                       Update
+                     </button>
+                   </td>
+                 </tr>
+               );
+             })}
+           </tbody>
+         </table>
+       </div>
+     </div>
+   );
+ })()}
 
         {/* TAB 5: PAYROLL */}
         {activeTab === 'payroll' && (userRole.is_admin || userRole.can_view_payroll) && (
