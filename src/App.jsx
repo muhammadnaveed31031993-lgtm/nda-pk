@@ -1244,164 +1244,210 @@ async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt,
   }
 `}</style>
    
-       {/* TAB 2: BULK & OCR */}
-        {activeTab === 'bulk' && (userRole.is_admin || userRole.can_use_bulk) && (
-          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ margin: '0 0 10px 0' }}>⚡ Bulk Attendance, Designation OT & Date Selection</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Select Date</label>
-                <input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Department</label>
-                <select value={bulkDepartment} onChange={e => setBulkDepartment(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                  <option value="All">All Departments</option>
-                  {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Designation (Steel, Carpenter etc)</label>
-                <select value={bulkDesignation} onChange={e => setBulkDesignation(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                  <option value="All">All Designations</option>
-                  <option value="Steel Fixer">Steel Fixer</option>
-                  <option value="Carpenter">Carpenter</option>
-                  <option value="Plumber">Plumber</option>
-                  <option value="Electrician">Electrician</option>
-                  <option value="Worker">Worker</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Working Site</label>
-                <select value={bulkSite} onChange={e => setBulkSite(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                  {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Status</label>
-                <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                  <option value="Present">Present</option>
-                  <option value="Absent">Absent</option>
-                  <option value="Leave">Leave</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Overtime Hours</label>
-                <input type="number" value={bulkOT} onChange={e => setBulkOT(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                <button onClick={handleBulkAttendance} style={{ width: '100%', padding: '9px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Apply Bulk & Update</button>
-              </div>
-            </div>
+{/* TAB 2: BULK & OCR */}
+{activeTab === 'bulk' && (userRole.is_admin || userRole.can_use_bulk) && (
+  <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+    <h3 style={{ margin: '0 0 10px 0' }}>⚡ Bulk Attendance, Designation OT & Date Selection</h3>
 
-            <div style={{ marginTop: '25px', padding: '15px', backgroundColor: '#f1f5f9', borderRadius: '8px', border: '1px dashed #94a3b8' }}>
-              <h4 style={{ margin: '0 0 8px 0' }}>📸 OCR Scanner (For Date: {selectedTimesheetDate})</h4>
-              <input type="file" accept="image/*" onChange={handleScanPaperSheet} disabled={scanning} />
-              {scanning && <p style={{ color: '#2563eb', fontWeight: 'bold' }}>{scanStatus}</p>}
-              {!scanning && scanStatus && <p style={{ color: '#16a34a', fontWeight: 'bold' }}>{scanStatus}</p>}
-            </div>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
+      <div>
+        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Select Date</label>
+        <input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+      </div>
 
-            {/* Individual Worker Attendance List for the Selected Date & Department */}
-            <div style={{ marginTop: '30px', backgroundColor: '#fff', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <h4 style={{ margin: '0 0 15px 0', color: '#0f172a' }}>
-                👥 Individual Attendance ({bulkDepartment} - {selectedTimesheetDate})
-              </h4>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #cbd5e1', textAlign: 'left' }}>
-                      <th style={{ padding: '8px' }}>ID</th>
-                      <th style={{ padding: '8px' }}>Worker Name</th>
-                      <th style={{ padding: '8px' }}>Designation</th>
-                      <th style={{ padding: '8px' }}>Site</th>
-                      <th style={{ padding: '8px' }}>Status</th>
-                      <th style={{ padding: '8px' }}>OT Hours</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {workers && workers
-                      .filter(w => bulkDepartment === 'All' || w.department === bulkDepartment)
-                      .map((worker) => {
-                        const record = attendanceData[selectedTimesheetDate]?.[worker.id] || { status: 'Present', ot: 0 };
-                        
-                        return (
-                          <tr key={worker.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '8px', fontWeight: 'bold' }}>{worker.worker_id || worker.id}</td>
-                            <td style={{ padding: '8px' }}>{worker.name}</td>
-                            <td style={{ padding: '8px', color: '#64748b' }}>{worker.designation || '-'}</td>
-                            <td style={{ padding: '8px' }}>
-  <select
-    value={record.site || worker.work_site || sitesList[0] || 'Sharjah Mamzar'}
-    onChange={(e) =>
-      handleSingleAttendanceChange(
-        worker.id,
-        selectedTimesheetDate,
-        record.status,
-        record.ot,
-        e.target.value
-      )
-    }
-    style={{ padding: '6px', borderRadius: '4px', minWidth: '130px' }}
-  >
-    {sitesList.map((site) => (
-      <option key={site} value={site}>
-        {site}
-      </option>
-    ))}
-  </select>
+      <div>
+        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Department</label>
+        <select value={bulkDepartment} onChange={e => setBulkDepartment(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+          <option value="All">All Departments</option>
+          {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
+        </select>
+      </div>
 
-  <button
-    onClick={() =>
-      handleSingleAttendanceChange(
-        worker.id,
-        selectedTimesheetDate,
-        record.status,
-        record.ot,
-        record.site || worker.work_site || sitesList[0] || 'Sharjah Mamzar'
-      )
-    }
-    style={{
-      marginTop: '5px',
-      padding: '5px 10px',
-      background: '#16a34a',
-      color: 'white',
-      border: 'none',
-      borderRadius: '4px',
-      cursor: 'pointer'
-    }}
-  >
-    Update
-  </button>
-</td>
+      <div>
+        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Designation (Steel, Carpenter etc)</label>
+        <select value={bulkDesignation} onChange={e => setBulkDesignation(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+          <option value="All">All Designations</option>
+          <option value="Steel Fixer">Steel Fixer</option>
+          <option value="Carpenter">Carpenter</option>
+          <option value="Plumber">Plumber</option>
+          <option value="Electrician">Electrician</option>
+          <option value="Worker">Worker</option>
+        </select>
+      </div>
 
-                            <td style={{ padding: '8px' }}>
-                              <select 
-                                value={record.status} 
-                                onChange={(e) => handleSingleAttendanceChange(worker.id, selectedTimesheetDate, e.target.value, record.ot)}
-                                style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 'bold', color: record.status === 'Present' ? '#16a34a' : record.status === 'Absent' ? '#dc2626' : '#d97706' }}
-                              >
-                                <option value="Present">Present</option>
-                                <option value="Absent">Absent</option>
-                                <option value="Leave">Leave</option>
-                              </select>
-                            </td>
-                            <td style={{ padding: '8px' }}>
-                              <input 
-                                type="number" 
-                                value={record.ot || 0} 
-                                onChange={(e) => handleSingleAttendanceChange(worker.id, selectedTimesheetDate, record.status, e.target.value)}
-                                style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid #cbd5e1' }} 
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
+      <div>
+        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Working Site</label>
+        <select value={bulkSite} onChange={e => setBulkSite(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+          {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
+        </select>
+      </div>
+
+      <div>
+        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Status</label>
+        <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+          <option value="Present">Present</option>
+          <option value="Absent">Absent</option>
+          <option value="Leave">Leave</option>
+        </select>
+      </div>
+
+      <div>
+        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Overtime Hours</label>
+        <input type="number" value={bulkOT} onChange={e => setBulkOT(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+        <button onClick={handleBulkAttendance} style={{ width: '100%', padding: '9px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Apply Bulk & Update</button>
+      </div>
+    </div>
+
+    <div style={{ marginTop: '25px', padding: '15px', backgroundColor: '#f1f5f9', borderRadius: '8px', border: '1px dashed #94a3b8' }}>
+      <h4 style={{ margin: '0 0 8px 0' }}>📸 OCR Scanner (For Date: {selectedTimesheetDate})</h4>
+      <input type="file" accept="image/*" onChange={handleScanPaperSheet} disabled={scanning} />
+      {scanning && <p style={{ color: '#2563eb', fontWeight: 'bold' }}>{scanStatus}</p>}
+      {!scanning && scanStatus && <p style={{ color: '#16a34a', fontWeight: 'bold' }}>{scanStatus}</p>}
+    </div>
+
+    {/* Individual Worker Attendance List */}
+    <div style={{ marginTop: '30px', backgroundColor: '#fff', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+      <h4 style={{ margin: '0 0 15px 0', color: '#0f172a' }}>
+        👥 Individual Attendance ({bulkDepartment} - {selectedTimesheetDate})
+      </h4>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+          <thead>
+            <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #cbd5e1', textAlign: 'left' }}>
+              <th style={{ padding: '8px' }}>ID</th>
+              <th style={{ padding: '8px' }}>Worker Name</th>
+              <th style={{ padding: '8px' }}>Designation</th>
+              <th style={{ padding: '8px' }}>Site</th>
+              <th style={{ padding: '8px' }}>Status</th>
+              <th style={{ padding: '8px' }}>OT Hours</th>
+              <th style={{ padding: '8px' }}>Action</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {workers && workers
+              .filter(w => bulkDepartment === 'All' || w.department === bulkDepartment)
+              .map((worker) => {
+                const record = attendanceData[selectedTimesheetDate]?.[worker.id] || { status: 'Present', ot: 0 };
+                const currentSite = record.site || worker.work_site || sitesList[0] || 'Sharjah Mamzar';
+
+                return (
+                  <tr key={worker.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '8px', fontWeight: 'bold' }}>{worker.worker_id || worker.id}</td>
+                    <td style={{ padding: '8px' }}>{worker.name}</td>
+                    <td style={{ padding: '8px', color: '#64748b' }}>{worker.designation || '-'}</td>
+
+                    <td style={{ padding: '8px' }}>
+                      <select
+                        value={currentSite}
+                        onChange={(e) => {
+                          const selectedSite = e.target.value;
+                          setAttendanceData(prev => ({
+                            ...prev,
+                            [selectedTimesheetDate]: {
+                              ...(prev[selectedTimesheetDate] || {}),
+                              [worker.id]: {
+                                ...(prev[selectedTimesheetDate]?.[worker.id] || record),
+                                site: selectedSite
+                              }
+                            }
+                          }));
+                        }}
+                        style={{ padding: '6px', borderRadius: '4px', minWidth: '130px' }}
+                      >
+                        {sitesList.map((site) => (
+                          <option key={site} value={site}>{site}</option>
+                        ))}
+                      </select>
+                    </td>
+
+                    <td style={{ padding: '8px' }}>
+                      <select
+                        value={record.status}
+                        onChange={(e) => {
+                          const selectedStatus = e.target.value;
+                          setAttendanceData(prev => ({
+                            ...prev,
+                            [selectedTimesheetDate]: {
+                              ...(prev[selectedTimesheetDate] || {}),
+                              [worker.id]: {
+                                ...(prev[selectedTimesheetDate]?.[worker.id] || record),
+                                status: selectedStatus
+                              }
+                            }
+                          }));
+                        }}
+                        style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 'bold', color: record.status === 'Present' ? '#16a34a' : record.status === 'Absent' ? '#dc2626' : '#d97706' }}
+                      >
+                        <option value="Present">Present</option>
+                        <option value="Absent">Absent</option>
+                        <option value="Leave">Leave</option>
+                      </select>
+                    </td>
+
+                    <td style={{ padding: '8px' }}>
+                      <input
+                        type="number"
+                        value={record.ot || 0}
+                        onChange={(e) => {
+                          const selectedOT = e.target.value;
+                          setAttendanceData(prev => ({
+                            ...prev,
+                            [selectedTimesheetDate]: {
+                              ...(prev[selectedTimesheetDate] || {}),
+                              [worker.id]: {
+                                ...(prev[selectedTimesheetDate]?.[worker.id] || record),
+                                ot: selectedOT
+                              }
+                            }
+                          }));
+                        }}
+                        style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                      />
+                    </td>
+
+                    <td style={{ padding: '8px' }}>
+                      <button
+                        onClick={async () => {
+                          const latestRecord = attendanceData[selectedTimesheetDate]?.[worker.id] || record;
+                          const siteToSave = latestRecord.site || worker.work_site || sitesList[0] || 'Sharjah Mamzar';
+
+                          await handleSingleAttendanceChange(
+                            worker.id,
+                            selectedTimesheetDate,
+                            latestRecord.status || 'Present',
+                            latestRecord.ot ?? 0,
+                            siteToSave
+                          );
+
+                          alert('Update Successful! Site, Status aur OT save kar diye gaye.');
+                        }}
+                        style={{
+                          padding: '7px 11px',
+                          backgroundColor: '#16a34a',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '5px',
+                          fontWeight: 'bold',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Update
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+)}
 
        {/* TAB 3: WORKERS DIRECTORY */}
 {activeTab === 'workers' && (userRole.is_admin || userRole.can_view_workers) && (
