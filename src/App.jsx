@@ -609,6 +609,7 @@ async function fetchAttendance() {
     setReligion('Muslim');
     setLastReturnDate('');
     setAnnualLeaveRate('30');
+    setAnnualLeaveBalance('0');
     setPassportFileUrl('');
     setIdCardFileUrl('');
     setMedicalCardFileUrl('');
