@@ -2502,14 +2502,37 @@ const otherLeaveCount = desigWorkers.filter(
                     <tr><td colSpan={userRole.is_admin ? 7 : 6} style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>No annual leave records found.</td></tr>
                   ) : (
                     annualLeaveList.map((leave, idx) => {
-                      let accruedDays = 0;
-                      if (leave.actual_return && leave.actual_return !== 'On Leave') {
-                        const returnDate = new Date(leave.actual_return);
-                        const today = new Date();
-                        const diffTime = today - returnDate;
-                        const diffDays = diffTime > 0 ? diffTime / (1000 * 60 * 60 * 24) : 0;
-                        accruedDays = (diffDays * (30 / 365)).toFixed(1);
-                      }
+                      
+let accruedDays = 0;
+
+const today = new Date();
+today.setHours(0, 0, 0, 0);
+
+const startDate = leave.start_date
+  ? new Date(leave.start_date + 'T00:00:00')
+  : null;
+
+const actualReturnDate =
+  leave.actual_return && leave.actual_return !== 'On Leave'
+    ? new Date(leave.actual_return + 'T00:00:00')
+    : null;
+
+let leaveDaysUsed = 0;
+
+if (startDate) {
+  const endDate = actualReturnDate || today;
+  const diffDays = Math.floor(
+    (endDate - startDate) / (1000 * 60 * 60 * 24)
+  );
+  leaveDaysUsed = Math.max(0, diffDays + 1);
+}
+
+if (actualReturnDate) {
+  const diffDays = Math.floor(
+    (today - actualReturnDate) / (1000 * 60 * 60 * 24)
+  );
+  accruedDays = (Math.max(0, diffDays) * (30 / 365)).toFixed(1);
+}
 
                       return (
                         <tr key={leave.id || idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
