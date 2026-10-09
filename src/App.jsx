@@ -1188,6 +1188,7 @@ const absentCount = desigWorkers.filter(
   w => getAttendanceStatus(w).toLowerCase() === 'absent'
 ).length;
 
+
 const annualLeaveCount = desigWorkers.filter(w => {
   const status = getAttendanceStatus(w)
     .toLowerCase()
@@ -1195,30 +1196,26 @@ const annualLeaveCount = desigWorkers.filter(w => {
     .replace(/-/g, ' ')
     .trim();
 
+  const workerKey = String(w.worker_id ?? w.id);
+
   const onAnnualLeave = annualLeaveList.some(leave => {
-    const sameWorker =
-      String(leave.worker_id) === String(w.worker_id ?? w.id);
+    const sameWorker = String(leave.worker_id) === workerKey;
 
     const start = leave.start_date;
-    const end = leave.actual_return === 'On Leave'
-      ? leave.expected_return
-      : leave.actual_return;
-
-    const activeStatus = leave.status !== 'Returned';
+    const isStillOnLeave =
+      leave.status !== 'Returned' &&
+      (!leave.actual_return || leave.actual_return === 'On Leave');
 
     return (
       sameWorker &&
-      activeStatus &&
+      isStillOnLeave &&
       start &&
-      end &&
-      start <= selectedTimesheetDate &&
-      selectedTimesheetDate <= end
+      start <= selectedTimesheetDate
     );
   });
 
   return status === 'annual leave' || onAnnualLeave;
 }).length;
-
 const otherLeaveCount = desigWorkers.filter(
   w => ['leave', 'sick leave', 'sick_leave', 'other leave'].includes(
     getAttendanceStatus(w).toLowerCase()
