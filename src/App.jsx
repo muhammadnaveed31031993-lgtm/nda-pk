@@ -773,8 +773,7 @@ async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt,
   // 4. Handle Mark Single Attendance (For timesheet table)
   async function handleMarkAttendance(workerId, status) {
     if (!userRole.is_admin && !userRole.can_edit_timesheet) return;
-    const otHours = Number(overtimeInputs[workerId] || 0);
-    const worker = workers.find(w => w.id === workerId);
+       const worker = workers.find(w => w.id === workerId);
   const oldRecord = attendanceData[selectedTimesheetDate]?.[workerId] || {};
 
 const assignedSiteForToday =
