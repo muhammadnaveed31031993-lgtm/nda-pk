@@ -590,6 +590,7 @@ async function fetchAttendance() {
     setReligion(worker.religion || 'Muslim');
     setLastReturnDate(worker.last_return_date || '');
     setAnnualLeaveRate(worker.annual_leave_rate || '30');
+    setAnnualLeaveBalance(String(worker.annual_leave_balance ?? 0));
     setPassportFileUrl(worker.passport_file_url || '');
     setIdCardFileUrl(worker.id_card_file_url || '');
     setMedicalCardFileUrl(worker.medical_card_file_url || '');
