@@ -2771,11 +2771,9 @@ const otherLeaveCount = desigWorkers.filter(
           Close
         </button>
       </div>
-
     </div>
   </div>
 )}
-      </main>
-    </div>
+    </>
   );
 }
