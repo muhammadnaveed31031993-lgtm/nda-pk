@@ -881,10 +881,32 @@ const presentCountForDate = Object.values(latestAttendanceMap).filter(
   a => (a.status || '').toLowerCase() === 'present'
 ).length;
 
-const annualLeaveCountForDate = Object.values(latestAttendanceMap).filter(
-  a => (a.status || '').toLowerCase() === 'annual leave'
-).length;
 
+const annualLeaveCountForDate = filteredWorkers.filter(worker => {
+  const record = annualLeaveList.find(leave => {
+    const sameWorker =
+      String(leave.worker_id) === String(worker.id);
+
+    const onLeave =
+      leave.status !== 'Returned' &&
+      leave.actual_return === 'On Leave';
+
+    const start = leave.start_date;
+    const end = leave.expected_return;
+
+    return (
+      sameWorker &&
+      onLeave &&
+      start <= selectedTimesheetDate &&
+      selectedTimesheetDate <= end
+    );
+  });
+
+  const attendanceRecord = latestAttendanceMap[worker.id];
+  return record || (
+    (attendanceRecord?.status || '').toLowerCase() === 'annual leave'
+  );
+}).length;
 const absentCountForDate = Object.values(latestAttendanceMap).filter(
   a => (a.status || '').toLowerCase() === 'absent'
 ).length;
