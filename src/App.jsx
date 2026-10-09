@@ -632,6 +632,7 @@ async function fetchAttendance() {
       religion,
       last_return_date: lastReturnDate || null,
       annual_leave_rate: Number(annualLeaveRate || 30),
+      annual_leave_balance: Number(annualLeaveBalance || 0),
       currency: selectedCurrency,
       passport_file_url: passportFileUrl,
       id_card_file_url: idCardFileUrl,
