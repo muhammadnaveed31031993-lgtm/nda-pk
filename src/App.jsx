@@ -1065,8 +1065,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       }}>
        
 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
-
-  <div style={{ backgroundColor: '#f0fdf4', padding: '15px', borderRadius: '8px', minWidth: '130px' }}>
+  <div style={{ padding: '15px', borderRadius: '8px', backgroundColor: '#f0fdf4' }}>
     <span style={{ color: '#64748b', fontSize: '13px' }}>
       Present on {selectedTimesheetDate}
     </span>
@@ -1075,7 +1074,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     </div>
   </div>
 
-  <div style={{ backgroundColor: '#fff7ed', padding: '15px', borderRadius: '8px', minWidth: '130px' }}>
+  <div style={{ padding: '15px', borderRadius: '8px', backgroundColor: '#fff7ed' }}>
     <span style={{ color: '#9a3412', fontSize: '13px' }}>
       Annual Leave
     </span>
@@ -1084,7 +1083,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     </div>
   </div>
 
-  <div style={{ backgroundColor: '#fef2f2', padding: '15px', borderRadius: '8px', minWidth: '130px' }}>
+  <div style={{ padding: '15px', borderRadius: '8px', backgroundColor: '#fef2f2' }}>
     <span style={{ color: '#991b1b', fontSize: '13px' }}>
       Absent
     </span>
@@ -1092,7 +1091,6 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       {absentCountForDate}
     </div>
   </div>
-
 </div>
       {(userRole.is_admin || userRole.can_view_payroll) && (
         <div style={{
