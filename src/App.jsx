@@ -985,79 +985,193 @@ async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt,
 {/* TAB 1: DASHBOARD */}
 {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
   <>
-    
     {/* Stats Grid */}
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
-      <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #2563eb' }}>
-        <span style={{ color: '#64748b', fontSize: '13px' }}>Filtered Workers</span>
-        <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{filteredWorkers.length}</div>
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+      gap: '15px',
+      marginBottom: '20px'
+    }}>
+      <div style={{
+        backgroundColor: '#fff',
+        padding: '18px',
+        borderRadius: '10px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        borderLeft: '5px solid #2563eb'
+      }}>
+        <span style={{ color: '#64748b', fontSize: '13px' }}>Total Workers</span>
+        <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>
+          {filteredWorkers.length}
+        </div>
       </div>
-      <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #16a34a' }}>
-        <span style={{ color: '#64748b', fontSize: '13px' }}>Present on {selectedTimesheetDate}</span>
-        <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#16a34a', marginTop: '4px' }}>{presentCountForDate}</div>
+
+      <div style={{
+        backgroundColor: '#fff',
+        padding: '18px',
+        borderRadius: '10px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        borderLeft: '5px solid #16a34a'
+      }}>
+        <span style={{ color: '#64748b', fontSize: '13px' }}>
+          Present on {selectedTimesheetDate}
+        </span>
+        <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#16a34a', marginTop: '4px' }}>
+          {presentCountForDate}
+        </div>
       </div>
+
       {(userRole.is_admin || userRole.can_view_payroll) && (
-        <div style={{ backgroundColor: '#fff', padding: '18px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: '5px solid #0891b2' }}>
+        <div style={{
+          backgroundColor: '#fff',
+          padding: '18px',
+          borderRadius: '10px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+          borderLeft: '5px solid #0891b2'
+        }}>
           <span style={{ color: '#64748b', fontSize: '13px' }}>Total Payroll</span>
-          <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{Math.round(grandTotalPayroll).toLocaleString()} {selectedCurrency}</div>
+          <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>
+            {Math.round(grandTotalPayroll).toLocaleString()} {selectedCurrency}
+          </div>
         </div>
       )}
     </div>
 
-    {/* Department & Designation Breakdown */}
-    <h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#1e293b' }}>Departments & Designations Wise Breakdown</h3>
-    
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
+    {/* Department & Designation Attendance Breakdown */}
+    <h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#1e293b' }}>
+      Workers by Trade & Site — {selectedTimesheetDate}
+    </h3>
+
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+      gap: '20px'
+    }}>
       {departmentsList.map(dept => {
         const deptWorkers = workers.filter(w => w.department === dept);
-        const totalCount = deptWorkers.length;
-        const designationsInDept = Array.from(new Set(deptWorkers.map(w => w.designation || 'Worker')));
+
+        // Workers who have an attendance record for the selected date
+        const deptAttendanceWorkers = deptWorkers.filter(w =>
+          Boolean(attendanceData[selectedTimesheetDate]?.[w.id])
+        );
+
+        const totalAttendanceCount = deptAttendanceWorkers.length;
+
+        const designationsInDept = Array.from(
+          new Set(deptWorkers.map(w => w.designation || 'Worker'))
+        );
 
         return (
-          <div 
-            key={dept} 
+          <div
+            key={dept}
             onClick={() => setModalDepartment(dept)}
-            style={{ 
-              background: '#ffffff', 
-              border: '1px solid #cbd5e1', 
-              padding: '20px', 
-              borderRadius: '8px', 
+            style={{
+              background: '#ffffff',
+              border: '1px solid #cbd5e1',
+              padding: '20px',
+              borderRadius: '8px',
               cursor: 'pointer',
               boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
             }}
           >
-            <h3 style={{ margin: '0 0 5px 0', color: '#1e293b', borderBottom: '2px solid #2563eb', paddingBottom: '6px' }}>
+            <h3 style={{
+              margin: '0 0 5px 0',
+              color: '#1e293b',
+              borderBottom: '2px solid #2563eb',
+              paddingBottom: '6px'
+            }}>
               🏢 {dept}
             </h3>
+
             <p style={{ margin: '6px 0 12px 0', color: '#0f172a', fontSize: '14px' }}>
-              Total Workers: <strong>{totalCount}</strong>
+              Workers with attendance: <strong>{totalAttendanceCount}</strong>
             </p>
 
-            <hr style={{ border: '0', borderTop: '1px solid #e2e8f0', margin: '10px 0' }} />
+            <hr style={{
+              border: '0',
+              borderTop: '1px solid #e2e8f0',
+              margin: '10px 0'
+            }} />
 
             {designationsInDept.map(desig => {
-              const desigWorkers = deptWorkers.filter(w => (w.designation || 'Worker') === desig);
-              
+              const desigWorkers = deptWorkers.filter(
+                w => (w.designation || 'Worker') === desig
+              );
+
+              const desigAttendanceWorkers = desigWorkers.filter(w =>
+                Boolean(attendanceData[selectedTimesheetDate]?.[w.id])
+              );
+
               return (
-                <div key={desig} style={{ marginTop: '10px', backgroundColor: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold', color: '#1e293b', marginBottom: '6px' }}>
-                    <span>🛠️ {desig}:</span>
-                    <span style={{ backgroundColor: '#2563eb', color: '#fff', padding: '1px 6px', borderRadius: '4px', fontSize: '11px' }}>
-                      {desigWorkers.length} Total
+                <div
+                  key={desig}
+                  style={{
+                    marginTop: '10px',
+                    backgroundColor: '#f8fafc',
+                    padding: '10px',
+                    borderRadius: '6px',
+                    border: '1px solid #e2e8f0'
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                    fontSize: '13px',
+                    fontWeight: 'bold',
+                    color: '#1e293b',
+                    marginBottom: '6px'
+                  }}>
+                    <span>🛠️ {desig}</span>
+                    <span style={{
+                      backgroundColor: '#2563eb',
+                      color: '#fff',
+                      padding: '2px 7px',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {desigAttendanceWorkers.length} Attended
                     </span>
                   </div>
 
                   {sitesList.map(site => {
-                    const siteWorkersCount = desigWorkers.filter(w => (w.work_site || sitesList[0]) === site).length;
+                    const siteWorkersCount = desigWorkers.filter(w => {
+                      const attendanceRecord =
+                        attendanceData[selectedTimesheetDate]?.[w.id];
+
+                      return Boolean(attendanceRecord) &&
+                        (attendanceRecord.site || attendanceRecord.work_site) === site;
+                    }).length;
+
                     if (siteWorkersCount === 0) return null;
 
                     return (
-                      <div key={site} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', paddingLeft: '8px', color: '#334155', margin: '3px 0', borderLeft: '3px solid #0ea5e9' }}>
-                        <span>📍 {site}:</span>
-                        <strong style={{ color: '#0284c7', fontSize: '13px' }}>{siteWorkersCount} Workers</strong>
+                      <div
+                        key={site}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: '8px',
+                          fontSize: '12px',
+                          paddingLeft: '8px',
+                          color: '#334155',
+                          margin: '5px 0',
+                          borderLeft: '3px solid #0ea5e9'
+                        }}
+                      >
+                        <span>📍 {site}</span>
+                        <strong style={{ color: '#0284c7', fontSize: '13px' }}>
+                          {siteWorkersCount} Workers
+                        </strong>
                       </div>
                     );
                   })}
+
+                  {desigAttendanceWorkers.length === 0 && (
+                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '5px' }}>
+                      No attendance saved for this date
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1065,10 +1179,9 @@ async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt,
         );
       })}
     </div>
-
   </>
 )}
-        
+
 {/* Modal / Popup for Specific Department Workers */}
 {modalDepartment && (
   <div style={{
@@ -1092,7 +1205,6 @@ async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt,
       maxHeight: '80vh',
       overflowY: 'auto'
     }}>
-
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -1162,75 +1274,51 @@ async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt,
 
       {/* Filtered Workers Table */}
       <div style={{ overflowX: 'auto' }}>
-        <table style={{
-          width: '100%',
-          borderCollapse: 'collapse',
-          textAlign: 'left'
-        }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
           <thead>
             <tr style={{ background: '#f1f5f9' }}>
-              <th style={{ border: '1px solid #cbd5e1', padding: '10px', fontSize: '13px' }}>
-                ID
-              </th>
-              <th style={{ border: '1px solid #cbd5e1', padding: '10px', fontSize: '13px' }}>
-                Name
-              </th>
-              <th style={{ border: '1px solid #cbd5e1', padding: '10px', fontSize: '13px' }}>
-                Designation
-              </th>
-              <th style={{ border: '1px solid #cbd5e1', padding: '10px', fontSize: '13px' }}>
-                Site / Location
-              </th>
+              <th style={{ border: '1px solid #cbd5e1', padding: '10px', fontSize: '13px' }}>ID</th>
+              <th style={{ border: '1px solid #cbd5e1', padding: '10px', fontSize: '13px' }}>Name</th>
+              <th style={{ border: '1px solid #cbd5e1', padding: '10px', fontSize: '13px' }}>Designation</th>
+              <th style={{ border: '1px solid #cbd5e1', padding: '10px', fontSize: '13px' }}>Site / Location</th>
             </tr>
           </thead>
 
           <tbody>
             {workers
               .filter(w => w.department === modalDepartment)
-              .filter(
-                w =>
-                  modalLocationTab === 'All' ||
-                  w.work_site === modalLocationTab
-              )
-              .map(worker => (
-                <tr key={worker.id}>
-                  <td style={{
-                    border: '1px solid #cbd5e1',
-                    padding: '9px',
-                    fontSize: '13px'
-                  }}>
-                    #{worker.id}
-                  </td>
+              .filter(w => {
+                if (modalLocationTab === 'All') return true;
 
-                  <td style={{
-                    border: '1px solid #cbd5e1',
-                    padding: '9px',
-                    fontSize: '13px'
-                  }}>
-                    {worker.name}
-                  </td>
+                const attendanceRecord =
+                  attendanceData[selectedTimesheetDate]?.[w.id];
 
-                  <td style={{
-                    border: '1px solid #cbd5e1',
-                    padding: '9px',
-                    fontSize: '13px'
-                  }}>
-                    {worker.designation || 'N/A'}
-                  </td>
+                return (attendanceRecord?.site || attendanceRecord?.work_site) === modalLocationTab;
+              })
+              .map(worker => {
+                const attendanceRecord =
+                  attendanceData[selectedTimesheetDate]?.[worker.id];
 
-                  <td style={{
-                    border: '1px solid #cbd5e1',
-                    padding: '9px',
-                    fontSize: '13px'
-                  }}>
-                    {worker.work_site || 'N/A'}
-                  </td>
-                </tr>
-              ))}
+                return (
+                  <tr key={worker.id}>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '9px', fontSize: '13px' }}>
+                      #{worker.worker_id || worker.id}
+                    </td>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '9px', fontSize: '13px' }}>
+                      {worker.name}
+                    </td>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '9px', fontSize: '13px' }}>
+                      {worker.designation || 'N/A'}
+                    </td>
+                    <td style={{ border: '1px solid #cbd5e1', padding: '9px', fontSize: '13px' }}>
+                      {attendanceRecord?.site || attendanceRecord?.work_site || 'No attendance'}
+                    </td>
+                  </tr>
+                );
+              })}
           </tbody>
         </table>
       </div>
-
     </div>
   </div>
 )}
