@@ -1349,7 +1349,31 @@ async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt,
       </option>
     ))}
   </select>
+
+  <button
+    onClick={() =>
+      handleSingleAttendanceChange(
+        worker.id,
+        selectedTimesheetDate,
+        record.status,
+        record.ot,
+        record.site || worker.work_site || sitesList[0] || 'Sharjah Mamzar'
+      )
+    }
+    style={{
+      marginTop: '5px',
+      padding: '5px 10px',
+      background: '#16a34a',
+      color: 'white',
+      border: 'none',
+      borderRadius: '4px',
+      cursor: 'pointer'
+    }}
+  >
+    Update
+  </button>
 </td>
+
                             <td style={{ padding: '8px' }}>
                               <select 
                                 value={record.status} 
