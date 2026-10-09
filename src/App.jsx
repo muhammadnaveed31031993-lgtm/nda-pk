@@ -1100,6 +1100,28 @@ async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt,
               const desigAttendanceWorkers = desigWorkers.filter(w =>
                 Boolean(attendanceData[selectedTimesheetDate]?.[w.id])
               );
+            const getAttendanceStatus = (worker) =>
+  attendanceData[selectedTimesheetDate]?.[worker.id]?.status || '';
+
+const presentCount = desigWorkers.filter(
+  w => getAttendanceStatus(w).toLowerCase() === 'present'
+).length;
+
+const absentCount = desigWorkers.filter(
+  w => getAttendanceStatus(w).toLowerCase() === 'absent'
+).length;
+
+const annualLeaveCount = desigWorkers.filter(
+  w => ['annual leave', 'annual_leave', 'annual-leave'].includes(
+    getAttendanceStatus(w).toLowerCase()
+  )
+).length;
+
+const otherLeaveCount = desigWorkers.filter(
+  w => ['leave', 'sick leave', 'sick_leave', 'other leave'].includes(
+    getAttendanceStatus(w).toLowerCase()
+  )
+).length;
 
               return (
                 <div
