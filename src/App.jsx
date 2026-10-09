@@ -876,8 +876,18 @@ const otHours = Number(
   const latestAttendanceMap = {};
   selectedDateAttendance.forEach(a => { latestAttendanceMap[a.worker_id] = a; });
 
-  const presentCountForDate = Object.values(latestAttendanceMap).filter(a => a.status === 'Present').length;
+ 
+const presentCountForDate = Object.values(latestAttendanceMap).filter(
+  a => (a.status || '').toLowerCase() === 'present'
+).length;
 
+const annualLeaveCountForDate = Object.values(latestAttendanceMap).filter(
+  a => (a.status || '').toLowerCase() === 'annual leave'
+).length;
+
+const absentCountForDate = Object.values(latestAttendanceMap).filter(
+  a => (a.status || '').toLowerCase() === 'absent'
+).length;
   const salaryDataMap = {};
   workers.forEach(worker => {
     const workerRecords = attendance.filter(a => a.worker_id === worker.id && a.status === 'Present');
