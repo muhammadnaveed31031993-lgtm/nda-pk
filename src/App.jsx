@@ -728,42 +728,48 @@ export default function App() {
   }
 
   // 3. Handle Single Attendance & OT Change (Auto-saves to DB and updates Monthly Timesheet)
- async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt, newSite) {
-    setAttendanceData(prev => ({
-      ...prev,
-      [dateStr]: {
-        ...(prev[dateStr] || {}),
-        [workerId]: { 
-          status: newStatus, 
-          ot: Number(newOt) || 0 
-        }
-      }
-    }));
+```jsx
+async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt, newSite) {
+  const previousRecord = attendanceData[dateStr]?.[workerId] || {};
+  const worker = workers.find(w => w.id === workerId);
 
-    const worker = workers.find(w => w.id === workerId);
-    const assignedSite = worker?.work_site || sitesList[0] || 'Sharjah Mamzar';
+  const assignedSite =
+    newSite || previousRecord.site || worker?.work_site || sitesList[0] || 'Sharjah Mamzar';
 
-    try {
-      const { error } = await supabase
-        .from('attendance')
-        .upsert([
-          { 
-            worker_id: workerId, 
-            date: dateStr, 
-            status: newStatus, 
-            overtime_hours: Number(newOt) || 0,
-            department: worker?.department,
-            work_site: assignedSite
-          }
-        ], { onConflict: 'worker_id,date' });
+  const updatedRecord = {
+    ...previousRecord,
+    status: newStatus,
+    ot: Number(newOt) || 0,
+    site: assignedSite
+  };
 
-      if (error) {
-        console.error('Error auto-saving attendance:', error.message);
-      }
-    } catch (err) {
-      console.error('Exception during attendance auto-save:', err);
+  setAttendanceData(prev => ({
+    ...prev,
+    [dateStr]: {
+      ...(prev[dateStr] || {}),
+      [workerId]: updatedRecord
     }
+  }));
+
+  try {
+    const { error } = await supabase
+      .from('attendance')
+      .upsert([{
+        worker_id: workerId,
+        date: dateStr,
+        status: newStatus,
+        overtime_hours: Number(newOt) || 0,
+        department: worker?.department,
+        work_site: assignedSite
+      }], { onConflict: 'worker_id,date' });
+
+    if (error) {
+      alert('Site/Attendance save nahi hui: ' + error.message);
+    }
+  } catch (err) {
+    alert('Save karte waqt error: ' + err.message);
   }
+}
 
   // 4. Handle Mark Single Attendance (For timesheet table)
   async function handleMarkAttendance(workerId, status) {
