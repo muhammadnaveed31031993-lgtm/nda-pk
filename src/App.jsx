@@ -1749,7 +1749,16 @@ const otherLeaveCount = desigWorkers.filter(
             </div>
             <div>
               <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Designation</label>
-              <input type="text" value={designation} onChange={e => setDesignation(e.target.value)} placeholder="e.g. Steel Fixer" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+           
+<select
+  value={designation}
+  onChange={e => setDesignation(e.target.value)}
+  style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+>
+  {designationsList.map((d, idx) => (
+    <option key={idx} value={d}>{d}</option>
+  ))}
+</select>
             </div>
             <div>
               <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Working Site</label>
