@@ -728,7 +728,7 @@ export default function App() {
   }
 
   // 3. Handle Single Attendance & OT Change (Auto-saves to DB and updates Monthly Timesheet)
-  async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt) {
+ async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt, newSite) {
     setAttendanceData(prev => ({
       ...prev,
       [dateStr]: {
