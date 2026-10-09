@@ -2493,6 +2493,7 @@ const otherLeaveCount = desigWorkers.filter(
                     <th style={{ padding: '12px' }}>Actual Return</th>
                     <th style={{ padding: '12px' }}>Deduction Breakdown / Total</th>
                     <th style={{ padding: '12px' }}>Accrued Leave Balance</th>
+                    <th style={{ padding: '12px' }}>Leave Days Used</th>
                     <th style={{ padding: '12px' }}>Status</th>
                     {userRole.is_admin && <th style={{ padding: '12px', textAlign: 'center' }}>Actions</th>}
                   </tr>
