@@ -775,7 +775,21 @@ async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt,
     if (!userRole.is_admin && !userRole.can_edit_timesheet) return;
     const otHours = Number(overtimeInputs[workerId] || 0);
     const worker = workers.find(w => w.id === workerId);
-    const assignedSiteForToday = timesheetSiteInputs[workerId] || worker?.work_site || sitesList[0];
+  const oldRecord = attendanceData[selectedTimesheetDate]?.[workerId] || {};
+
+const assignedSiteForToday =
+  timesheetSiteInputs[workerId] ||
+  oldRecord.site ||
+  oldRecord.work_site ||
+  worker?.work_site ||
+  sitesList[0];
+
+const otHours = Number(
+  overtimeInputs[workerId] ??
+  oldRecord.ot ??
+  oldRecord.overtime_hours ??
+  0
+);
     
     const { error } = await supabase.from('attendance').upsert([
       { worker_id: workerId, date: selectedTimesheetDate, status, overtime_hours: otHours, department: worker?.department, work_site: assignedSiteForToday }
