@@ -728,7 +728,6 @@ export default function App() {
   }
 
   // 3. Handle Single Attendance & OT Change (Auto-saves to DB and updates Monthly Timesheet)
-```jsx
 async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt, newSite) {
   const previousRecord = attendanceData[dateStr]?.[workerId] || {};
   const worker = workers.find(w => w.id === workerId);
