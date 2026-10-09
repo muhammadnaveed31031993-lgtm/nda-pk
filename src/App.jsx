@@ -76,6 +76,7 @@ export default function App() {
   
   const [lastReturnDate, setLastReturnDate] = useState('');
   const [annualLeaveRate, setAnnualLeaveRate] = useState('30');
+  const [annualLeaveBalance, setAnnualLeaveBalance] = useState('0');
 
   // File Upload URL States
   const [passportFileUrl, setPassportFileUrl] = useState('');
