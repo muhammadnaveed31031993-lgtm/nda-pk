@@ -2500,7 +2500,7 @@ const otherLeaveCount = desigWorkers.filter(
                 </thead>
                 <tbody>
                   {annualLeaveList.length === 0 ? (
-                    <tr><td colSpan={userRole.is_admin ? 7 : 6} style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>No annual leave records found.</td></tr>
+                    <tr><td colSpan={userRole.is_admin ? 8 : 7} style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>No annual leave records found.</td></tr>
                   ) : (
                     annualLeaveList.map((leave, idx) => {
                       
