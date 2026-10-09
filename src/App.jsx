@@ -1308,6 +1308,9 @@ export default function App() {
                       <th style={{ padding: '8px' }}>ID</th>
                       <th style={{ padding: '8px' }}>Worker Name</th>
                       <th style={{ padding: '8px' }}>Designation</th>
+                      ```jsx
+                      <th style={{ padding: '8px' }}>Site</th>
+                      ```
                       <th style={{ padding: '8px' }}>Status</th>
                       <th style={{ padding: '8px' }}>OT Hours</th>
                     </tr>
