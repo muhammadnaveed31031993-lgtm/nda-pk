@@ -2504,6 +2504,7 @@ const otherLeaveCount = desigWorkers.filter(
                   ) : (
                     annualLeaveList.map((leave, idx) => {
                       
+
 let accruedDays = 0;
 
 const today = new Date();
@@ -2528,13 +2529,83 @@ if (startDate) {
   leaveDaysUsed = Math.max(0, diffDays + 1);
 }
 
-if (actualReturnDate) {
-  const diffDays = Math.floor(
-    (today - actualReturnDate) / (1000 * 60 * 60 * 24)
+// Is worker ke tamam leave records date ke hisaab se
+// arrange karke balance calculate karein.
+const workerLeaves = annualLeaveList
+  .filter(
+    item => String(item.worker_id) === String(leave.worker_id)
+  )
+  .slice()
+  .sort((a, b) =>
+    String(a.start_date || '').localeCompare(
+      String(b.start_date || '')
+    )
   );
-  accruedDays = (Math.max(0, diffDays) * (30 / 365)).toFixed(1);
+
+let balance = 0;
+let lastReturn = null;
+let firstReturnFound = false;
+
+for (const item of workerLeaves) {
+  const s = item.start_date
+    ? new Date(item.start_date + 'T00:00:00')
+    : null;
+
+  const r =
+    item.actual_return && item.actual_return !== 'On Leave'
+      ? new Date(item.actual_return + 'T00:00:00')
+      : null;
+
+  if (!s) continue;
+
+  // Pehli recorded Actual Return Date se earning shuru.
+  if (!firstReturnFound) {
+    if (r) {
+      lastReturn = r;
+      firstReturnFound = true;
+    }
+    continue;
+  }
+
+  // Wapsi se agli annual leave tak 2.5 din per month.
+  if (lastReturn) {
+    const daysBetween = Math.max(
+      0,
+      Math.floor((s - lastReturn) / (1000 * 60 * 60 * 24))
+    );
+
+    balance += daysBetween * (30 / 365);
+  }
+
+  // Guzari hui annual leave balance se minus.
+  const end = r || today;
+  const usedDays = Math.max(
+    0,
+    Math.floor((end - s) / (1000 * 60 * 60 * 24)) + 1
+  );
+
+  balance -= usedDays;
+
+  if (r) {
+    lastReturn = r;
+  } else {
+    // Worker abhi leave par hai; earning ruki rahegi.
+    lastReturn = null;
+    break;
+  }
 }
 
+// Agar worker wapas aa chuka hai, to aaj tak earning jorein.
+if (lastReturn) {
+  const daysSinceReturn = Math.max(
+    0,
+    Math.floor((today - lastReturn) / (1000 * 60 * 60 * 24))
+  );
+
+  balance += daysSinceReturn * (30 / 365);
+}
+
+accruedDays = balance.toFixed(1);
                       return (
                         <tr key={leave.id || idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
                           <td style={{ padding: '12px' }}>#{leave.worker_id}</td>
