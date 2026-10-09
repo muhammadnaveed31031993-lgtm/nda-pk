@@ -1063,14 +1063,37 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         borderLeft: '5px solid #16a34a'
       }}>
-        <span style={{ color: '#64748b', fontSize: '13px' }}>
-          Present on {selectedTimesheetDate}
-        </span>
-        <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#16a34a', marginTop: '4px' }}>
-          {presentCountForDate}
-        </div>
-      </div>
+       
+<div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
 
+  <div style={{ backgroundColor: '#f0fdf4', padding: '15px', borderRadius: '8px', minWidth: '130px' }}>
+    <span style={{ color: '#64748b', fontSize: '13px' }}>
+      Present on {selectedTimesheetDate}
+    </span>
+    <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#16a34a', marginTop: '4px' }}>
+      {presentCountForDate}
+    </div>
+  </div>
+
+  <div style={{ backgroundColor: '#fff7ed', padding: '15px', borderRadius: '8px', minWidth: '130px' }}>
+    <span style={{ color: '#9a3412', fontSize: '13px' }}>
+      Annual Leave
+    </span>
+    <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ea580c', marginTop: '4px' }}>
+      {annualLeaveCountForDate}
+    </div>
+  </div>
+
+  <div style={{ backgroundColor: '#fef2f2', padding: '15px', borderRadius: '8px', minWidth: '130px' }}>
+    <span style={{ color: '#991b1b', fontSize: '13px' }}>
+      Absent
+    </span>
+    <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#dc2626', marginTop: '4px' }}>
+      {absentCountForDate}
+    </div>
+  </div>
+
+</div>
       {(userRole.is_admin || userRole.can_view_payroll) && (
         <div style={{
           backgroundColor: '#fff',
