@@ -1796,7 +1796,7 @@ const otherLeaveCount = desigWorkers.filter(
 
   <button
     type="button"
-    onClick={() => {
+   onClick={async () => {
       const value = newDesignation.trim();
 
       if (!value) return;
