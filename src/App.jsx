@@ -1637,6 +1637,26 @@ const otherLeaveCount = desigWorkers.filter(
         <input type="number" value={bulkOT} onChange={e => setBulkOT(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
       </div>
 
+      <div style={{ gridColumn: '1 / -1' }}>
+  <label style={{ fontSize: '12px', fontWeight: 'bold' }}>
+    Daily Work Details (Common for Selected Workers)
+  </label>
+  <textarea
+    value={bulkWorkDetails}
+    onChange={e => setBulkWorkDetails(e.target.value)}
+    placeholder="Example: Carpenter column shuttering and Steel Fixer column steel fixing work..."
+    rows={3}
+    style={{
+      width: '100%',
+      boxSizing: 'border-box',
+      padding: '10px',
+      borderRadius: '6px',
+      border: '1px solid #cbd5e1',
+      marginTop: '5px'
+    }}
+  />
+</div>
+
       <div style={{ display: 'flex', alignItems: 'flex-end' }}>
         <button onClick={handleBulkAttendance} style={{ width: '100%', padding: '9px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Apply Bulk & Update</button>
       </div>
