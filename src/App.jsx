@@ -1805,11 +1805,26 @@ const otherLeaveCount = desigWorkers.filter(
         alert('Designation already exists!');
         return;
       }
+      
+const { data, error } = await supabase
+  .from('designations')
+  .insert([{ name: value }])
+  .select();
 
-      setDesignationsList(prev => [...prev, value]);
-      setDesignation(value);
-      setNewDesignation('');
-    }}
+if (error) {
+  alert('Designation save nahi hui: ' + error.message);
+  return;
+}
+
+setDesignationsList(prev =>
+  prev.some(d => d.toLowerCase() === value.toLowerCase())
+    ? prev
+    : [...prev, value]
+);
+
+setDesignation(value);
+setNewDesignation('');
+
     style={{
       padding: '8px 12px',
       borderRadius: '6px',
