@@ -1562,15 +1562,22 @@ const otherLeaveCount = desigWorkers.filter(
       </div>
 
       <div>
-        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Designation (Steel, Carpenter etc)</label>
-        <select value={bulkDesignation} onChange={e => setBulkDesignation(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-          <option value="All">All Designations</option>
-          <option value="Steel Fixer">Steel Fixer</option>
-          <option value="Carpenter">Carpenter</option>
-          <option value="Plumber">Plumber</option>
-          <option value="Electrician">Electrician</option>
-          <option value="Worker">Worker</option>
-        </select>
+        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Designation (Steel, Carpenter etc)</label>      
+<select
+  value={bulkDesignation}
+  onChange={e => setBulkDesignation(e.target.value)}
+  style={{
+    width: '100%',
+    padding: '8px',
+    borderRadius: '6px',
+    border: '1px solid #cbd5e1'
+  }}
+>
+  <option value="All">All Designations</option>
+  {designationsList.map((d, idx) => (
+    <option key={idx} value={d}>{d}</option>
+  ))}
+</select>
       </div>
 
       <div>
