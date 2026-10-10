@@ -144,6 +144,31 @@ const [newDesignation, setNewDesignation] = useState('');
   const [attendanceData, setAttendanceData] = useState({});
   const [dailyTimesheetSite, setDailyTimesheetSite] = useState('Sharjah Mamzar');
 const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
+  useEffect(() => {
+  async function loadDailyWorkDetails() {
+    if (!selectedTimesheetDate || !dailyTimesheetSite) {
+      setSavedDailyWorkDetails('');
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('daily_work_details')
+      .select('work_details')
+      .eq('work_date', selectedTimesheetDate)
+      .eq('work_site', dailyTimesheetSite)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Daily Work Details load error:', error.message);
+      setSavedDailyWorkDetails('');
+      return;
+    }
+
+    setSavedDailyWorkDetails(data?.work_details || '');
+  }
+
+  loadDailyWorkDetails();
+}, [selectedTimesheetDate, dailyTimesheetSite]);
 
   const now = new Date();
   const currentYear = now.getFullYear();
