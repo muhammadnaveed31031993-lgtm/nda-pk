@@ -160,15 +160,16 @@ const [newDesignation, setNewDesignation] = useState('');
     }
   }, []);
 
-  useEffect(() => {
-    if (session) {
-      fetchWorkers();
-      fetchAttendance();
-      fetchPermissionsList();
-      fetchPersonalDocs();
-      fetchAnnualLeaves();
-    }
-  }, [session]);
+ useEffect(() => {
+  if (session) {
+    fetchWorkers();
+    fetchAttendance();
+    fetchPermissionsList();
+    fetchPersonalDocs();
+    fetchAnnualLeaves();
+    fetchDesignations();
+  }
+}, [session]);
 
   async function fetchAnnualLeaves() {
     const { data, error } = await supabase.from('annual_leaves').select('*').order('id', { ascending: false });
