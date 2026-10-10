@@ -751,72 +751,101 @@ async function fetchAttendance() {
   }
 
   // 2. Handle Bulk Attendance & Overtime (Supports 'All' Departments & Designations)
-  async function handleBulkAttendance() {
-    if (!userRole.is_admin && !userRole.can_edit_timesheet) return;
-    
-   
-const selectedDesignations =
-  bulkDesignation === 'All'
-    ? ['All']
-    : bulkDesignation.toLowerCase() === 'steel fixer'
-      ? ['steel fixer', 'steel fixer helper']
-      : bulkDesignation.toLowerCase() === 'carpenter'
-        ? ['carpenter', 'carpenter helper']
-        : [bulkDesignation.toLowerCase()];
+ async function handleBulkAttendance() {
+  if (!userRole.is_admin && !userRole.can_edit_timesheet) return;
 
-let deptWorkers = workers.filter(w => {
-  const matchDept =
-    bulkDepartment === 'All' ||
-    (w.department &&
-      w.department.toLowerCase() === bulkDepartment.toLowerCase());
+  const selectedDesignations =
+    bulkDesignation === 'All'
+      ? ['All']
+      : bulkDesignation.toLowerCase() === 'steel fixer'
+        ? ['steel fixer', 'steel fixer helper']
+        : bulkDesignation.toLowerCase() === 'carpenter'
+          ? ['carpenter', 'carpenter helper']
+          : [bulkDesignation.toLowerCase()];
 
-  const workerDesignation = (w.designation || '').toLowerCase();
+  const deptWorkers = workers.filter(w => {
+    const matchDept =
+      bulkDepartment === 'All' ||
+      (w.department &&
+        w.department.toLowerCase() === bulkDepartment.toLowerCase());
 
-  const matchDesig =
-    selectedDesignations.includes('All') ||
-    selectedDesignations.includes(workerDesignation);
+    const workerDesignation = (w.designation || '').toLowerCase();
 
-  return matchDept && matchDesig;
-});
+    const matchDesig =
+      selectedDesignations.includes('All') ||
+      selectedDesignations.includes(workerDesignation);
 
+    return matchDept && matchDesig;
+  });
 
-    if (deptWorkers.length === 0) {
-      return alert(`No workers found matching department (${bulkDepartment}) and designation (${bulkDesignation})!`);
-    }
-
-    const records = deptWorkers.map(w => ({
-      worker_id: w.id,
-      date: selectedTimesheetDate,
-      status: bulkStatus,
-      overtime_hours: Number(bulkOT) || 0,
-      department: w.department,
-      work_site: bulkSite
-    }));
-
-    const { error } = await supabase.from('attendance').upsert(records, { onConflict: 'worker_id,date' });
-    
-    if (error) {
-      alert('Error: ' + error.message);
-    } else {
-      // Update local state instantly for UI & Monthly Timesheet
-      setAttendanceData(prev => {
-        const updated = { ...prev };
-        if (!updated[selectedTimesheetDate]) updated[selectedTimesheetDate] = {};
-        
-        deptWorkers.forEach(w => {
-          updated[selectedTimesheetDate][w.id] = {
-            status: bulkStatus,
-            ot: Number(bulkOT) || 0,
-            site: bulkSite
-          };
-        });
-        return updated;
-      });
-
-      alert(`Attendance saved successfully for date ${selectedTimesheetDate} (${deptWorkers.length} workers)!`);
-      fetchAttendance();
-    }
+  if (deptWorkers.length === 0) {
+    return alert(
+      `No workers found matching department (${bulkDepartment}) and designation (${bulkDesignation})!`
+    );
   }
+
+  const records = deptWorkers.map(w => ({
+    worker_id: w.id,
+    date: selectedTimesheetDate,
+    status: bulkStatus,
+    overtime_hours: Number(bulkOT) || 0,
+    department: w.department,
+    work_site: bulkSite
+  }));
+
+  const { error: attendanceError } = await supabase
+    .from('attendance')
+    .upsert(records, { onConflict: 'worker_id,date' });
+
+  if (attendanceError) {
+    alert('Attendance save error: ' + attendanceError.message);
+    return;
+  }
+
+  const { error: detailsError } = await supabase
+    .from('daily_work_details')
+    .upsert(
+      [{
+        work_date: selectedTimesheetDate,
+        work_site: bulkSite,
+        work_details: bulkWorkDetails.trim()
+      }],
+      { onConflict: 'work_date,work_site' }
+    );
+
+  if (detailsError) {
+    alert(
+      'Attendance saved, but Daily Work Details could not be saved: ' +
+      detailsError.message
+    );
+    fetchAttendance();
+    return;
+  }
+
+  setAttendanceData(prev => {
+    const updated = { ...prev };
+
+    if (!updated[selectedTimesheetDate]) {
+      updated[selectedTimesheetDate] = {};
+    }
+
+    deptWorkers.forEach(w => {
+      updated[selectedTimesheetDate][w.id] = {
+        status: bulkStatus,
+        ot: Number(bulkOT) || 0,
+        site: bulkSite
+      };
+    });
+
+    return updated;
+  });
+
+  alert(
+    `Attendance and Daily Work Details saved for ${selectedTimesheetDate} (${deptWorkers.length} workers)!`
+  );
+
+  fetchAttendance();
+}
 
   // 3. Handle Single Attendance & OT Change (Auto-saves to DB and updates Monthly Timesheet)
 async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt, newSite) {
