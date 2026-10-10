@@ -2354,10 +2354,60 @@ const otherLeaveCount = desigWorkers.filter(
    );
  })()}
                 {/* TAB 5A: DAILY TIMESHEET */}
-        {activeTab === 'daily-timesheet' && (
-          <div style={{ padding: '20px' }}>
+          {activeTab === 'daily-timesheet' && (
+          <div style={{ padding: '20px', background: '#fff', borderRadius: '8px' }}>
             <h2>📄 Daily Timesheet</h2>
-            <p>Daily Timesheet page is ready for the next setup step.</p>
+
+            <div style={{
+              display: 'flex',
+              gap: '15px',
+              flexWrap: 'wrap',
+              marginBottom: '20px'
+            }}>
+              <div>
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>
+                  Date
+                </label>
+                <input
+                  type="date"
+                  value={selectedTimesheetDate}
+                  onChange={e => setSelectedTimesheetDate(e.target.value)}
+                  style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '5px' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>
+                  Working Site
+                </label>
+                <select
+                  value={dailyTimesheetSite}
+                  onChange={e => setDailyTimesheetSite(e.target.value)}
+                  style={{ padding: '9px', minWidth: '200px', border: '1px solid #cbd5e1', borderRadius: '5px' }}
+                >
+                  {sitesList.map((site, idx) => (
+                    <option key={idx} value={site}>{site}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div style={{
+              border: '1px solid #cbd5e1',
+              borderRadius: '6px',
+              padding: '12px',
+              marginBottom: '20px',
+              background: '#f8fafc'
+            }}>
+              <strong>Daily Work Details / Remarks</strong>
+              <p style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap' }}>
+                {savedDailyWorkDetails || 'Is date aur site ke liye koi Daily Work Details save nahi hain.'}
+              </p>
+            </div>
+
+            <p style={{ color: '#64748b', fontSize: '13px' }}>
+              Date aur site select karne par saved work details automatically load hongi.
+            </p>
           </div>
         )}
 
