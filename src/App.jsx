@@ -753,11 +753,31 @@ async function fetchAttendance() {
   async function handleBulkAttendance() {
     if (!userRole.is_admin && !userRole.can_edit_timesheet) return;
     
-    let deptWorkers = workers.filter(w => {
-      const matchDept = bulkDepartment === 'All' || (w.department && w.department.toLowerCase() === bulkDepartment.toLowerCase());
-      const matchDesig = bulkDesignation === 'All' || (w.designation && w.designation.toLowerCase() === bulkDesignation.toLowerCase());
-      return matchDept && matchDesig;
-    });
+   
+const selectedDesignations =
+  bulkDesignation === 'All'
+    ? ['All']
+    : bulkDesignation.toLowerCase() === 'steel fixer'
+      ? ['steel fixer', 'steel fixer helper']
+      : bulkDesignation.toLowerCase() === 'carpenter'
+        ? ['carpenter', 'carpenter helper']
+        : [bulkDesignation.toLowerCase()];
+
+let deptWorkers = workers.filter(w => {
+  const matchDept =
+    bulkDepartment === 'All' ||
+    (w.department &&
+      w.department.toLowerCase() === bulkDepartment.toLowerCase());
+
+  const workerDesignation = (w.designation || '').toLowerCase();
+
+  const matchDesig =
+    selectedDesignations.includes('All') ||
+    selectedDesignations.includes(workerDesignation);
+
+  return matchDept && matchDesig;
+});
+
 
     if (deptWorkers.length === 0) {
       return alert(`No workers found matching department (${bulkDepartment}) and designation (${bulkDesignation})!`);
