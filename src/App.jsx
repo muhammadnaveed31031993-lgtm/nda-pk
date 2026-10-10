@@ -2326,6 +2326,13 @@ const otherLeaveCount = desigWorkers.filter(
      </div>
    );
  })()}
+                {/* TAB 5A: DAILY TIMESHEET */}
+        {activeTab === 'daily-timesheet' && (
+          <div style={{ padding: '20px' }}>
+            <h2>📄 Daily Timesheet</h2>
+            <p>Daily Timesheet page is ready for the next setup step.</p>
+          </div>
+        )}
 
         {/* TAB 5: PAYROLL */}
         {activeTab === 'payroll' && (userRole.is_admin || userRole.can_view_payroll) && (
