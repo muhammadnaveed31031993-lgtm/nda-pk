@@ -137,6 +137,7 @@ const [newDesignation, setNewDesignation] = useState('');
   const [bulkSite, setBulkSite] = useState('Sharjah Mamzar');
   const [bulkStatus, setBulkStatus] = useState('Present');
   const [bulkOT, setBulkOT] = useState('5');
+  const [bulkWorkDetails, setBulkWorkDetails] = useState('');
 
   const [overtimeInputs, setOvertimeInputs] = useState({});
   const [timesheetSiteInputs, setTimesheetSiteInputs] = useState({});
