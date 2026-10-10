@@ -1793,49 +1793,47 @@ const otherLeaveCount = desigWorkers.filter(
       border: '1px solid #cbd5e1'
     }}
   />
+<button
+  type="button"
+  onClick={async () => {
+    const value = newDesignation.trim();
 
-  <button
-    type="button"
-   onClick={async () => {
-      const value = newDesignation.trim();
+    if (!value) return;
 
-      if (!value) return;
+    if (
+      designationsList.some(
+        d => d.toLowerCase() === value.toLowerCase()
+      )
+    ) {
+      alert('Designation already exists!');
+      return;
+    }
 
-      if (designationsList.some(d => d.toLowerCase() === value.toLowerCase())) {
-        alert('Designation already exists!');
-        return;
-      }
-      
-const { data, error } = await supabase
-  .from('designations')
-  .insert([{ name: value }])
-  .select();
+    const { error } = await supabase
+      .from('designations')
+      .insert([{ name: value }]);
 
-if (error) {
-  alert('Designation save nahi hui: ' + error.message);
-  return;
-}
+    if (error) {
+      alert('Designation save nahi hui: ' + error.message);
+      return;
+    }
 
-setDesignationsList(prev =>
-  prev.some(d => d.toLowerCase() === value.toLowerCase())
-    ? prev
-    : [...prev, value]
-);
-
-setDesignation(value);
-setNewDesignation('');
-
-    style={{
-      padding: '8px 12px',
-      borderRadius: '6px',
-      border: 'none',
-      backgroundColor: '#2563eb',
-      color: 'white',
-      cursor: 'pointer'
-    }}
-  >
-    + Add
-  </button>
+    setDesignationsList(prev => [...prev, value]);
+    setDesignation(value);
+    setNewDesignation('');
+    alert('Designation successfully saved!');
+  }}
+  style={{
+    padding: '8px 12px',
+    borderRadius: '6px',
+    border: 'none',
+    backgroundColor: '#2563eb',
+    color: 'white',
+    cursor: 'pointer'
+  }}
+>
+  + Add
+</button>
 </div>
             </div>
             <div>
