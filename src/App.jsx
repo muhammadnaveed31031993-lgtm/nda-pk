@@ -178,6 +178,27 @@ const [newDesignation, setNewDesignation] = useState('');
       setAnnualLeaveList(data);
     }
   }
+  
+async function fetchDesignations() {
+  const { data, error } = await supabase
+    .from('designations')
+    .select('*')
+    .order('name', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching designations:', error.message);
+    return;
+  }
+
+  if (data) {
+    const savedNames = data.map(item => item.name);
+
+    setDesignationsList(prev => [
+      ...new Set([...prev, ...savedNames])
+    ]);
+  }
+}
+
 
  async function handleSaveAnnualLeave(e) {
     e.preventDefault();
