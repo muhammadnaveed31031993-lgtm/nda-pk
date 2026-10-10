@@ -1058,6 +1058,21 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         {(userRole.is_admin || userRole.can_view_timesheet) && (
           <button onClick={() => setActiveTab('attendance')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'attendance' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📅 Timesheet Entry</button>
         )}
+      <button
+  onClick={() => setActiveTab('daily-timesheet')}
+  style={{
+    padding: '10px 15px',
+    backgroundColor: activeTab === 'daily-timesheet' ? '#2563eb' : 'transparent',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '13px',
+    whiteSpace: 'nowrap'
+  }}
+>
+  📄 Daily Timesheet
+</button>
         {(userRole.is_admin || userRole.can_view_payroll) && (
           <button onClick={() => setActiveTab('payroll')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'payroll' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>💵 Payroll</button>
         )}
