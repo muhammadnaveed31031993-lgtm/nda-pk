@@ -1759,6 +1759,48 @@ const otherLeaveCount = desigWorkers.filter(
     <option key={idx} value={d}>{d}</option>
   ))}
 </select>
+              <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+  <input
+    type="text"
+    value={newDesignation}
+    onChange={e => setNewDesignation(e.target.value)}
+    placeholder="Add new designation"
+    style={{
+      flex: 1,
+      padding: '8px',
+      borderRadius: '6px',
+      border: '1px solid #cbd5e1'
+    }}
+  />
+
+  <button
+    type="button"
+    onClick={() => {
+      const value = newDesignation.trim();
+
+      if (!value) return;
+
+      if (designationsList.some(d => d.toLowerCase() === value.toLowerCase())) {
+        alert('Designation already exists!');
+        return;
+      }
+
+      setDesignationsList(prev => [...prev, value]);
+      setDesignation(value);
+      setNewDesignation('');
+    }}
+    style={{
+      padding: '8px 12px',
+      borderRadius: '6px',
+      border: 'none',
+      backgroundColor: '#2563eb',
+      color: 'white',
+      cursor: 'pointer'
+    }}
+  >
+    + Add
+  </button>
+</div>
             </div>
             <div>
               <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Working Site</label>
