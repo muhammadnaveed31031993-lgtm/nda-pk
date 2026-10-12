@@ -817,6 +817,7 @@ async function fetchAttendance() {
     date: selectedTimesheetDate,
     status: bulkStatus,
     overtime_hours: Number(bulkOT) || 0,
+    contract_overtime_hours: Number(bulkContractOT) || 0,
     department: w.department,
     work_site: bulkSite
   }));
