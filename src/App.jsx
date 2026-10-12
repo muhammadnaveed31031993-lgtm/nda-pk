@@ -1904,13 +1904,15 @@ const otherLeaveCount = desigWorkers.filter(
                           const latestRecord = attendanceData[selectedTimesheetDate]?.[worker.id] || record;
                           const siteToSave = latestRecord.site || worker.work_site || sitesList[0] || 'Sharjah Mamzar';
 
-                          await handleSingleAttendanceChange(
-                            worker.id,
-                            selectedTimesheetDate,
-                            latestRecord.status || 'Present',
-                            latestRecord.ot ?? 0,
-                            siteToSave
-                          );
+                         
+await handleSingleAttendanceChange(
+  worker.id,
+  selectedTimesheetDate,
+  latestRecord.status || 'Present',
+  latestRecord.ot ?? 0,
+  siteToSave,
+  latestRecord.contract_ot ?? latestRecord.contract_overtime_hours ?? 0
+);
 
                           alert('Update Successful! Site, Status aur OT save kar diye gaye.');
                         }}
