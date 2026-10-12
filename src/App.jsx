@@ -909,8 +909,16 @@ async function fetchAttendance() {
   fetchAttendance();
 }
 
-  // 3. Handle Single Attendance & OT Change (Auto-saves to DB and updates Monthly Timesheet)
-async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt, newSite) {
+  
+ // 3. Handle Single Attendance & OT Change (Auto-saves to DB and updates Monthly Timesheet)
+async function handleSingleAttendanceChange(
+  workerId,
+  dateStr,
+  newStatus,
+  newOt,
+  newSite,
+  newContractOT = 0
+) {
   const previousRecord = attendanceData[dateStr]?.[workerId] || {};
   const worker = workers.find(w => w.id === workerId);
 
@@ -921,6 +929,8 @@ async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt,
     ...previousRecord,
     status: newStatus,
     ot: Number(newOt) || 0,
+    contract_ot: Number(newContractOT) || 0,
+    contract_overtime_hours: Number(newContractOT) || 0,
     site: assignedSite
   };
 
@@ -940,17 +950,20 @@ async function handleSingleAttendanceChange(workerId, dateStr, newStatus, newOt,
         date: dateStr,
         status: newStatus,
         overtime_hours: Number(newOt) || 0,
+        contract_overtime_hours: Number(newContractOT) || 0,
         department: worker?.department,
         work_site: assignedSite
       }], { onConflict: 'worker_id,date' });
 
     if (error) {
-      alert('Site/Attendance save nahi hui: ' + error.message);
+      alert('Attendance save nahi hui: ' + error.message);
+      return;
     }
   } catch (err) {
     alert('Save karte waqt error: ' + err.message);
   }
 }
+
 
   // 4. Handle Mark Single Attendance (For timesheet table)
   async function handleMarkAttendance(workerId, status) {
