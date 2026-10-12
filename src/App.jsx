@@ -2458,7 +2458,9 @@ const otherLeaveCount = desigWorkers.filter(
 
                       const status = record.status || 'Absent';
                       const ot = Number(record.ot ?? record.overtime_hours ?? 0) || 0;
-                      const contractOT = 0;
+                      const contractOT = Number(
+  record.contract_overtime_hours ?? 0
+) || 0;
                       const totalOT = ot + contractOT;
                       const normalHours =
                         String(status).toLowerCase() === 'present' ? 8 : 0;
