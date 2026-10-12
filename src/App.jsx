@@ -355,14 +355,15 @@ async function fetchAttendance() {
       dateMap[record.date] = {};
     }
 
-dateMap[record.date][record.worker_id] = {
-  status: record.status,
-  ot: Number(record.overtime_hours) || 0,
-  contract_ot: Number(record.contract_overtime_hours) || 0,
-  contract_overtime_hours: Number(record.contract_overtime_hours) || 0,
-  site: record.work_site || '',
-  work_site: record.work_site || ''
-};
+    dateMap[record.date][record.worker_id] = {
+      status: record.status,
+      ot: Number(record.overtime_hours) || 0,
+      contract_ot: Number(record.contract_overtime_hours) || 0,
+      contract_overtime_hours: Number(record.contract_overtime_hours) || 0,
+      site: record.work_site || '',
+      work_site: record.work_site || ''
+    };
+  });
 
   setAttendanceData(dateMap);
 }
