@@ -2403,7 +2403,12 @@ const otherLeaveCount = desigWorkers.filter(
               
         {/* TAB 5A: DAILY TIMESHEET */}
         {activeTab === 'daily-timesheet' && (
-          <div style={{ padding: '20px', background: '#fff', borderRadius: '8px' }}>
+         <div
+  className="daily-timesheet-print"
+  style={{ padding: '20px', background: '#fff', borderRadius: '8px' }}
+>
+  <style>{dailyTimesheetPrintStyle}</style>
+
             <h2>📄 Daily Timesheet</h2>
 
             <div style={{
