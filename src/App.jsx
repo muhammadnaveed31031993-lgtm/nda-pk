@@ -2460,7 +2460,7 @@ const otherLeaveCount = desigWorkers.filter(
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{ot}</td>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{contractOT}</td>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{totalOT}</td>
-                          <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>{savedDailyWorkDetails || '-'}</td>
+                         <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>-</td>
                         </tr>
                       );
                     })}
