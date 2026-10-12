@@ -1693,6 +1693,18 @@ const otherLeaveCount = desigWorkers.filter(
         <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Overtime Hours</label>
         <input type="number" value={bulkOT} onChange={e => setBulkOT(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
       </div>
+      
+<div>
+  <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Contract OT Hours</label>
+  <input
+    type="number"
+    min="0"
+    value={bulkContractOT}
+    onChange={e => setBulkContractOT(e.target.value)}
+    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+  />
+</div>
+
 
       <div style={{ gridColumn: '1 / -1' }}>
   <label style={{ fontSize: '12px', fontWeight: 'bold' }}>
