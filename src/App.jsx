@@ -1914,7 +1914,7 @@ await handleSingleAttendanceChange(
   latestRecord.contract_ot ?? latestRecord.contract_overtime_hours ?? 0
 );
 
-                          alert('Update Successful! Site, Status aur OT save kar diye gaye.');
+                          alert('Update Successful! Site, Status, OT aur Contract OT save kar diye gaye.');
                         }}
                         style={{
                           padding: '7px 11px',
