@@ -1874,6 +1874,29 @@ const otherLeaveCount = desigWorkers.filter(
                         style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
                       />
                     </td>
+                    
+                    <td style={{ padding: '8px' }}>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={record.contract_ot ?? record.contract_overtime_hours ?? 0}
+                        onChange={(e) => {
+                          const selectedContractOT = e.target.value;
+                          setAttendanceData(prev => ({
+                            ...prev,
+                            [selectedTimesheetDate]: {
+                              ...(prev[selectedTimesheetDate] || {}),
+                              [worker.id]: {
+                                ...(prev[selectedTimesheetDate]?.[worker.id] || record),
+                                contract_ot: selectedContractOT
+                              }
+                            }
+                          }));
+                        }}
+                        style={{ width: '75px', padding: '4px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                      />
+                    </td>
 
                     <td style={{ padding: '8px' }}>
                       <button
