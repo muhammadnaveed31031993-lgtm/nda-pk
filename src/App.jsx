@@ -2399,15 +2399,141 @@ const otherLeaveCount = desigWorkers.filter(
               marginBottom: '20px',
               background: '#f8fafc'
             }}>
+                          <div style={{ overflowX: 'auto', marginTop: '20px' }}>
+              <table style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                minWidth: '950px'
+              }}>
+                <thead>
+                  <tr style={{ background: '#e2e8f0' }}>
+                    <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>S.No</th>
+                    <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>Name</th>
+                    <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>Designation</th>
+                    <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>ID</th>
+                    <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>Status</th>
+                    <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>Normal Hours</th>
+                    <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>OT</th>
+                    <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>Contract OT</th>
+                    <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>Total OT</th>
+                    <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>Remarks</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {workers
+                    .filter(worker => {
+                      const record =
+                        attendanceData[selectedTimesheetDate]?.[worker.id] ||
+                        attendance.find(a =>
+                          String(a.worker_id) === String(worker.id) &&
+                          a.date === selectedTimesheetDate
+                        ) ||
+                        {};
+
+                      const workerSite =
+                        record.site ||
+                        record.work_site ||
+                        worker.work_site ||
+                        '';
+
+                      return workerSite === dailyTimesheetSite;
+                    })
+                    .map((worker, index) => {
+                      const record =
+                        attendanceData[selectedTimesheetDate]?.[worker.id] ||
+                        attendance.find(a =>
+                          String(a.worker_id) === String(worker.id) &&
+                          a.date === selectedTimesheetDate
+                        ) ||
+                        {};
+
+                      const status = record.status || 'Absent';
+                      const ot = Number(record.ot ?? record.overtime_hours ?? 0) || 0;
+                      const contractOT = 0;
+                      const totalOT = ot + contractOT;
+
+                      const normalHours =
+                        String(status).toLowerCase() === 'present' ? 8 : 0;
+
+                      return (
+                        <tr key={worker.id}>
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
+                            {index + 1}
+                          </td>
+
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>
+                            {worker.name || '-'}
+                          </td>
+
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>
+                            {worker.designation || '-'}
+                          </td>
+
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
+                            {worker.id || '-'}
+                          </td>
+
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
+                            {status}
+                          </td>
+
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
+                            {normalHours}
+                          </td>
+
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
+                            {ot}
+                          </td>
+
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
+                            {contractOT}
+                          </td>
+
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
+                            {totalOT}
+                          </td>
+
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>
+                            {savedDailyWorkDetails || '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{
+              marginTop: '20px',
+              padding: '12px',
+              background: '#f8fafc',
+              border: '1px solid #cbd5e1',
+              borderRadius: '6px'
+            }}>
               <strong>Daily Work Details / Remarks</strong>
               <p style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap' }}>
                 {savedDailyWorkDetails || 'Is date aur site ke liye koi Daily Work Details save nahi hain.'}
               </p>
             </div>
 
-            <p style={{ color: '#64748b', fontSize: '13px' }}>
-              Date aur site select karne par saved work details automatically load hongi.
-            </p>
+            <div style={{ marginTop: '15px' }}>
+              <button
+                onClick={() => window.print()}
+                style={{
+                  padding: '10px 18px',
+                  background: '#2563eb',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                🖨️ Print / Save PDF
+              </button>
+            </div>
+
           </div>
         )}
 
