@@ -890,14 +890,16 @@ async function fetchAttendance() {
     if (!updated[selectedTimesheetDate]) {
       updated[selectedTimesheetDate] = {};
     }
-
-    deptWorkers.forEach(w => {
-      updated[selectedTimesheetDate][w.id] = {
-        status: bulkStatus,
-        ot: Number(bulkOT) || 0,
-        site: bulkSite
-      };
-    });
+    
+deptWorkers.forEach(w => {
+  updated[selectedTimesheetDate][w.id] = {
+    status: bulkStatus,
+    ot: Number(bulkOT) || 0,
+    contract_ot: Number(bulkContractOT) || 0,
+    contract_overtime_hours: Number(bulkContractOT) || 0,
+    site: bulkSite
+  };
+});
 
     return updated;
   });
