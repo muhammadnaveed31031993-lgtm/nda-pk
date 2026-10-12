@@ -2353,8 +2353,9 @@ const otherLeaveCount = desigWorkers.filter(
      </div>
    );
  })()}
-                {/* TAB 5A: DAILY TIMESHEET */}
-          {activeTab === 'daily-timesheet' && (
+              
+        {/* TAB 5A: DAILY TIMESHEET */}
+        {activeTab === 'daily-timesheet' && (
           <div style={{ padding: '20px', background: '#fff', borderRadius: '8px' }}>
             <h2>📄 Daily Timesheet</h2>
 
@@ -2392,14 +2393,7 @@ const otherLeaveCount = desigWorkers.filter(
               </div>
             </div>
 
-            <div style={{
-              border: '1px solid #cbd5e1',
-              borderRadius: '6px',
-              padding: '12px',
-              marginBottom: '20px',
-              background: '#f8fafc'
-            }}>
-                          <div style={{ overflowX: 'auto', marginTop: '20px' }}>
+            <div style={{ overflowX: 'auto', marginTop: '20px' }}>
               <table style={{
                 width: '100%',
                 borderCollapse: 'collapse',
@@ -2452,51 +2446,21 @@ const otherLeaveCount = desigWorkers.filter(
                       const ot = Number(record.ot ?? record.overtime_hours ?? 0) || 0;
                       const contractOT = 0;
                       const totalOT = ot + contractOT;
-
                       const normalHours =
                         String(status).toLowerCase() === 'present' ? 8 : 0;
 
                       return (
                         <tr key={worker.id}>
-                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
-                            {index + 1}
-                          </td>
-
-                          <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>
-                            {worker.name || '-'}
-                          </td>
-
-                          <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>
-                            {worker.designation || '-'}
-                          </td>
-
-                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
-                            {worker.id || '-'}
-                          </td>
-
-                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
-                            {status}
-                          </td>
-
-                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
-                            {normalHours}
-                          </td>
-
-                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
-                            {ot}
-                          </td>
-
-                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
-                            {contractOT}
-                          </td>
-
-                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>
-                            {totalOT}
-                          </td>
-
-                          <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>
-                            {savedDailyWorkDetails || '-'}
-                          </td>
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{index + 1}</td>
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>{worker.name || '-'}</td>
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>{worker.designation || '-'}</td>
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{worker.id || '-'}</td>
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{status}</td>
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{normalHours}</td>
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{ot}</td>
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{contractOT}</td>
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{totalOT}</td>
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>{savedDailyWorkDetails || '-'}</td>
                         </tr>
                       );
                     })}
@@ -2533,7 +2497,6 @@ const otherLeaveCount = desigWorkers.filter(
                 🖨️ Print / Save PDF
               </button>
             </div>
-
           </div>
         )}
 
