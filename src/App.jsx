@@ -1788,6 +1788,7 @@ const otherLeaveCount = desigWorkers.filter(
               <th style={{ padding: '8px' }}>Site</th>
               <th style={{ padding: '8px' }}>Status</th>
               <th style={{ padding: '8px' }}>OT Hours</th>
+              <th style={{ padding: '8px' }}>Contract OT</th>
               <th style={{ padding: '8px' }}>Action</th>
             </tr>
           </thead>
