@@ -1,6 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
+const dailyTimesheetPrintStyle = `
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  .daily-timesheet-print,
+  .daily-timesheet-print * {
+    visibility: visible !important;
+  }
+
+  .daily-timesheet-print {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 10px !important;
+    background: white !important;
+    color: black !important;
+  }
+
+  .daily-timesheet-print button {
+    display: none !important;
+  }
+
+  @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+}
+`;
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [email, setEmail] = useState('');
