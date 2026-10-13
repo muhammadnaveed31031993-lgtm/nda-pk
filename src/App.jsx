@@ -241,7 +241,35 @@ const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
       setAnnualLeaveList(data);
     }
   }
-  
+    // Check whether a worker is on annual leave on a selected date
+  function getAnnualLeaveForWorker(workerId, date) {
+    if (!workerId || !date) return null;
+
+    const leaveRecord = annualLeaveList.find(leave => {
+      const sameWorker =
+        String(leave.worker_id) === String(workerId);
+
+      const startDate = leave.start_date;
+      const returnDate = leave.expected_return;
+
+      // Expected return date is the first day back at work
+      const dateIsOnLeave =
+        startDate &&
+        returnDate &&
+        date >= startDate &&
+        date < returnDate;
+
+      const notReturnedEarly =
+        !leave.actual_return ||
+        leave.actual_return === 'On Leave' ||
+        date < leave.actual_return;
+
+      return sameWorker && dateIsOnLeave && notReturnedEarly;
+    });
+
+    return leaveRecord || null;
+  }
+
 async function fetchDesignations() {
   const { data, error } = await supabase
     .from('designations')
@@ -552,37 +580,7 @@ async function fetchAttendance() {
       setAnnualLeaveList(data || []);
     }
   }
-      
-  // Check whether a worker is on annual leave on a selected date
-  function getAnnualLeaveForWorker(workerId, date) {
-    if (!workerId || !date) return null;
-
-    const leaveRecord = annualLeaveList.find(leave => {
-      const sameWorker =
-        String(leave.worker_id) === String(workerId);
-
-      const startDate = leave.start_date;
-      const returnDate = leave.expected_return;
-
-      // Expected return date is the first day back at work
-      const dateIsOnLeave =
-        startDate &&
-        returnDate &&
-        date >= startDate &&
-        date < returnDate;
-
-      const notReturnedEarly =
-        !leave.actual_return ||
-        leave.actual_return === 'On Leave' ||
-        date < leave.actual_return;
-
-      return sameWorker && dateIsOnLeave && notReturnedEarly;
-    });
-
-    return leaveRecord || null;
-  }
-
-
+    
   // Component load hone par data fetch karne ke liye (Aap isay apne existing useEffect mein bhi call kar sakte hain)
   useEffect(() => {
     fetchAnnualLeaves();
