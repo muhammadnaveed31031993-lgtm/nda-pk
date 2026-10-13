@@ -3359,31 +3359,61 @@ accruedDays = balance.toFixed(1);
           </thead>
           <tbody>
             {(() => {
-              const workerAttendance = attendance.filter(a => a.worker_id === viewingWorkerTimesheet.id);
-              
-              if (workerAttendance.length === 0) {
-                return (
-                  <tr>
-                    <td colSpan="4" style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
-                      No attendance records found for this worker.
-                    </td>
-                  </tr>
-                );
-              }
+        const workerAttendance = attendance.filter(
+  a =>
+    String(a.worker_id) ===
+    String(viewingWorkerTimesheet.id)
+);
 
-    
-              return workerAttendance.map((att, idx) => (
-                <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '8px 10px', fontWeight: '500' }}>{att.date}</td>
-                  <td style={{ padding: '8px 10px' }}>
-                    <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', backgroundColor: '#dcfce7', color: '#166534', fontWeight: 'bold' }}>
-                      {att.status}
-                    </span>
-                  </td>
-                  <td style={{ padding: '8px 10px', color: '#475569' }}>{att.overtime_hours || 0} Hours</td>
-                  <td style={{ padding: '8px 10px', color: '#64748b' }}>{att.work_site || viewingWorkerTimesheet.work_site || 'N/A'}</td>
-                </tr>
-              ));
+const monthlyRows = workerAttendance.map(att => {
+  const annualLeave = getAnnualLeaveForWorker(
+    viewingWorkerTimesheet.id,
+    String(att.date).slice(0, 10)
+  );
+
+  return {
+    ...att,
+    status: annualLeave ? 'Annual Leave' : att.status,
+    overtime_hours: annualLeave ? 0 : (att.overtime_hours || 0)
+  };
+});
+
+return monthlyRows.map((att, idx) => (
+  <tr
+    key={idx}
+    style={{
+      borderBottom: '1px solid #f1f5f9',
+      backgroundColor:
+        att.status === 'Annual Leave' ? '#fef3c7' : '#ffffff'
+    }}
+  >
+    <td style={{ padding: '8px 10px', fontWeight: '500' }}>
+      {att.date}
+    </td>
+    <td style={{ padding: '8px 10px' }}>
+      <span
+        style={{
+          padding: '2px 8px',
+          borderRadius: '4px',
+          fontSize: '11px',
+          backgroundColor:
+            att.status === 'Annual Leave' ? '#fef3c7' : '#dcfce7',
+          color:
+            att.status === 'Annual Leave' ? '#92400e' : '#166534',
+          fontWeight: 'bold'
+        }}
+      >
+        {att.status}
+      </span>
+    </td>
+    <td style={{ padding: '8px 10px', color: '#475569' }}>
+      {att.overtime_hours} Hours
+    </td>
+    <td style={{ padding: '8px 10px', color: '#64748b' }}>
+      {att.work_site || viewingWorkerTimesheet.work_site || 'N/A'}
+    </td>
+  </tr>
+));
             })()}
           </tbody>
         </table>
