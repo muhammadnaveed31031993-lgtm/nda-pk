@@ -1613,47 +1613,6 @@ const otherLeaveCount = desigWorkers.filter(
         </button>
       </div>
 
-      {/* Location Filter Tabs */}
-      <div style={{
-        marginBottom: '15px',
-        display: 'flex',
-        gap: '8px',
-        flexWrap: 'wrap'
-      }}>
-        <button
-          onClick={() => setModalLocationTab('All')}
-          style={{
-            background: modalLocationTab === 'All' ? '#2563eb' : '#e2e8f0',
-            color: modalLocationTab === 'All' ? '#fff' : '#000',
-            border: 'none',
-            padding: '6px 12px',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '13px'
-          }}
-        >
-          All Locations
-        </button>
-
-        {sitesList.map(site => (
-          <button
-            key={site}
-            onClick={() => setModalLocationTab(site)}
-            style={{
-              background: modalLocationTab === site ? '#2563eb' : '#e2e8f0',
-              color: modalLocationTab === site ? '#fff' : '#000',
-              border: 'none',
-              padding: '6px 12px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '13px'
-            }}
-          >
-            {site}
-          </button>
-        ))}
-      </div>
-
       {/* Filtered Workers Table */}
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
