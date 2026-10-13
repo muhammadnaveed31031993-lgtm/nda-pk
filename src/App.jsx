@@ -3297,7 +3297,7 @@ accruedDays = balance.toFixed(1);
               <th style={{ padding: '10px' }}>Worker ID & Name</th>
               <th style={{ padding: '10px' }}>Department</th>
               <th style={{ padding: '10px' }}>Working Site</th>
-              <th style={{ padding: '10px', textAlign: 'center' }}>Actions (View / Print / PDF)</th>
+              <th className="monthly-timesheet-actions" style={{ padding: '10px', textAlign: 'center' }}>Actions (View / Print / PDF)</th>
             </tr>
           </thead>
           <tbody>
