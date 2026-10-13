@@ -1648,26 +1648,14 @@ const otherLeaveCount = desigWorkers.filter(
   );
 
   return (
+           
 <tr
   key={worker.id}
-  style={{
-    backgroundColor:
-      String(status).trim().toLowerCase() === 'annual leave'
-        ? '#fef3c7'
-        : String(status).trim().toLowerCase() === 'absent'
-          ? '#fee2e2'
-          : String(status).trim().toLowerCase() === 'present'
-            ? '#dcfce7'
-            : '#ffffff',
-    color:
-      String(status).trim().toLowerCase() === 'annual leave'
-        ? '#92400e'
-        : '#111827',
-    fontWeight:
-      String(status).trim().toLowerCase() === 'annual leave'
-        ? 'bold'
-        : 'normal'
-  }}
+style={{
+  backgroundColor: annualLeave ? '#fef3c7' : '#ffffff',
+  color: annualLeave ? '#92400e' : '#111827',
+  fontWeight: annualLeave ? 'bold' : 'normal'
+}}
 >
                     <td style={{ border: '1px solid #cbd5e1', padding: '9px', fontSize: '13px' }}>
                       #{worker.worker_id || worker.id}
