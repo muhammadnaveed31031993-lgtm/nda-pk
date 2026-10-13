@@ -1677,11 +1677,18 @@ const otherLeaveCount = desigWorkers.filter(
 
                 return (attendanceRecord?.site || attendanceRecord?.work_site) === modalLocationTab;
               })
-              .map(worker => {
-                const attendanceRecord =
-                  attendanceData[selectedTimesheetDate]?.[worker.id];
+              
+.map(worker => {
+  const attendanceRecord =
+    attendanceData[selectedTimesheetDate]?.[worker.id];
 
-                return (             
+  const annualLeave = getAnnualLeaveForWorker(
+    worker.id,
+    selectedTimesheetDate
+  );
+
+  return (
+           
 <tr
   key={worker.id}
   style={{
