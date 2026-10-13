@@ -2648,45 +2648,63 @@ return (
       boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
     }}
   >
-    <style>{`
-      @media print {
-        body * {
-          visibility: hidden !important;
-        }
-        #monthly-sheet-print,
-        #monthly-sheet-print * {
-          visibility: visible !important;
-        }
-        #monthly-sheet-print {
-          position: absolute !important;
-          left: 0 !important;
-          top: 0 !important;
-          width: 100% !important;
-          padding: 0 !important;
-          margin: 0 !important;
-          box-shadow: none !important;
-          border-radius: 0 !important;
-        }
-        #monthly-sheet-print .no-print {
-          display: none !important;
-        }
-        #monthly-sheet-print table {
-          width: 100% !important;
-          border-collapse: collapse !important;
-          font-size: 11px !important;
-        }
-        #monthly-sheet-print th,
-        #monthly-sheet-print td {
-          border: 1px solid #555 !important;
-          padding: 6px 4px !important;
-          color: #000 !important;
-        }
-        #monthly-sheet-print h3 {
-          color: #000 !important;
-        }
-      }
-    `}</style>
+<style>{`
+  @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
 
+  @media print {
+    body * {
+      visibility: hidden !important;
+    }
+
+    #monthly-sheet-print,
+    #monthly-sheet-print * {
+      visibility: visible !important;
+    }
+
+    #monthly-sheet-print {
+      position: absolute !important;
+      left: 0 !important;
+      top: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      box-shadow: none !important;
+      border-radius: 0 !important;
+      box-sizing: border-box !important;
+    }
+
+    #monthly-sheet-print .no-print {
+      display: none !important;
+    }
+
+    #monthly-sheet-print table {
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      table-layout: fixed !important;
+      border-collapse: collapse !important;
+      font-size: 9px !important;
+    }
+
+    #monthly-sheet-print th,
+    #monthly-sheet-print td {
+      border: 1px solid #555 !important;
+      padding: 5px 3px !important;
+      color: #000 !important;
+      white-space: normal !important;
+      overflow-wrap: anywhere !important;
+      box-sizing: border-box !important;
+    }
+
+    #monthly-sheet-print h3 {
+      color: #000 !important;
+    }
+  }
+`}</style>
     <div
       className="no-print"
       style={{
