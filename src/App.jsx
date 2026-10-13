@@ -1515,10 +1515,29 @@ const presentCount = desigWorkers.filter(
   w => getAttendanceStatus(w).toLowerCase() === 'present'
 ).length;
 
-const absentCount = desigWorkers.filter(
-  w => getAttendanceStatus(w).toLowerCase() === 'absent'
-).length;
+const absentCount = desigWorkers.filter(w => {
+  const status = getAttendanceStatus(w)
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/-/g, ' ')
+    .trim();
 
+  const workerKey = String(w.worker_id ?? w.id);
+
+  const onAnnualLeave = annualLeaveList.some(leave => {
+    const sameWorker = String(leave.worker_id) === workerKey;
+    const start = leave.start_date;
+
+    const isStillOnLeave =
+      leave.status !== 'Returned' &&
+      (!leave.actual_return || leave.actual_return === 'On Leave');
+
+    return sameWorker && isStillOnLeave && start &&
+      start <= selectedTimesheetDate;
+  });
+
+  return status === 'absent' && !onAnnualLeave;
+}).length;
 
 const annualLeaveCount = desigWorkers.filter(w => {
   const status = getAttendanceStatus(w)
