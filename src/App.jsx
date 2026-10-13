@@ -2482,9 +2482,11 @@ await handleSingleAttendanceChange(
                   onChange={e => setDailyTimesheetSite(e.target.value)}
                   style={{ padding: '9px', minWidth: '200px', border: '1px solid #cbd5e1', borderRadius: '5px' }}
                 >
-                  {sitesList.map((site, idx) => (
-                    <option key={idx} value={site}>{site}</option>
-                  ))}
+                 
+<option value="All Workers">All Workers</option>
+{sitesList.map((site, idx) => (
+  <option key={idx} value={site}>{site}</option>
+))}
                 </select>
               </div>
             </div>
