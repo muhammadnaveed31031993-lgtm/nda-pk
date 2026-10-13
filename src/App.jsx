@@ -2766,14 +2766,12 @@ return (
           </tr>
         </thead>
 
-        <tbody>
-          {salaryData.map((s, index) => {
-            const totalOT = Number(s.totalOT || 0);
-            const totalSalary = Number(s.totalPayable || 0);
-
-            // Temporary breakdown until the existing salaryData formula is verified.
-            const overtimePay = Number(s.overtimePay || 0);
-            const salaryPay = Number(s.salaryPay ?? (totalSalary - overtimePay));
+        <tbody>         
+{salaryData.map((s, index) => {
+  const totalOT = Number(s.totalOT || 0);
+  const overtimePay = Number(s.otSalary || 0);
+  const salaryPay = Number(s.baseSalary || 0);
+  const totalSalary = Number(s.totalPayable || (salaryPay + overtimePay));
 
             return (
               <tr key={s.id} style={{ borderBottom: '1px solid #cbd5e1' }}>
