@@ -3214,7 +3214,18 @@ accruedDays = balance.toFixed(1);
         >
           ✕ Close
         </button>
-      </div>
+      </div>     
+<style>{`
+  @media print {
+    .monthly-timesheet-filters {
+      display: none !important;
+    }
+
+    .monthly-timesheet-actions {
+      display: none !important;
+    }
+  }
+`}</style>
 
       {/* Filters: Search, Department, Month, Year */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px', backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px' }}>
