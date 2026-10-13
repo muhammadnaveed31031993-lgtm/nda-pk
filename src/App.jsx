@@ -2566,17 +2566,34 @@ await handleSingleAttendanceChange(
                           a.date === selectedTimesheetDate
                         ) ||
                         {};
+                  
+                      const annualLeave = getAnnualLeaveForWorker(
+                        worker.id,
+                        selectedTimesheetDate
+                      );
 
-                      const status = record.status || 'Absent';
-                      const ot = Number(record.ot ?? record.overtime_hours ?? 0) || 0;
-                      const contractOT = Number(
-  record.contract_overtime_hours ?? 0
-) || 0;
+                      const status = annualLeave
+                        ? 'Annual Leave'
+                        : (record.status || 'Absent');
+
+                      const ot = annualLeave
+                        ? 0
+                        : (Number(record.ot ?? record.overtime_hours ?? 0) || 0);
+
+                      const contractOT = annualLeave
+                        ? 0
+                        : (Number(record.contract_ot ?? record.contract_overtime_hours ?? 0) || 0);
+
                       const totalOT = ot + contractOT;
+
                       const normalHours =
-                        String(status).toLowerCase() === 'present' ? 8 : 0;
+                        !annualLeave &&
+                        String(status).toLowerCase() === 'present'
+                          ? 8
+                          : 0;
 
                       return (
+
                         <tr key={worker.id}>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{index + 1}</td>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>{worker.name || '-'}</td>
