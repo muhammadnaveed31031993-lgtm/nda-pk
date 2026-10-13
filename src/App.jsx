@@ -2636,39 +2636,179 @@ return (
             </div>
           </div>
         )}
+       
+{/* TAB 5: MONTHLY SHEET */}
+{activeTab === 'payroll' && (userRole.is_admin || userRole.can_view_payroll) && (
+  <div
+    id="monthly-sheet-print"
+    style={{
+      backgroundColor: '#fff',
+      padding: '20px',
+      borderRadius: '10px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+    }}
+  >
+    <style>{`
+      @media print {
+        body * {
+          visibility: hidden !important;
+        }
+        #monthly-sheet-print,
+        #monthly-sheet-print * {
+          visibility: visible !important;
+        }
+        #monthly-sheet-print {
+          position: absolute !important;
+          left: 0 !important;
+          top: 0 !important;
+          width: 100% !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          box-shadow: none !important;
+          border-radius: 0 !important;
+        }
+        #monthly-sheet-print .no-print {
+          display: none !important;
+        }
+        #monthly-sheet-print table {
+          width: 100% !important;
+          border-collapse: collapse !important;
+          font-size: 11px !important;
+        }
+        #monthly-sheet-print th,
+        #monthly-sheet-print td {
+          border: 1px solid #555 !important;
+          padding: 6px 4px !important;
+          color: #000 !important;
+        }
+        #monthly-sheet-print h3 {
+          color: #000 !important;
+        }
+      }
+    `}</style>
 
-        {/* TAB 5: PAYROLL */}
-        {activeTab === 'payroll' && (userRole.is_admin || userRole.can_view_payroll) && (
-          <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-              <h3 style={{ margin: 0 }}>💵 Monthly Payroll</h3>
-              <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#2563eb' }}>Grand Total: {Math.round(grandTotalPayroll).toLocaleString()} {selectedCurrency}</div>
-            </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
-                  <th style={{ padding: '10px' }}>Worker</th>
-                  <th style={{ padding: '10px' }}>Site</th>
-                  <th style={{ padding: '10px' }}>Present Days</th>
-                  <th style={{ padding: '10px' }}>Total OT</th>
-                  <th style={{ padding: '10px' }}>Payable</th>
-                </tr>
-              </thead>
-              <tbody>
-                {salaryData.map(s => (
-                  <tr key={s.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ padding: '10px', fontWeight: 'bold' }}>#{s.id} - {s.name} <br/><span style={{fontSize: '11px', color: '#64748b'}}>{s.designation}</span></td>
-                    <td style={{ padding: '10px' }}>{s.work_site || sitesList[0]}</td>
-                    <td style={{ padding: '10px' }}>{s.presentDays}</td>
-                    <td style={{ padding: '10px' }}>{s.totalOT} hrs</td>
-                    <td style={{ padding: '10px', fontWeight: 'bold', color: '#16a34a' }}>{Math.round(s.totalPayable).toLocaleString()} {selectedCurrency}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+    <div
+      className="no-print"
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '12px',
+        marginBottom: '20px'
+      }}
+    >
+      <h3 style={{ margin: 0 }}>📋 Monthly Sheet</h3>
 
+      <button
+        onClick={() => window.print()}
+        style={{
+          backgroundColor: '#2563eb',
+          color: '#fff',
+          border: 'none',
+          padding: '10px 18px',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          fontWeight: 'bold'
+        }}
+      >
+        🖨️ Print / Save as PDF
+      </button>
+    </div>
+
+    <div style={{ marginBottom: '15px', fontWeight: 'bold' }}>
+      Monthly Salary & Overtime Sheet
+    </div>
+
+    <div
+      style={{
+        overflowX: 'auto',
+        width: '100%'
+      }}
+    >
+      <table
+        style={{
+          width: '100%',
+          minWidth: '750px',
+          borderCollapse: 'collapse',
+          textAlign: 'center',
+          fontSize: '12px'
+        }}
+      >
+        <thead>
+          <tr style={{ backgroundColor: '#e2e8f0' }}>
+            <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>S.No.</th>
+            <th style={{ border: '1px solid #94a3b8', padding: '9px', textAlign: 'left' }}>Name</th>
+            <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>ID</th>
+            <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Total Present</th>
+            <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Total Overtime</th>
+            <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Overtime Pay</th>
+            <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Salary Pay</th>
+            <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Total Salary</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {salaryData.map((s, index) => {
+            const totalOT = Number(s.totalOT || 0);
+            const totalSalary = Number(s.totalPayable || 0);
+
+            // Temporary breakdown until the existing salaryData formula is verified.
+            const overtimePay = Number(s.overtimePay || 0);
+            const salaryPay = Number(s.salaryPay ?? (totalSalary - overtimePay));
+
+            return (
+              <tr key={s.id} style={{ borderBottom: '1px solid #cbd5e1' }}>
+                <td style={{ border: '1px solid #cbd5e1', padding: '8px' }}>
+                  {index + 1}
+                </td>
+                <td style={{ border: '1px solid #cbd5e1', padding: '8px', textAlign: 'left' }}>
+                  {s.name}
+                </td>
+                <td style={{ border: '1px solid #cbd5e1', padding: '8px' }}>
+                  {s.id}
+                </td>
+                <td style={{ border: '1px solid #cbd5e1', padding: '8px' }}>
+                  {s.presentDays}
+                </td>
+                <td style={{ border: '1px solid #cbd5e1', padding: '8px' }}>
+                  {totalOT} hrs
+                </td>
+                <td style={{ border: '1px solid #cbd5e1', padding: '8px' }}>
+                  {Math.round(overtimePay).toLocaleString()} {selectedCurrency}
+                </td>
+                <td style={{ border: '1px solid #cbd5e1', padding: '8px' }}>
+                  {Math.round(salaryPay).toLocaleString()} {selectedCurrency}
+                </td>
+                <td style={{ border: '1px solid #cbd5e1', padding: '8px', fontWeight: 'bold' }}>
+                  {Math.round(totalSalary).toLocaleString()} {selectedCurrency}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+
+        <tfoot>
+          <tr style={{ backgroundColor: '#f1f5f9', fontWeight: 'bold' }}>
+            <td
+              colSpan={7}
+              style={{
+                border: '1px solid #94a3b8',
+                padding: '10px',
+                textAlign: 'right'
+              }}
+            >
+              GRAND TOTAL
+            </td>
+            <td style={{ border: '1px solid #94a3b8', padding: '10px' }}>
+              {Math.round(grandTotalPayroll).toLocaleString()} {selectedCurrency}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+)}
         {/* TAB 6: CHANGE PASSWORD */}
         {activeTab === 'changepass' && (
           <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', maxWidth: '450px', margin: '0 auto' }}>
