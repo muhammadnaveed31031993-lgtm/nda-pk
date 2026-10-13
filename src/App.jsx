@@ -2570,9 +2570,24 @@ return (
                           ? 8
                           : 0;
 
-                      return (
-
-                        <tr key={worker.id}>
+                      return (                       
+<tr
+  key={worker.id}
+  style={{
+    backgroundColor:
+      String(status).trim().toLowerCase() === 'annual leave'
+        ? '#fef3c7'
+        : '#ffffff',
+    color:
+      String(status).trim().toLowerCase() === 'annual leave'
+        ? '#92400e'
+        : '#111827',
+    fontWeight:
+      String(status).trim().toLowerCase() === 'annual leave'
+        ? 'bold'
+        : 'normal'
+  }}
+>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{index + 1}</td>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>{worker.name || '-'}</td>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>{worker.designation || '-'}</td>
