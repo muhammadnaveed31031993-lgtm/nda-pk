@@ -2528,15 +2528,14 @@ const workerSite =
   record.work_site ||
   worker.work_site ||
   '';
-
 return (
   dailyTimesheetSite === 'All' ||
   dailyTimesheetSite === 'All Workers' ||
   workerSite.toLowerCase().trim() ===
     dailyTimesheetSite.toLowerCase().trim()
 );
-
-                    .map((worker, index) => {
+})
+.map((worker, index) => {
                       const record =
                         attendanceData[selectedTimesheetDate]?.[worker.id] ||
                         attendance.find(a =>
