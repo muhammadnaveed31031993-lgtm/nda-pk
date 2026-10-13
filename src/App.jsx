@@ -3387,42 +3387,65 @@ const monthlyRows = workerAttendance.map(att => {
   };
 });
 
-return monthlyRows.map((att, idx) => (
-  <tr
-    key={idx}
-    style={{
-      borderBottom: '1px solid #f1f5f9',
-      backgroundColor:
-        att.status === 'Annual Leave' ? '#fef3c7' : '#ffffff'
-    }}
-  >
-    <td style={{ padding: '8px 10px', fontWeight: '500' }}>
-      {att.date}
-    </td>
-    <td style={{ padding: '8px 10px' }}>
-      <span
-        style={{
-          padding: '2px 8px',
-          borderRadius: '4px',
-          fontSize: '11px',
-          backgroundColor:
-            att.status === 'Annual Leave' ? '#fef3c7' : '#dcfce7',
-          color:
-            att.status === 'Annual Leave' ? '#92400e' : '#166534',
-          fontWeight: 'bold'
-        }}
-      >
-        {att.status}
-      </span>
-    </td>
-    <td style={{ padding: '8px 10px', color: '#475569' }}>
-      {att.overtime_hours} Hours
-    </td>
-    <td style={{ padding: '8px 10px', color: '#64748b' }}>
-      {att.work_site || viewingWorkerTimesheet.work_site || 'N/A'}
-    </td>
-  </tr>
-));
+return monthlyRows.map((att, idx) => {
+  const rowStatus = String(att.status || '').trim().toLowerCase();
+
+  let rowBg = '#ffffff';
+  let statusBg = '#dcfce7';
+  let statusColor = '#166534';
+
+  if (rowStatus === 'annual leave') {
+    rowBg = '#fef3c7';
+    statusBg = '#fef3c7';
+    statusColor = '#92400e';
+  } else if (rowStatus === 'absent') {
+    rowBg = '#fee2e2';
+    statusBg = '#fee2e2';
+    statusColor = '#991b1b';
+  } else if (rowStatus === 'sick leave' || rowStatus === 'other leave') {
+    rowBg = '#ffedd5';
+    statusBg = '#ffedd5';
+    statusColor = '#9a3412';
+  } else if (rowStatus === 'present') {
+    rowBg = '#dcfce7';
+    statusBg = '#dcfce7';
+    statusColor = '#166534';
+  }
+
+  return (
+    <tr
+      key={idx}
+      style={{
+        borderBottom: '1px solid #f1f5f9',
+        backgroundColor: rowBg
+      }}
+    >
+      <td style={{ padding: '8px 10px', fontWeight: '500' }}>
+        {att.date}
+      </td>
+      <td style={{ padding: '8px 10px' }}>
+        <span
+          style={{
+            padding: '2px 8px',
+            borderRadius: '4px',
+            fontSize: '11px',
+            backgroundColor: statusBg,
+            color: statusColor,
+            fontWeight: 'bold'
+          }}
+        >
+          {att.status}
+        </span>
+      </td>
+      <td style={{ padding: '8px 10px', color: '#475569' }}>
+        {att.overtime_hours} Hours
+      </td>
+      <td style={{ padding: '8px 10px', color: '#64748b' }}>
+        {att.work_site || viewingWorkerTimesheet.work_site || 'N/A'}
+      </td>
+    </tr>
+  );
+});
             })()}
           </tbody>
         </table>
