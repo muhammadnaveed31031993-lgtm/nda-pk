@@ -2520,15 +2520,20 @@ await handleSingleAttendanceChange(
                           a.date === selectedTimesheetDate
                         ) ||
                         {};
+                    
+const workerSite =
+  record.site ||
+  record.work_site ||
+  worker.work_site ||
+  '';
 
-                      const workerSite =
-                        record.site ||
-                        record.work_site ||
-                        worker.work_site ||
-                        '';
+return (
+  dailyTimesheetSite === 'All' ||
+  dailyTimesheetSite === 'All Workers' ||
+  workerSite.toLowerCase().trim() ===
+    dailyTimesheetSite.toLowerCase().trim()
+);
 
-                      return workerSite === dailyTimesheetSite;
-                    })
                     .map((worker, index) => {
                       const record =
                         attendanceData[selectedTimesheetDate]?.[worker.id] ||
