@@ -3644,6 +3644,20 @@ return monthlyRows.map((att, idx) => {
   </div>
 )}
       </main>
+      {/* Footer */}
+      <div
+        className="app-footer"
+        style={{
+          textAlign: 'center',
+          padding: '12px',
+          backgroundColor: '#f1f5f9',
+          color: '#475569',
+          fontSize: '12px',
+          fontWeight: '600',
+          borderTop: '1px solid #cbd5e1'
+        }}
+      >
+        Prepared by Muhammad Naveed
     </div>
   );
 }
