@@ -176,7 +176,7 @@ const [newDesignation, setNewDesignation] = useState('');
   const [overtimeInputs, setOvertimeInputs] = useState({});
   const [timesheetSiteInputs, setTimesheetSiteInputs] = useState({});
   const [attendanceData, setAttendanceData] = useState({});
-  const [dailyTimesheetSite, setDailyTimesheetSite] = useState('Sharjah Mamzar');
+ const [dailyTimesheetSite, setDailyTimesheetSite] = useState('All Workers');
 const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
   useEffect(() => {
   async function loadDailyWorkDetails() {
