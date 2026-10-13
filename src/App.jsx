@@ -242,7 +242,7 @@ const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
     }
   }
     // Check whether a worker is on annual leave on a selected date
-  function getAnnualLeaveForWorker(workerId, date) {
+function getAnnualLeaveForWorker(workerId, date) {
     if (!workerId || !date) return null;
 
     const leaveRecord = annualLeaveList.find(leave => {
@@ -250,21 +250,22 @@ const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
         String(leave.worker_id) === String(workerId);
 
       const startDate = leave.start_date;
-      const returnDate = leave.expected_return;
+      const actualReturn = leave.actual_return;
 
-      // Expected return date is the first day back at work
-      const dateIsOnLeave =
-        startDate &&
-        returnDate &&
-        date >= startDate &&
-        date < returnDate;
+      const hasStarted =
+        startDate && date >= startDate;
 
-      const notReturnedEarly =
-        !leave.actual_return ||
-        leave.actual_return === 'On Leave' ||
-        date < leave.actual_return;
+      // Leave remains active until actual return is recorded
+      const hasNotActuallyReturned =
+        !actualReturn ||
+        actualReturn === 'On Leave' ||
+        date < actualReturn;
 
-      return sameWorker && dateIsOnLeave && notReturnedEarly;
+      return (
+        sameWorker &&
+        hasStarted &&
+        hasNotActuallyReturned
+      );
     });
 
     return leaveRecord || null;
