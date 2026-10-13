@@ -1683,8 +1683,15 @@ const otherLeaveCount = desigWorkers.filter(
                 const attendanceRecord =
                   attendanceData[selectedTimesheetDate]?.[worker.id];
 
-                return (
-                  <tr key={worker.id}>
+                return (             
+<tr
+  key={worker.id}
+  style={{
+    backgroundColor: annualLeave ? '#fef3c7' : '#ffffff',
+    color: annualLeave ? '#92400e' : '#111827',
+    fontWeight: annualLeave ? 'bold' : 'normal'
+  }}
+>
                     <td style={{ border: '1px solid #cbd5e1', padding: '9px', fontSize: '13px' }}>
                       #{worker.worker_id || worker.id}
                     </td>
