@@ -2,7 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
 const dailyTimesheetPrintStyle = `
-@media print {
+@media print {.app-footer {
+  display: block !important;
+  visibility: visible !important;
+  position: static !important;
+  width: 100% !important;
+  text-align: center !important;
+  color: #000 !important;
+  background: #fff !important;
+  font-size: 12px !important;
+  margin-top: 20px !important;
+  padding: 10px !important;
+}
   body * {
     visibility: hidden !important;
   }
