@@ -846,6 +846,9 @@ async function fetchAttendance() {
                 </tr>
               `).join('')}
           </table>
+          <div style="text-align:center; margin-top:25px; padding:12px; border-top:1px solid #cbd5e1; font-family:Arial,sans-serif; font-size:12px; font-weight:bold; color:#333;">
+            Prepared by Muhammad Naveed
+          </div>
           <script>window.print();</script>
         </body>
       </html>
