@@ -807,49 +807,155 @@ async function fetchAttendance() {
     }
   }
 
-  // 1. Print Individual Worker Monthly Report
+   // Print Individual Worker Monthly Report
   function handlePrintWorkerMonthlyReport(worker) {
-    const workerAttendance = attendance.filter(a => a.worker_id === worker.id);
+    const workerAttendance = attendance.filter(
+      a => String(a.worker_id) === String(worker.id)
+    );
+
     const printWindow = window.open('', '_blank');
-    
+
+    if (!printWindow) {
+      alert('Print window blocked. Please allow pop-ups and try again.');
+      return;
+    }
+
+    const currency = worker.currency || 'AED';
+    const monthlySalary =
+      worker.monthly_salary ||
+      (Number(worker.daily_rate || 0) * Number(totalDaysInCurrentMonth || 0));
+
+    printWindow.document.open();
     printWindow.document.write(`
+      <!DOCTYPE html>
       <html>
         <head>
-          <title>Monthly Overtime Report - #${worker.id} ${worker.name}</title>
+          <meta charset="UTF-8">
+          <title>Monthly Report - #${worker.id}</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 25px; color: #111; }
-            h2 { border-bottom: 2px solid #2563eb; padding-bottom: 8px; color: #1e293b; }
-            .box { background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-            th, td { border: 1px solid #cbd5e1; padding: 8px; font-size: 13px; text-align: left; }
-            th { background: #e2e8f0; }
+            @page {
+              size: A4 portrait;
+              margin: 12mm;
+            }
+
+            * {
+              box-sizing: border-box;
+            }
+
+            body {
+              font-family: Arial, sans-serif;
+              padding: 0;
+              color: #111;
+              margin: 0;
+            }
+
+            h2 {
+              border-bottom: 2px solid #2563eb;
+              padding-bottom: 8px;
+              color: #1e293b;
+              font-size: 20px;
+            }
+
+            .box {
+              background: #f8fafc;
+              border: 1px solid #cbd5e1;
+              padding: 15px;
+              border-radius: 8px;
+              margin-bottom: 20px;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 15px;
+            }
+
+            th, td {
+              border: 1px solid #cbd5e1;
+              padding: 8px;
+              font-size: 12px;
+              text-align: left;
+            }
+
+            th {
+              background: #e2e8f0;
+            }
+
+            .report-footer {
+              display: block !important;
+              width: 100%;
+              text-align: center;
+              margin-top: 30px;
+              padding: 12px 0;
+              border-top: 1px solid #94a3b8;
+              color: #111 !important;
+              background: #fff !important;
+              font-family: Arial, sans-serif;
+              font-size: 12px;
+              font-weight: bold;
+              visibility: visible !important;
+            }
+
+            @media print {
+              .report-footer {
+                display: block !important;
+                visibility: visible !important;
+                color: #111 !important;
+              }
+            }
           </style>
         </head>
         <body>
           <h2>NDA-PK SYSTEM - Individual Worker Monthly Report</h2>
+
           <div class="box">
             <p><strong>Worker ID:</strong> #${worker.id}</p>
-            <p><strong>Name:</strong> ${worker.name}</p>
-            <p><strong>Department:</strong> ${worker.department} | <strong>Site:</strong> ${worker.work_site || 'N/A'}</p>
-            <p><strong>Monthly Salary:</strong> ${worker.monthly_salary || (worker.daily_rate * totalDaysInCurrentMonth)} ${worker.currency || 'AED'}</p>
+            <p><strong>Name:</strong> ${worker.name || ''}</p>
+            <p><strong>Department:</strong> ${worker.department || 'N/A'}
+              | <strong>Site:</strong> ${worker.work_site || 'N/A'}</p>
+            <p><strong>Monthly Salary:</strong>
+              ${monthlySalary} ${currency}</p>
           </div>
-          <h3>Daily Attendance & Overtime Record</h3>
+
+          <h3>Daily Attendance &amp; Overtime Record</h3>
+
           <table>
-            <tr><th>Date</th><th>Status</th><th>Overtime Hours</th><th>Site</th></tr>
-            ${workerAttendance.length === 0 ? '<tr><td colspan="4">No attendance records found.</td></tr>' : 
-              workerAttendance.map(att => `
-                <tr>
-                  <td>${att.date}</td>
-                  <td>${att.status}</td>
-                  <td>${att.overtime_hours || 0} Hours</td>
-                  <td>${att.work_site || worker.work_site || 'N/A'}</td>
-                </tr>
-              `).join('')}
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Overtime Hours</th>
+                <th>Site</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                workerAttendance.length === 0
+                  ? '<tr><td colspan="4">No attendance records found.</td></tr>'
+                  : workerAttendance.map(att => `
+                      <tr>
+                        <td>${att.date || ''}</td>
+                        <td>${att.status || ''}</td>
+                        <td>${att.overtime_hours || 0} Hours</td>
+                        <td>${att.work_site || worker.work_site || 'N/A'}</td>
+                      </tr>
+                    `).join('')
+              }
+            </tbody>
           </table>
-          <div style="text-align:center; margin-top:25px; padding:12px; border-top:1px solid #cbd5e1; font-family:Arial,sans-serif; font-size:12px; font-weight:bold; color:#333;">
+
+          <div class="report-footer">
             Prepared by Muhammad Naveed
           </div>
-          <script>window.print();</script>
+
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.focus();
+                window.print();
+              }, 300);
+            };
+          <\/script>
         </body>
       </html>
     `);
