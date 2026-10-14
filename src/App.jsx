@@ -1654,9 +1654,38 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
             const getAttendanceStatus = (worker) =>
   attendanceData[selectedTimesheetDate]?.[worker.id]?.status || '';
 
-const presentCount = desigWorkers.filter(
-  w => getAttendanceStatus(w).toLowerCase() === 'present'
-).length;
+const presentCount = desigWorkers.filter(w => {
+  const status = getAttendanceStatus(w)
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/-/g, ' ')
+    .trim();
+
+  if (status !== 'present') return false;
+
+  const workerKey = String(w.id);
+
+  const onAnnualLeave = annualLeaveList.some(leave => {
+    const sameWorker =
+      String(leave.worker_id) === workerKey;
+
+    const start = leave.start_date;
+    const end = leave.actual_return;
+
+    const isStillOnLeave =
+      leave.status !== 'Returned' &&
+      (!end || end === 'On Leave' || selectedTimesheetDate < end);
+
+    return (
+      sameWorker &&
+      isStillOnLeave &&
+      start &&
+      start <= selectedTimesheetDate
+    );
+  });
+
+  return !onAnnualLeave;
+}).length;
 
 const absentCount = desigWorkers.filter(w => {
   const status = getAttendanceStatus(w)
