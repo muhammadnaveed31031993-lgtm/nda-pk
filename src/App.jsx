@@ -1260,10 +1260,32 @@ const otHours = Number(
   selectedDateAttendance.forEach(a => { latestAttendanceMap[a.worker_id] = a; });
 
  
-const presentCountForDate = Object.values(latestAttendanceMap).filter(
-  a => (a.status || '').toLowerCase() === 'present'
-).length;
 
+const presentCountForDate = filteredWorkers.filter(worker => {
+  const attendanceRecord = latestAttendanceMap[worker.id];
+  const status = (attendanceRecord?.status || '').trim().toLowerCase();
+
+  const onAnnualLeave = annualLeaveList.some(leave => {
+    const sameWorker =
+      String(leave.worker_id) === String(worker.id);
+
+    const onLeave =
+      leave.status !== 'Returned' &&
+      leave.actual_return === 'On Leave';
+
+    const start = leave.start_date;
+    const end = leave.expected_return;
+
+    return (
+      sameWorker &&
+      onLeave &&
+      start <= selectedTimesheetDate &&
+      selectedTimesheetDate <= end
+    );
+  });
+
+  return status === 'present' && !onAnnualLeave;
+}).length;
 
 const annualLeaveCountForDate = filteredWorkers.filter(worker => {
   const record = annualLeaveList.find(leave => {
