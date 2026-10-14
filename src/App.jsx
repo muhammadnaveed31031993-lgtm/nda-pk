@@ -1168,9 +1168,11 @@ async function handleQuickAttendance(e) {
     setQuickHours('2');
 
     document.getElementById('quick-worker-id')?.focus();
-  } catch (err) {
-    alert('Attendance save error: ' + err.message);
-  } finally {
+ 
+} catch (err) {
+  alert('Save karte waqt error: ' + err.message);
+  throw err;
+} finally {
     setQuickSaving(false);
   }
 }
