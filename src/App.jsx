@@ -183,7 +183,14 @@ const [newDesignation, setNewDesignation] = useState('');
   const [bulkOT, setBulkOT] = useState('5');
   const [bulkContractOT, setBulkContractOT] = useState('0');
   const [bulkWorkDetails, setBulkWorkDetails] = useState('');
-
+  
+  // Quick Attendance States
+  const [quickWorkerId, setQuickWorkerId] = useState('');
+  const [quickSite, setQuickSite] = useState('Sharjah Mamzar');
+  const [quickOTType, setQuickOTType] = useState('Normal OT');
+  const [quickHours, setQuickHours] = useState('2');
+  const [quickSaving, setQuickSaving] = useState(false);
+  
   const [overtimeInputs, setOvertimeInputs] = useState({});
   const [timesheetSiteInputs, setTimesheetSiteInputs] = useState({});
   const [attendanceData, setAttendanceData] = useState({});
