@@ -1115,10 +1115,11 @@ async function handleSingleAttendanceChange(
         work_site: assignedSite
       }], { onConflict: 'worker_id,date' });
 
-    if (error) {
-      alert('Attendance save nahi hui: ' + error.message);
-      return;
-    }
+    
+if (error) {
+  throw new Error(error.message);
+}
+
   } catch (err) {
     alert('Save karte waqt error: ' + err.message);
   }
