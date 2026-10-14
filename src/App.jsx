@@ -942,8 +942,8 @@ async function fetchAttendance() {
                   : workerAttendance.map(att => `
                       <tr>
                         <td>${att.date || ''}</td>
-                        <td>${att.status || ''}</td>
-                        <td>${att.overtime_hours || 0} Hours</td>
+                        <td>${att.status || ''}</td>                       
+<td>${(Number(att.overtime_hours) || 0) + (Number(att.contract_overtime_hours) || 0)} Hours</td>
                         <td>${att.work_site || worker.work_site || 'N/A'}</td>
                       </tr>
                     `).join('')
