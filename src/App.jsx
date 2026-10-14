@@ -3992,9 +3992,16 @@ return monthlyRows.map((att, idx) => {
           {att.status}
         </span>
       </td>
-      <td style={{ padding: '8px 10px', color: '#475569' }}>
-        {att.overtime_hours} Hours
-      </td>
+     <td style={{ padding: '8px 10px', color: '#475569' }}>
+  {Number(att.overtime_hours) || 0} Hours
+</td>
+<td style={{ padding: '8px 10px', color: '#7c3aed' }}>
+  {Number(att.contract_overtime_hours) || 0} Hours
+</td>
+<td style={{ padding: '8px 10px', fontWeight: 'bold' }}>
+  {(Number(att.overtime_hours) || 0) +
+   (Number(att.contract_overtime_hours) || 0)} Hours
+</td>
       <td style={{ padding: '8px 10px', color: '#64748b' }}>
         {att.work_site || viewingWorkerTimesheet.work_site || 'N/A'}
       </td>
