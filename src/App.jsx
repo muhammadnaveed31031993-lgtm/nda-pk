@@ -1289,29 +1289,87 @@ const annualLeaveCountForDate = filteredWorkers.filter(worker => {
 const absentCountForDate = Object.values(latestAttendanceMap).filter(
   a => (a.status || '').toLowerCase() === 'absent'
 ).length;
+ 
   const salaryDataMap = {};
-  workers.forEach(worker => {
-    const workerRecords = attendance.filter(a => a.worker_id === worker.id && a.status === 'Present');
-    const presentDays = workerRecords.length;
-    const totalOT = workerRecords.reduce((acc, curr) => acc + Number(curr.overtime_hours || 0), 0);
-    
-    const monthlySal = Number(worker.monthly_salary || (worker.daily_rate * totalDaysInCurrentMonth) || 0);
-    const dailyRateNum = monthlySal / totalDaysInCurrentMonth;
+
+  // Selected month ke total days
+  const payrollMonthDays = new Date(
+    selectedYear,
+    selectedMonth + 1,
+    0
+  ).getDate();
+
+  // Admin ko tamam sites ke workers dikhayein
+  // Staff ko sirf apni permitted workers list dikhayein
+  const payrollWorkers = userRole.is_admin
+    ? workers
+    : filteredWorkers;
+
+  payrollWorkers.forEach(worker => {
+    // Sirf selected month ke attendance records
+    const monthlyRecords = attendance.filter(a => {
+      const recordDate = String(a.date || '');
+
+      return (
+        String(a.worker_id) === String(worker.id) &&
+        recordDate.length >= 10 &&
+        Number(recordDate.slice(0, 4)) === Number(selectedYear) &&
+        Number(recordDate.slice(5, 7)) === Number(selectedMonth + 1)
+      );
+    });
+
+    // Present days count karein
+    const presentDays = monthlyRecords.filter(a =>
+      String(a.status || '').trim().toLowerCase() === 'present'
+    ).length;
+
+    // Normal OT + Contract OT
+    const totalOT = monthlyRecords.reduce((total, record) => {
+      const normalOT = Number(record.overtime_hours) || 0;
+      const contractOT = Number(record.contract_overtime_hours) || 0;
+
+      return total + normalOT + contractOT;
+    }, 0);
+
+    const monthlySal = Number(
+      worker.monthly_salary ||
+      (Number(worker.daily_rate || 0) * payrollMonthDays) ||
+      0
+    );
+
+    const dailyRateNum = monthlySal / payrollMonthDays;
     const hourlyRate = dailyRateNum / 8;
-    
-    const baseSalary = (monthlySal / totalDaysInCurrentMonth) * presentDays;
+
+    const baseSalary = dailyRateNum * presentDays;
     const otSalary = totalOT * (hourlyRate * 1.25);
     const totalPayable = baseSalary + otSalary;
 
-    salaryDataMap[worker.id] = { presentDays, totalOT, baseSalary, otSalary, totalPayable, monthlySal };
+    salaryDataMap[worker.id] = {
+      presentDays,
+      totalOT,
+      baseSalary,
+      otSalary,
+      totalPayable,
+      monthlySal
+    };
   });
 
-  const salaryData = filteredWorkers.map(worker => ({
+  const salaryData = payrollWorkers.map(worker => ({
     ...worker,
-    ...(salaryDataMap[worker.id] || { presentDays: 0, totalOT: 0, baseSalary: 0, otSalary: 0, totalPayable: 0 })
+    ...(salaryDataMap[worker.id] || {
+      presentDays: 0,
+      totalOT: 0,
+      baseSalary: 0,
+      otSalary: 0,
+      totalPayable: 0,
+      monthlySal: 0
+    })
   }));
 
-  const grandTotalPayroll = salaryData.reduce((acc, curr) => acc + curr.totalPayable, 0);
+  const grandTotalPayroll = salaryData.reduce(
+    (total, worker) => total + worker.totalPayable,
+    0
+  );
 
   if (!session) {
     return (
