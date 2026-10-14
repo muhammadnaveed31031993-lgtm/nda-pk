@@ -3915,7 +3915,9 @@ accruedDays = balance.toFixed(1);
             <tr>
               <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Date</th>
               <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Status</th>
-              <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Overtime Hours</th>
+             <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Normal OT</th>
+<th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Contract OT</th>
+<th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Total OT</th>
               <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Site</th>
             </tr>
           </thead>
