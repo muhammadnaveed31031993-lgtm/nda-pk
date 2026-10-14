@@ -1992,6 +1992,119 @@ style={{
       {scanning && <p style={{ color: '#2563eb', fontWeight: 'bold' }}>{scanStatus}</p>}
       {!scanning && scanStatus && <p style={{ color: '#16a34a', fontWeight: 'bold' }}>{scanStatus}</p>}
     </div>
+    
+{/* QUICK ATTENDANCE BOX */}
+<div style={{
+  marginTop: '20px',
+  padding: '18px',
+  backgroundColor: '#eff6ff',
+  border: '1px solid #93c5fd',
+  borderRadius: '10px'
+}}>
+  <h3 style={{ margin: '0 0 15px', color: '#1d4ed8' }}>
+    ⚡ Quick Bulk Attendance
+  </h3>
+
+  <form onSubmit={handleQuickAttendance}>
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+      gap: '12px',
+      alignItems: 'end'
+    }}>
+      <div>
+        <label>Worker ID No.</label>
+        <input
+          id="quick-worker-id"
+          value={quickWorkerId}
+          onChange={e => setQuickWorkerId(e.target.value)}
+          placeholder="Enter Worker ID"
+          autoComplete="off"
+          required
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            padding: '10px',
+            border: '1px solid #cbd5e1',
+            borderRadius: '6px'
+          }}
+        />
+      </div>
+
+      <div>
+        <label>Working Site</label>
+        <select
+          value={quickSite}
+          onChange={e => setQuickSite(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '10px',
+            borderRadius: '6px'
+          }}
+        >
+          {sitesList.map(site => (
+            <option key={site} value={site}>{site}</option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label>OT Type</label>
+        <select
+          value={quickOTType}
+          onChange={e => setQuickOTType(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '10px',
+            borderRadius: '6px'
+          }}
+        >
+          <option value="Normal OT">Normal OT</option>
+          <option value="Contract OT">Contract OT</option>
+        </select>
+      </div>
+
+      <div>
+        <label>OT Hours</label>
+        <input
+          type="number"
+          min="0"
+          step="0.5"
+          value={quickHours}
+          onChange={e => setQuickHours(e.target.value)}
+          required
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            padding: '10px',
+            border: '1px solid #cbd5e1',
+            borderRadius: '6px'
+          }}
+        />
+      </div>
+
+      <button
+        type="submit"
+        disabled={quickSaving}
+        style={{
+          padding: '11px',
+          backgroundColor: '#16a34a',
+          color: '#fff',
+          border: 'none',
+          borderRadius: '6px',
+          fontWeight: 'bold',
+          cursor: 'pointer'
+        }}
+      >
+        {quickSaving ? 'Saving...' : 'Save & Enter'}
+      </button>
+    </div>
+
+    <p style={{ fontSize: '12px', color: '#475569' }}>
+      Date: {selectedTimesheetDate} | Status: Present
+    </p>
+  </form>
+</div>
 
     {/* Individual Worker Attendance List */}
     <div style={{ marginTop: '30px', backgroundColor: '#fff', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
