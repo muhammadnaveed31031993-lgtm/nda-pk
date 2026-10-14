@@ -1953,56 +1953,8 @@ const otherLeaveCount = desigWorkers.filter(
           </thead>
 
           <tbody>
-           
-{(userRole.is_admin ? workers : filteredWorkers)
-  .filter(w =>
-    w.department?.toLowerCase() === modalDepartment?.toLowerCase()
-  )
-  .filter(w => {
-    if (modalLocationTab === 'All') return true;
-
-    const attendanceRecord =
-      attendanceData[selectedTimesheetDate]?.[w.id];
-
-    return (
-      (attendanceRecord?.site || attendanceRecord?.work_site) ===
-      modalLocationTab
-    );
-  })
-  .map(worker => {
-    const attendanceRecord =
-      attendanceData[selectedTimesheetDate]?.[worker.id];
-
-    const annualLeave = getAnnualLeaveForWorker(
-      worker.id,
-      selectedTimesheetDate
-    );
-
-    return (
-      <tr
-        key={worker.id}
-        style={{
-          backgroundColor: annualLeave ? '#fef3c7' : '#ffffff',
-          color: annualLeave ? '#92400e' : '#111827',
-          fontWeight: annualLeave ? 'bold' : 'normal'
-        }}
-      >
-        <td style={{ border: '1px solid #cbd5e1', padding: '9px', fontSize: '13px' }}>
-          #{worker.worker_id || worker.id}
-        </td>
-        <td style={{ border: '1px solid #cbd5e1', padding: '9px', fontSize: '13px' }}>
-          {worker.name}
-        </td>
-        <td style={{ border: '1px solid #cbd5e1', padding: '9px', fontSize: '13px' }}>
-          {worker.designation || 'N/A'}
-        </td>
-        <td style={{ border: '1px solid #cbd5e1', padding: '9px', fontSize: '13px' }}>
-          {attendanceRecord?.site || attendanceRecord?.work_site || 'No attendance'}
-        </td>
-      </tr>
-    );
-  })}
-
+            {workers
+              .filter(w => w.department === modalDepartment)
               .filter(w => {
                 if (modalLocationTab === 'All') return true;
 
