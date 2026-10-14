@@ -1953,8 +1953,10 @@ const otherLeaveCount = desigWorkers.filter(
           </thead>
 
           <tbody>
-            {workers
-              .filter(w => w.department === modalDepartment)
+            {(userRole.is_admin ? workers : filteredWorkers)
+  .filter(w =>
+    w.department?.toLowerCase() === modalDepartment?.toLowerCase()
+  )}
               .filter(w => {
                 if (modalLocationTab === 'All') return true;
 
