@@ -931,7 +931,9 @@ async function fetchAttendance() {
               <tr>
                 <th>Date</th>
                 <th>Status</th>
-                <th>Overtime Hours</th>
+                <th>Normal OT</th>
+<th>Contract OT</th>
+<th>Total OT</th>
                 <th>Site</th>
               </tr>
             </thead>
