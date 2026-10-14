@@ -1123,7 +1123,56 @@ async function handleSingleAttendanceChange(
     alert('Save karte waqt error: ' + err.message);
   }
 }
+  
+async function handleQuickAttendance(e) {
+  e.preventDefault();
 
+  if (quickSaving) return;
+
+  const enteredId = quickWorkerId.trim();
+
+  const worker = workers.find(w =>
+    String(w.worker_id ?? '').trim().toLowerCase() === enteredId.toLowerCase() ||
+    String(w.id).trim().toLowerCase() === enteredId.toLowerCase()
+  );
+
+  if (!worker) {
+    alert('Worker ID nahi mila. ID check karein.');
+    return;
+  }
+
+  const hours = Number(quickHours);
+
+  if (!Number.isFinite(hours) || hours < 0) {
+    alert('OT hours sahi enter karein.');
+    return;
+  }
+
+  const normalOT = quickOTType === 'Normal OT' ? hours : 0;
+  const contractOT = quickOTType === 'Contract OT' ? hours : 0;
+
+  setQuickSaving(true);
+
+  try {
+    await handleSingleAttendanceChange(
+      worker.id,
+      selectedTimesheetDate,
+      'Present',
+      normalOT,
+      quickSite,
+      contractOT
+    );
+
+    setQuickWorkerId('');
+    setQuickHours('2');
+
+    document.getElementById('quick-worker-id')?.focus();
+  } catch (err) {
+    alert('Attendance save error: ' + err.message);
+  } finally {
+    setQuickSaving(false);
+  }
+}
 
   // 4. Handle Mark Single Attendance (For timesheet table)
   async function handleMarkAttendance(workerId, status) {
