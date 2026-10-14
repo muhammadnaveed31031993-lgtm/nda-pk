@@ -2606,10 +2606,27 @@ await handleSingleAttendanceChange(
      worker.work_site ||
      'Unassigned';
 
-   const presentCount = reportWorkers.filter(w =>
-     getStatus(w) === 'present'
-   ).length;
+  const presentCount = reportWorkers.filter(w => {
+  const status = getStatus(w);
 
+  const isOnAnnualLeave = annualLeaveList.some(leave => {
+    const sameWorker =
+      String(leave.worker_id) === String(w.id);
+
+    const onLeave =
+      leave.status !== 'Returned' &&
+      leave.actual_return === 'On Leave';
+
+    return (
+      sameWorker &&
+      onLeave &&
+      leave.start_date <= selectedTimesheetDate &&
+      selectedTimesheetDate <= leave.expected_return
+    );
+  });
+
+  return status === 'present' && !isOnAnnualLeave;
+}).length;
    const absentWorkers = reportWorkers.filter(w =>
      getStatus(w) === 'absent'
    );
