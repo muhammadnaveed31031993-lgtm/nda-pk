@@ -1597,9 +1597,17 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
       gap: '20px'
     }}>
-      {departmentsList.map(dept => {
-        const deptWorkers = workers.filter(w => w.department === dept);
-
+     {(userRole.is_admin
+  ? departmentsList
+  : departmentsList.filter(dept =>
+      !userRole.assigned_department ||
+      userRole.assigned_department === 'All' ||
+      dept.toLowerCase() === userRole.assigned_department.toLowerCase()
+    )
+).map(dept => {
+  const deptWorkers = filteredWorkers.filter(
+    w => w.department?.toLowerCase() === dept.toLowerCase()
+  );
         // Workers who have an attendance record for the selected date
         const deptAttendanceWorkers = deptWorkers.filter(w =>
           Boolean(attendanceData[selectedTimesheetDate]?.[w.id])
