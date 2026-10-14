@@ -945,6 +945,8 @@ async function fetchAttendance() {
                       <tr>
                         <td>${att.date || ''}</td>
                         <td>${att.status || ''}</td>                       
+<td>${Number(att.overtime_hours) || 0} Hours</td>
+<td>${Number(att.contract_overtime_hours) || 0} Hours</td>
 <td>${(Number(att.overtime_hours) || 0) + (Number(att.contract_overtime_hours) || 0)} Hours</td>
                         <td>${att.work_site || worker.work_site || 'N/A'}</td>
                       </tr>
