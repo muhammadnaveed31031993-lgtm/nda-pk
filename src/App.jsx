@@ -45,8 +45,36 @@ const dailyTimesheetPrintStyle = `
 }
 `;
 
+const fieldStyle = { width:'100%', boxSizing:'border-box', padding:'11px 12px', border:'1px solid #cbd5e1', borderRadius:8, background:'#fff', color:'#0f172a' };
+const primaryStyle = { width:'100%', padding:'12px 14px', border:0, borderRadius:9, background:'#1d4ed8', color:'#fff', fontWeight:800, cursor:'pointer' };
+const tableStyle = { width:'100%', borderCollapse:'collapse', fontSize:13, textAlign:'left' };
+const thStyle = { padding:'10px 8px', borderBottom:'1px solid #e2e8f0', color:'#475569', whiteSpace:'nowrap' };
+const tdStyle = { padding:'10px 8px', borderBottom:'1px solid #f1f5f9', verticalAlign:'top' };
+
 export default function App() {
   const [session, setSession] = useState(null);
+  // Select which system to open before entering either workspace.
+  const [selectedSystem, setSelectedSystem] = useState(null); // 'hr' | 'business'
+  const [businessType, setBusinessType] = useState('transport');
+  const [businessTransactions, setBusinessTransactions] = useState([]);
+  const [businessWorkers, setBusinessWorkers] = useState([]);
+  const [businessSalaryPayments, setBusinessSalaryPayments] = useState([]);
+  const [businessLoading, setBusinessLoading] = useState(false);
+  const [businessDate, setBusinessDate] = useState(new Date().toISOString().slice(0,10));
+  const [businessMonth, setBusinessMonth] = useState(new Date().toISOString().slice(0,7));
+  const [businessTxnKind, setBusinessTxnKind] = useState('income');
+  const [businessTxnCategory, setBusinessTxnCategory] = useState('Daily income');
+  const [businessTxnDescription, setBusinessTxnDescription] = useState('');
+  const [businessTxnAmount, setBusinessTxnAmount] = useState('');
+  const [businessTxnPaymentMode, setBusinessTxnPaymentMode] = useState('Cash');
+  const [businessWorkerName, setBusinessWorkerName] = useState('');
+  const [businessWorkerJob, setBusinessWorkerJob] = useState('Driver');
+  const [businessWorkerPhone, setBusinessWorkerPhone] = useState('');
+  const [businessWorkerSalary, setBusinessWorkerSalary] = useState('');
+  const [businessSalaryWorkerId, setBusinessSalaryWorkerId] = useState('');
+  const [businessSalaryAmount, setBusinessSalaryAmount] = useState('');
+  const [businessSalaryPaymentMode, setBusinessSalaryPaymentMode] = useState('Cash');
+  const [businessSalaryDate, setBusinessSalaryDate] = useState(new Date().toISOString().slice(0,10));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
@@ -77,7 +105,11 @@ export default function App() {
   const [currentPassInput, setCurrentPassInput] = useState('');
   const [newPassInput, setNewPassInput] = useState('');
   const [newLoginEmailInput, setNewLoginEmailInput] = useState('');
-  const [cleanupBeforeDate, setCleanupBeforeDate] = useState(new Date().toISOString().split('T')[0]);
+  const [cleanupMode, setCleanupMode] = useState('day');
+  const [cleanupSelectedDate, setCleanupSelectedDate] = useState(new Date().toISOString().slice(0,10));
+  const [cleanupMonth, setCleanupMonth] = useState(new Date().toISOString().slice(0,7));
+  const [cleanupStartDate, setCleanupStartDate] = useState(new Date().toISOString().slice(0,10));
+  const [cleanupEndDate, setCleanupEndDate] = useState(new Date().toISOString().slice(0,10));
   const [cleanupAttendance, setCleanupAttendance] = useState(true);
   const [cleanupDailyDetails, setCleanupDailyDetails] = useState(true);
   const [cleanupAnnualLeaves, setCleanupAnnualLeaves] = useState(false);
@@ -202,6 +234,73 @@ const [newDesignation, setNewDesignation] = useState('');
   const [attendanceData, setAttendanceData] = useState({});
  const [dailyTimesheetSite, setDailyTimesheetSite] = useState('All Workers');
 const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
+  async function fetchBusinessData(type = businessType) {
+    if (!session) return;
+    setBusinessLoading(true);
+    try {
+      const [tx, ws, pay] = await Promise.all([
+        supabase.from('business_transactions').select('*').eq('business_type', type).order('transaction_date', { ascending: false }),
+        supabase.from('business_workers').select('*').eq('business_type', type).order('worker_name', { ascending: true }),
+        supabase.from('business_salary_payments').select('*').eq('business_type', type).order('payment_date', { ascending: false })
+      ]);
+      const firstError = tx.error || ws.error || pay.error;
+      if (firstError) throw firstError;
+      setBusinessTransactions(tx.data || []);
+      setBusinessWorkers(ws.data || []);
+      setBusinessSalaryPayments(pay.data || []);
+    } catch (e) {
+      console.error('Business data load error:', e);
+      alert('Business tables load nahi huay. Supabase SQL setup chalayein. Detail: ' + (e?.message || e));
+    } finally { setBusinessLoading(false); }
+  }
+
+  useEffect(() => {
+    if (session && selectedSystem === 'business') fetchBusinessData(businessType);
+  }, [session, selectedSystem, businessType]);
+
+  async function handleSaveBusinessTransaction(e) {
+    e.preventDefault();
+    if (!userRole.is_admin) return alert('Business financial entries sirf admin add kar sakta hai.');
+    const amount = Number(businessTxnAmount);
+    if (!businessDate || !Number.isFinite(amount) || amount <= 0) return alert('Date aur amount sahi enter karein.');
+    const payload = { business_type: businessType, transaction_date: businessDate, transaction_kind: businessTxnKind, category: businessTxnCategory.trim() || (businessTxnKind === 'income' ? 'Income' : 'Expense'), description: businessTxnDescription.trim(), amount, payment_mode: businessTxnPaymentMode, created_by: session?.user?.email || '' };
+    const { error } = await supabase.from('business_transactions').insert([payload]);
+    if (error) return alert('Entry save nahi hui: ' + error.message);
+    setBusinessTxnAmount(''); setBusinessTxnDescription('');
+    await fetchBusinessData();
+    alert('Business entry save ho gayi.');
+  }
+
+  async function handleAddBusinessWorker(e) {
+    e.preventDefault();
+    if (!userRole.is_admin) return alert('Workers add karne ki permission sirf admin ko hai.');
+    if (!businessWorkerName.trim()) return alert('Worker ka naam likhein.');
+    const payload = { business_type: businessType, worker_name: businessWorkerName.trim(), job_title: businessWorkerJob.trim() || (businessType === 'transport' ? 'Driver' : 'Farm Worker'), phone: businessWorkerPhone.trim(), monthly_salary: Number(businessWorkerSalary) || 0, active: true };
+    const { error } = await supabase.from('business_workers').insert([payload]);
+    if (error) return alert('Worker save nahi hua: ' + error.message);
+    setBusinessWorkerName(''); setBusinessWorkerPhone(''); setBusinessWorkerSalary('');
+    await fetchBusinessData(); alert('Worker add ho gaya.');
+  }
+
+  async function handlePayBusinessSalary(e) {
+    e.preventDefault();
+    if (!userRole.is_admin) return alert('Salary payments sirf admin record kar sakta hai.');
+    const worker = businessWorkers.find(w => String(w.id) === String(businessSalaryWorkerId));
+    const amount = Number(businessSalaryAmount);
+    if (!worker || !businessSalaryDate || !Number.isFinite(amount) || amount <= 0) return alert('Worker, date aur salary amount sahi select karein.');
+    const { error } = await supabase.from('business_salary_payments').insert([{ business_type: businessType, worker_id: worker.id, payment_date: businessSalaryDate, amount, payment_mode: businessSalaryPaymentMode, notes: 'Monthly salary payment' }]);
+    if (error) return alert('Salary payment save nahi hui: ' + error.message);
+    setBusinessSalaryAmount(''); await fetchBusinessData(); alert('Salary payment save ho gayi.');
+  }
+
+  async function handleDeleteBusinessTransaction(id) {
+    if (!userRole.is_admin) return alert('Sirf admin delete kar sakta hai.');
+    if (!window.confirm('Kya aap is financial entry ko permanently delete karna chahte hain?')) return;
+    const { error } = await supabase.from('business_transactions').delete().eq('id', id).eq('business_type', businessType);
+    if (error) return alert('Delete error: ' + error.message);
+    await fetchBusinessData();
+  }
+
   useEffect(() => {
     async function loadDailyWorkDetails() {
       if (!selectedTimesheetDate || !dailyTimesheetSite) {
@@ -593,66 +692,44 @@ async function fetchAttendance() {
   }
 
   async function handleDeleteOldRecords() {
-    if (!userRole.is_admin) return alert('Sirf admin purane records delete kar sakta hai.');
-    if (!cleanupBeforeDate) return alert('Cut-off date select karein.');
-
+    if (!userRole.is_admin) return alert('Sirf admin timesheet records delete kar sakta hai.');
+    let startDate = cleanupSelectedDate;
+    let endDate = cleanupSelectedDate;
+    if (cleanupMode === 'month') {
+      if (!/^\d{4}-\d{2}$/.test(cleanupMonth)) return alert('Month select karein.');
+      const [yy, mm] = cleanupMonth.split('-').map(Number);
+      startDate = `${cleanupMonth}-01`;
+      endDate = `${yy}-${String(mm).padStart(2, '0')}-${String(new Date(yy, mm, 0).getDate()).padStart(2, '0')}`;
+    } else if (cleanupMode === 'range') {
+      startDate = cleanupStartDate; endDate = cleanupEndDate;
+      if (!startDate || !endDate || startDate > endDate) return alert('Date range sahi select karein.');
+    }
     const selectedTables = [];
-    if (cleanupAttendance) selectedTables.push('Attendance records');
+    if (cleanupAttendance) selectedTables.push('Timesheet / attendance');
     if (cleanupDailyDetails) selectedTables.push('Daily work details');
     if (cleanupAnnualLeaves) selectedTables.push('Completed annual leave records');
-
-    if (selectedTables.length === 0) return alert('Kam az kam ek record type select karein.');
-
-    const confirmed = window.confirm(
-      `WARNING: ${cleanupBeforeDate} se PEHLE ke selected records permanently delete honge:\n\n${selectedTables.join('\n')}\n\nSelected date ke records delete nahi honge. Yeh action undo nahi ho sakta. Continue?`
-    );
+    if (!selectedTables.length) return alert('Kam az kam ek record type select karein.');
+    const confirmed = window.confirm(`PERMANENT DELETE\nRange: ${startDate} se ${endDate} tak (dono dates shamil)\n\n${selectedTables.join('\n')}\n\nIs range ke tamam matching records delete honge. Yeh undo nahi ho sakta. Continue?`);
     if (!confirmed) return;
-
     setCleanupLoading(true);
     const results = [];
     try {
       if (cleanupAttendance) {
-        const { data, error } = await supabase
-          .from('attendance')
-          .delete()
-          .lt('date', cleanupBeforeDate)
-          .select('worker_id,date');
-        if (error) results.push('Attendance error: ' + error.message);
-        else results.push(`Attendance records deleted: ${(data || []).length}`);
+        const { data, error } = await supabase.from('attendance').delete().gte('date', startDate).lte('date', endDate).select('worker_id,date');
+        if (error) results.push('Attendance error: ' + error.message); else results.push(`Timesheet records deleted: ${(data || []).length}`);
       }
-
       if (cleanupDailyDetails) {
-        const { data, error } = await supabase
-          .from('daily_work_details')
-          .delete()
-          .lt('work_date', cleanupBeforeDate)
-          .select('work_date,work_site');
-        if (error) results.push('Daily work details error: ' + error.message);
-        else results.push(`Daily work details deleted: ${(data || []).length}`);
+        const { data, error } = await supabase.from('daily_work_details').delete().gte('work_date', startDate).lte('work_date', endDate).select('work_date,work_site');
+        if (error) results.push('Daily work details error: ' + error.message); else results.push(`Daily work details deleted: ${(data || []).length}`);
       }
-
       if (cleanupAnnualLeaves) {
-        // Only delete completed leave records whose actual return date is before the cutoff.
-        // Active / "On Leave" records are deliberately preserved.
-        const { data, error } = await supabase
-          .from('annual_leaves')
-          .delete()
-          .lt('start_date', cleanupBeforeDate)
-          .lt('actual_return', cleanupBeforeDate)
-          .neq('actual_return', 'On Leave')
-          .select('id');
-        if (error) results.push('Annual leave error: ' + error.message);
-        else results.push(`Completed annual leave records deleted: ${(data || []).length}`);
+        const { data, error } = await supabase.from('annual_leaves').delete().gte('start_date', startDate).lte('start_date', endDate).neq('actual_return', 'On Leave').select('id');
+        if (error) results.push('Annual leave error: ' + error.message); else results.push(`Annual leave records deleted: ${(data || []).length}`);
       }
-
-      await fetchAttendance();
-      await fetchAnnualLeaves();
+      await fetchAttendance(); await fetchAnnualLeaves();
       alert(results.join('\n'));
-    } catch (err) {
-      alert('Record cleanup error: ' + (err?.message || String(err)));
-    } finally {
-      setCleanupLoading(false);
-    }
+    } catch (err) { alert('Record cleanup error: ' + (err?.message || String(err))); }
+    finally { setCleanupLoading(false); }
   }
 
   async function handleScanPaperSheet(event) {
@@ -868,6 +945,7 @@ async function fetchAttendance() {
   function handleLogout() {
     localStorage.removeItem('nda_user_session');
     setSession(null);
+    setSelectedSystem(null);
   }
 
   async function handleDeleteWorker(id) {
@@ -1585,13 +1663,36 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     0
   );
 
+  if (!selectedSystem) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'radial-gradient(circle at top left, #164e63 0, #0f172a 48%, #020617 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 22, fontFamily: "'Segoe UI', sans-serif" }}>
+        <div style={{ width: '100%', maxWidth: 900 }}>
+          <div style={{ textAlign: 'center', color: '#fff', marginBottom: 28 }}>
+            <div style={{ fontSize: 13, letterSpacing: 4, color: '#67e8f9', fontWeight: 800 }}>NDA-PK DIGITAL WORKSPACE</div>
+            <h1 style={{ fontSize: 'clamp(30px,5vw,46px)', margin: '10px 0' }}>Choose Your System</h1>
+            <p style={{ color: '#cbd5e1', margin: 0 }}>Apna system select karein jahan aap kaam karna chahte hain.</p>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 20 }}>
+            <button onClick={() => setSelectedSystem('hr')} style={{ textAlign: 'left', padding: 28, minHeight: 230, borderRadius: 22, border: '1px solid #38bdf8', color: '#fff', background: 'linear-gradient(145deg,#075985,#1e3a8a)', boxShadow: '0 18px 50px #0005', cursor: 'pointer' }}>
+              <div style={{ fontSize: 40 }}>👷</div><h2 style={{ fontSize: 25, margin: '14px 0 8px' }}>NDA.PK HR SYSTEM</h2><p style={{ color: '#dbeafe', lineHeight: 1.6 }}>Workers, attendance, timesheet, overtime, payroll, annual leave, permissions aur HR reports.</p><span style={{ display: 'inline-block', marginTop: 10, padding: '10px 16px', background: '#fff', color: '#1d4ed8', borderRadius: 10, fontWeight: 800 }}>Open HR System →</span>
+            </button>
+            <button onClick={() => { setSelectedSystem('business'); setBusinessType('transport'); }} style={{ textAlign: 'left', padding: 28, minHeight: 230, borderRadius: 22, border: '1px solid #34d399', color: '#fff', background: 'linear-gradient(145deg,#065f46,#14532d)', boxShadow: '0 18px 50px #0005', cursor: 'pointer' }}>
+              <div style={{ fontSize: 40 }}>📈</div><h2 style={{ fontSize: 25, margin: '14px 0 8px' }}>NDA.PK BUSINESS</h2><p style={{ color: '#d1fae5', lineHeight: 1.6 }}>Transport business aur dairy farming: daily income/expense, cash balance, profit, workers salary aur monthly reports.</p><span style={{ display: 'inline-block', marginTop: 10, padding: '10px 16px', background: '#fff', color: '#047857', borderRadius: 10, fontWeight: 800 }}>Open Business →</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!session) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
         <div style={{ backgroundColor: '#1e293b', padding: '30px', borderRadius: '12px', width: '100%', maxWidth: '380px', border: '1px solid #334155' }}>
           <div style={{ textAlign: 'center', marginBottom: '25px' }}>
             <h1 style={{ color: '#f8fafc', fontSize: '22px', margin: 0 }}>NDA-PK SYSTEM</h1>
-            <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '5px' }}>Sites & Staff Login</p>
+            <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '5px' }}>{selectedSystem === 'hr' ? 'HR SYSTEM · Sites & Staff Login' : 'BUSINESS MANAGEMENT LOGIN'}</p>
+            <button type="button" onClick={() => setSelectedSystem(null)} style={{ marginTop: 8, background: 'transparent', border: '1px solid #475569', color: '#cbd5e1', borderRadius: 6, padding: '6px 10px', cursor: 'pointer' }}>← Change System</button>
           </div>
           <form onSubmit={handleLogin}>
             <div style={{ marginBottom: '15px' }}>
@@ -1607,6 +1708,55 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
             </button>
           </form>
         </div>
+      </div>
+    );
+  }
+
+  if (selectedSystem === 'business' && !userRole.is_admin) {
+    return <div style={{minHeight:'100vh',display:'grid',placeItems:'center',background:'#f1f5f9',padding:20,fontFamily:"'Segoe UI',sans-serif"}}><div style={{background:'#fff',padding:28,borderRadius:16,maxWidth:500,textAlign:'center',boxShadow:'0 8px 30px #0f172a12'}}><h2>Business Access Restricted</h2><p>Business financial records aur salaries filhal admin account ke liye available hain.</p><button onClick={()=>setSelectedSystem(null)} style={primaryStyle}>Back to System Selection</button><button onClick={handleLogout} style={{...primaryStyle,marginTop:10,background:'#64748b'}}>Logout</button></div></div>;
+  }
+
+  if (selectedSystem === 'business') {
+    const txToday = businessTransactions.filter(t => t.transaction_date === businessDate);
+    const txMonth = businessTransactions.filter(t => String(t.transaction_date || '').slice(0,7) === businessMonth);
+    const salaryMonth = businessSalaryPayments.filter(t => String(t.payment_date || '').slice(0,7) === businessMonth);
+    const sum = (arr, kind) => arr.filter(t => t.transaction_kind === kind).reduce((n,t) => n + (Number(t.amount)||0), 0);
+    const todayIncome = sum(txToday, 'income'); const todayExpense = sum(txToday, 'expense');
+    const monthIncome = sum(txMonth, 'income'); const monthExpense = sum(txMonth, 'expense');
+    const monthSalary = salaryMonth.reduce((n,t) => n + (Number(t.amount)||0), 0);
+    const cashIn = businessTransactions.filter(t => t.payment_mode === 'Cash' && t.transaction_kind === 'income').reduce((n,t) => n + (Number(t.amount)||0),0);
+    const cashOut = businessTransactions.filter(t => t.payment_mode === 'Cash' && t.transaction_kind === 'expense').reduce((n,t) => n + (Number(t.amount)||0),0) + businessSalaryPayments.filter(t => t.payment_mode === 'Cash').reduce((n,t) => n + (Number(t.amount)||0),0);
+    const currency = 'AED';
+    const money = n => `${currency} ${Number(n||0).toLocaleString('en-AE',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+    const businessLabel = businessType === 'transport' ? 'Transport Business' : 'Dairy Farming';
+    return (
+      <div style={{ minHeight:'100vh', background:'#f1f5f9', fontFamily:"'Segoe UI',sans-serif", color:'#0f172a' }}>
+        <header style={{ padding:'22px clamp(16px,3vw,34px)', color:'#fff', background: businessType === 'transport' ? 'linear-gradient(115deg,#0f172a,#1d4ed8)' : 'linear-gradient(115deg,#064e3b,#16a34a)', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
+          <div><div style={{fontSize:12,letterSpacing:3,opacity:.8,fontWeight:800}}>NDA.PK BUSINESS</div><h1 style={{margin:'6px 0',fontSize:28}}>{businessLabel} Dashboard</h1><div style={{color:'#dbeafe',fontSize:13}}>Signed in: {session.user.email}</div></div>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button onClick={()=>setSelectedSystem(null)} style={{padding:'10px 13px',borderRadius:9,border:'1px solid #ffffff80',background:'#ffffff18',color:'#fff',cursor:'pointer'}}>⇄ Switch System</button><button onClick={handleLogout} style={{padding:'10px 13px',borderRadius:9,border:0,background:'#dc2626',color:'#fff',fontWeight:700,cursor:'pointer'}}>Logout</button></div>
+        </header>
+        <main style={{maxWidth:1400,margin:'0 auto',padding:'22px clamp(12px,2vw,28px)'}}>
+          <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:18}}>
+            <button onClick={()=>setBusinessType('transport')} style={{padding:'11px 18px',borderRadius:10,border:0,background:businessType==='transport'?'#1d4ed8':'#fff',color:businessType==='transport'?'#fff':'#334155',fontWeight:800,cursor:'pointer'}}>🚚 Transport</button>
+            <button onClick={()=>setBusinessType('dairy')} style={{padding:'11px 18px',borderRadius:10,border:0,background:businessType==='dairy'?'#15803d':'#fff',color:businessType==='dairy'?'#fff':'#334155',fontWeight:800,cursor:'pointer'}}>🐄 Dairy Farming</button>
+            <span style={{alignSelf:'center',color:'#64748b',fontSize:13}}>{businessLoading?'Loading business data…':'Income, expenses, cash balance, salaries and monthly reports'}</span>
+          </div>
+          <section style={{background:'#fff',borderRadius:16,padding:18,boxShadow:'0 5px 22px #0f172a0b',marginBottom:18,display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}><label style={{fontWeight:700}}>Dashboard date <input type="date" value={businessDate} onChange={e=>setBusinessDate(e.target.value)} style={{marginLeft:8,padding:9,border:'1px solid #cbd5e1',borderRadius:8}} /></label><label style={{fontWeight:700}}>Monthly report <input type="month" value={businessMonth} onChange={e=>setBusinessMonth(e.target.value)} style={{marginLeft:8,padding:9,border:'1px solid #cbd5e1',borderRadius:8}} /></label><button onClick={()=>fetchBusinessData()} style={{padding:'10px 15px',border:0,borderRadius:8,background:'#0f172a',color:'#fff',cursor:'pointer'}}>↻ Refresh</button></section>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(185px,1fr))',gap:14,marginBottom:20}}>
+            {[['Today Income',money(todayIncome),'#16a34a'],['Today Expense',money(todayExpense),'#dc2626'],['Today Profit',money(todayIncome-todayExpense),'#2563eb'],['Cash Balance (all records)',money(cashIn-cashOut),'#7c3aed'],['Month Income',money(monthIncome),'#059669'],['Month Expenses + Salaries',money(monthExpense+monthSalary),'#ea580c'],['Month Net Profit',money(monthIncome-monthExpense-monthSalary),'#0f766e'],['Active Workers',businessWorkers.filter(w=>w.active!==false).length,'#334155']].map((c,i)=><div key={c[0]} style={{background:'#fff',borderRadius:15,padding:18,boxShadow:'0 5px 22px #0f172a0b',borderTop:`4px solid ${c[2]}`}}><div style={{fontSize:12,color:'#64748b',fontWeight:700}}>{c[0]}</div><div style={{fontSize:23,fontWeight:850,color:c[2],marginTop:8}}>{c[1]}</div></div>)}
+          </div>
+          {userRole.is_admin && <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:18,marginBottom:20}}>
+            <form onSubmit={handleSaveBusinessTransaction} style={{background:'#fff',borderRadius:15,padding:20,boxShadow:'0 5px 22px #0f172a0b'}}><h3 style={{marginTop:0}}>➕ Add Daily Income / Expense</h3><div style={{display:'grid',gap:10}}><input type="date" value={businessDate} onChange={e=>setBusinessDate(e.target.value)} required style={fieldStyle}/><select value={businessTxnKind} onChange={e=>{setBusinessTxnKind(e.target.value);setBusinessTxnCategory(e.target.value==='income'?'Daily income':'Fuel / feed / other expense')}} style={fieldStyle}><option value="income">Income</option><option value="expense">Expense</option></select><input value={businessTxnCategory} onChange={e=>setBusinessTxnCategory(e.target.value)} placeholder="Category (fuel, trip, milk, feed...)" style={fieldStyle} required/><input value={businessTxnDescription} onChange={e=>setBusinessTxnDescription(e.target.value)} placeholder={businessType==='transport'?'Vehicle / trip / customer details':'Milk sale / cattle / feed details'} style={fieldStyle}/><input type="number" min="0.01" step="0.01" value={businessTxnAmount} onChange={e=>setBusinessTxnAmount(e.target.value)} placeholder="Amount (AED)" required style={fieldStyle}/><select value={businessTxnPaymentMode} onChange={e=>setBusinessTxnPaymentMode(e.target.value)} style={fieldStyle}><option>Cash</option><option>Bank</option><option>Credit</option></select><button style={primaryStyle}>Save Financial Entry</button></div></form>
+            <form onSubmit={handleAddBusinessWorker} style={{background:'#fff',borderRadius:15,padding:20,boxShadow:'0 5px 22px #0f172a0b'}}><h3 style={{marginTop:0}}>👷 Add {businessType==='transport'?'Driver / Staff':'Farm Worker'}</h3><div style={{display:'grid',gap:10}}><input value={businessWorkerName} onChange={e=>setBusinessWorkerName(e.target.value)} placeholder="Worker full name" required style={fieldStyle}/><input value={businessWorkerJob} onChange={e=>setBusinessWorkerJob(e.target.value)} placeholder={businessType==='transport'?'Driver / Mechanic / Helper':'Farm worker / Milker / Caretaker'} style={fieldStyle}/><input value={businessWorkerPhone} onChange={e=>setBusinessWorkerPhone(e.target.value)} placeholder="Phone (optional)" style={fieldStyle}/><input type="number" min="0" step="0.01" value={businessWorkerSalary} onChange={e=>setBusinessWorkerSalary(e.target.value)} placeholder="Monthly salary (AED)" style={fieldStyle}/><button style={{...primaryStyle,background:'#15803d'}}>Save Worker</button></div></form>
+            <form onSubmit={handlePayBusinessSalary} style={{background:'#fff',borderRadius:15,padding:20,boxShadow:'0 5px 22px #0f172a0b'}}><h3 style={{marginTop:0}}>💳 Record Worker Salary</h3><div style={{display:'grid',gap:10}}><select value={businessSalaryWorkerId} onChange={e=>setBusinessSalaryWorkerId(e.target.value)} required style={fieldStyle}><option value="">Select worker</option>{businessWorkers.map(w=><option key={w.id} value={w.id}>{w.worker_name} — {w.job_title}</option>)}</select><input type="date" value={businessSalaryDate} onChange={e=>setBusinessSalaryDate(e.target.value)} required style={fieldStyle}/><input type="number" min="0.01" step="0.01" value={businessSalaryAmount} onChange={e=>setBusinessSalaryAmount(e.target.value)} placeholder="Salary paid (AED)" required style={fieldStyle}/><select value={businessSalaryPaymentMode} onChange={e=>setBusinessSalaryPaymentMode(e.target.value)} style={fieldStyle}><option>Cash</option><option>Bank</option></select><button style={{...primaryStyle,background:'#7c3aed'}}>Save Salary Payment</button></div></form>
+          </div>}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:18}}>
+            <section style={{background:'#fff',borderRadius:15,padding:18,overflowX:'auto',boxShadow:'0 5px 22px #0f172a0b'}}><h3>📋 {businessLabel} Workers</h3><table style={tableStyle}><thead><tr><th style={thStyle}>Name</th><th style={thStyle}>Role</th><th style={thStyle}>Monthly Salary</th></tr></thead><tbody>{businessWorkers.map(w=><tr key={w.id}><td style={tdStyle}>{w.worker_name}</td><td style={tdStyle}>{w.job_title}</td><td style={tdStyle}>{money(w.monthly_salary)}</td></tr>)}{!businessWorkers.length&&<tr><td colSpan="3" style={tdStyle}>No workers added yet.</td></tr>}</tbody></table></section>
+            <section style={{background:'#fff',borderRadius:15,padding:18,overflowX:'auto',boxShadow:'0 5px 22px #0f172a0b'}}><h3>🧾 Monthly Transactions — {businessMonth}</h3><table style={tableStyle}><thead><tr><th style={thStyle}>Date</th><th style={thStyle}>Type / Category</th><th style={thStyle}>Details</th><th style={thStyle}>Amount</th>{userRole.is_admin&&<th style={thStyle}>Action</th>}</tr></thead><tbody>{txMonth.map(t=><tr key={t.id}><td style={tdStyle}>{t.transaction_date}</td><td style={tdStyle}><b style={{color:t.transaction_kind==='income'?'#15803d':'#dc2626'}}>{t.transaction_kind}</b><br/>{t.category}</td><td style={tdStyle}>{t.description||'—'}<br/><small>{t.payment_mode}</small></td><td style={tdStyle}>{money(t.amount)}</td>{userRole.is_admin&&<td style={tdStyle}><button onClick={()=>handleDeleteBusinessTransaction(t.id)} style={{border:0,background:'#fee2e2',color:'#b91c1c',padding:'6px 8px',borderRadius:6,cursor:'pointer'}}>Delete</button></td>}</tr>)}{!txMonth.length&&<tr><td colSpan={userRole.is_admin?5:4} style={tdStyle}>No transactions for this month.</td></tr>}</tbody></table></section>
+            <section style={{background:'#fff',borderRadius:15,padding:18,overflowX:'auto',boxShadow:'0 5px 22px #0f172a0b'}}><h3>💰 Salary Payments — {businessMonth}</h3><table style={tableStyle}><thead><tr><th style={thStyle}>Date</th><th style={thStyle}>Worker</th><th style={thStyle}>Amount</th></tr></thead><tbody>{salaryMonth.map(p=><tr key={p.id}><td style={tdStyle}>{p.payment_date}</td><td style={tdStyle}>{businessWorkers.find(w=>String(w.id)===String(p.worker_id))?.worker_name||`Worker #${p.worker_id}`}</td><td style={tdStyle}>{money(p.amount)}</td></tr>)}{!salaryMonth.length&&<tr><td colSpan="3" style={tdStyle}>No salary payments for this month.</td></tr>}</tbody></table></section>
+          </div>
+          <p style={{fontSize:12,color:'#64748b',marginTop:20}}>Cash balance shown here is the net of all recorded Cash income minus Cash expenses. Monthly net profit subtracts recorded salary payments from income minus operating expenses.</p>
+        </main>
       </div>
     );
   }
@@ -1630,6 +1780,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
           </div>
         </div>
 
+        <button onClick={() => setSelectedSystem(null)} style={{ padding: '6px 12px', backgroundColor: '#475569', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Switch System</button>
         <button onClick={handleLogout} style={{ padding: '6px 12px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Logout</button>
       </header>
 
@@ -1727,6 +1878,10 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
 {/* TAB 1: DASHBOARD */}
 {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
   <>
+    <section style={{background:'linear-gradient(120deg,#0f172a 0%,#1d4ed8 65%,#0e7490 100%)',borderRadius:18,padding:'24px clamp(16px,3vw,30px)',color:'#fff',marginBottom:20,boxShadow:'0 12px 30px #1e3a8a20',display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,flexWrap:'wrap'}}>
+      <div><div style={{fontSize:11,letterSpacing:3,fontWeight:800,color:'#bae6fd'}}>NDA-PK · HR CONTROL CENTER</div><h2 style={{fontSize:'clamp(23px,3vw,32px)',margin:'8px 0'}}>Workforce Overview</h2><p style={{margin:0,color:'#dbeafe',fontSize:14}}>Attendance, site deployment and payroll at a glance.</p></div>
+      <div style={{display:'flex',gap:10,flexWrap:'wrap'}}><label style={{fontSize:12,color:'#dbeafe'}}>Dashboard Date<input type="date" value={selectedTimesheetDate} onChange={e=>setSelectedTimesheetDate(e.target.value)} style={{display:'block',marginTop:5,padding:'9px 10px',borderRadius:8,border:'1px solid #93c5fd',background:'#fff',color:'#0f172a'}}/></label><button onClick={()=>setShowMonthlyTimesheetModal(true)} style={{alignSelf:'end',padding:'10px 13px',background:'#fff',color:'#1d4ed8',border:0,borderRadius:9,fontWeight:800,cursor:'pointer'}}>📊 Monthly Report</button></div>
+    </section>
     {/* Stats Grid */}
     <div style={{
       display: 'grid',
@@ -3714,35 +3869,23 @@ return (
             </div>
           </div>
         )}
-      {/* ADMIN ONLY: DATA CLEANUP */}
+      {/* ADMIN ONLY: DATE / MONTH / RANGE TIMESHEET CLEANUP */}
         {activeTab === 'data-cleanup' && userRole.is_admin && (
-          <div style={{ background: '#fff', padding: '24px', borderRadius: '10px', border: '1px solid #fecaca', maxWidth: '760px' }}>
-            <h2 style={{ marginTop: 0, color: '#991b1b' }}>🗑️ Delete Old Records</h2>
-            <p style={{ color: '#475569', fontSize: '14px', lineHeight: 1.6 }}>
-              Sirf selected date se PEHLE ke records delete honge. Selected date ka record safe rahega.
-              Yeh permanent action hai aur undo nahi ho sakta.
-            </p>
-            <div style={{ marginBottom: '18px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Delete records before this date</label>
-              <input type="date" value={cleanupBeforeDate} onChange={e => setCleanupBeforeDate(e.target.value)} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+          <div style={{ background:'#fff', padding:24, borderRadius:16, border:'1px solid #fecaca', maxWidth:850, boxShadow:'0 8px 28px #991b1b0b' }}>
+            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:8}}><div style={{fontSize:30}}>🗑️</div><div><h2 style={{margin:0,color:'#991b1b'}}>Delete Timesheet Records</h2><p style={{margin:'5px 0 0',color:'#64748b',fontSize:13}}>Sirf selected day, poora month, ya custom date range delete karein.</p></div></div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',margin:'18px 0'}}>
+              {[['day','One Day'],['month','Full Month'],['range','Date Range']].map(([value,label])=><button key={value} onClick={()=>setCleanupMode(value)} style={{padding:'10px 15px',borderRadius:9,border:cleanupMode===value?'1px solid #b91c1c':'1px solid #cbd5e1',background:cleanupMode===value?'#fee2e2':'#fff',color:cleanupMode===value?'#991b1b':'#334155',fontWeight:800,cursor:'pointer'}}>{label}</button>)}
             </div>
-            <div style={{ display: 'grid', gap: '12px', marginBottom: '20px' }}>
-              <label style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <input type="checkbox" checked={cleanupAttendance} onChange={e => setCleanupAttendance(e.target.checked)} />
-                <span><strong>Attendance records</strong> — selected date se pehle ki attendance aur OT entries</span>
-              </label>
-              <label style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <input type="checkbox" checked={cleanupDailyDetails} onChange={e => setCleanupDailyDetails(e.target.checked)} />
-                <span><strong>Daily work details</strong> — selected date se pehle ke site remarks</span>
-              </label>
-              <label style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <input type="checkbox" checked={cleanupAnnualLeaves} onChange={e => setCleanupAnnualLeaves(e.target.checked)} />
-                <span><strong>Completed annual leave records</strong> — sirf woh records jinki actual return date selected date se pehle hai. Active leave records preserve rahenge.</span>
-              </label>
+            {cleanupMode==='day'&&<label style={{display:'block',fontWeight:700,marginBottom:15}}>Select exact date to delete <input type="date" value={cleanupSelectedDate} onChange={e=>setCleanupSelectedDate(e.target.value)} style={{display:'block',marginTop:7,padding:11,border:'1px solid #cbd5e1',borderRadius:8,width:'100%',maxWidth:330,boxSizing:'border-box'}}/></label>}
+            {cleanupMode==='month'&&<label style={{display:'block',fontWeight:700,marginBottom:15}}>Select month <input type="month" value={cleanupMonth} onChange={e=>setCleanupMonth(e.target.value)} style={{display:'block',marginTop:7,padding:11,border:'1px solid #cbd5e1',borderRadius:8,width:'100%',maxWidth:330,boxSizing:'border-box'}}/></label>}
+            {cleanupMode==='range'&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12,marginBottom:15}}><label style={{fontWeight:700}}>From date<input type="date" value={cleanupStartDate} onChange={e=>setCleanupStartDate(e.target.value)} style={{display:'block',marginTop:7,padding:11,border:'1px solid #cbd5e1',borderRadius:8,width:'100%',boxSizing:'border-box'}}/></label><label style={{fontWeight:700}}>To date<input type="date" value={cleanupEndDate} onChange={e=>setCleanupEndDate(e.target.value)} style={{display:'block',marginTop:7,padding:11,border:'1px solid #cbd5e1',borderRadius:8,width:'100%',boxSizing:'border-box'}}/></label></div>}
+            <div style={{background:'#fff7ed',border:'1px solid #fed7aa',padding:13,borderRadius:10,color:'#9a3412',fontSize:13,margin:'12px 0 18px'}}><b>Important:</b> Selected date(s) bhi delete hon gi. {cleanupMode==='month'?'Selected month ke pehle se aakhri din tak tamam records delete honge.':cleanupMode==='range'?'From aur To dono dates include hain.':'Sirf isi date ki timesheet delete hogi.'} Delete hone ke baad restore nahi kar sakte.</div>
+            <div style={{display:'grid',gap:12,marginBottom:20}}>
+              <label style={{display:'flex',gap:10,alignItems:'center'}}><input type="checkbox" checked={cleanupAttendance} onChange={e=>setCleanupAttendance(e.target.checked)}/><span><b>Timesheet / Attendance</b> — status, normal OT, contract OT, site</span></label>
+              <label style={{display:'flex',gap:10,alignItems:'center'}}><input type="checkbox" checked={cleanupDailyDetails} onChange={e=>setCleanupDailyDetails(e.target.checked)}/><span><b>Daily work details</b> — site remarks and daily work notes</span></label>
+              <label style={{display:'flex',gap:10,alignItems:'center'}}><input type="checkbox" checked={cleanupAnnualLeaves} onChange={e=>setCleanupAnnualLeaves(e.target.checked)}/><span><b>Completed annual leave records</b> — records starting inside the selected date range; active “On Leave” records are excluded</span></label>
             </div>
-            <button type="button" disabled={cleanupLoading} onClick={handleDeleteOldRecords} style={{ padding: '11px 18px', background: cleanupLoading ? '#9ca3af' : '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: cleanupLoading ? 'wait' : 'pointer' }}>
-              {cleanupLoading ? 'Deleting records...' : 'Permanently Delete Selected Old Records'}
-            </button>
+            <button type="button" disabled={cleanupLoading} onClick={handleDeleteOldRecords} style={{padding:'12px 18px',background:cleanupLoading?'#9ca3af':'#b91c1c',color:'#fff',border:0,borderRadius:9,fontWeight:800,cursor:cleanupLoading?'wait':'pointer'}}>{cleanupLoading?'Deleting records…':'Permanently Delete Selected Records'}</button>
           </div>
         )}
 
