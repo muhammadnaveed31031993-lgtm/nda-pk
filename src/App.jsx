@@ -73,9 +73,15 @@ export default function App() {
   // 12 Months dynamic deduction days state
   const [monthlyDeductions, setMonthlyDeductions] = useState({});
   
-  // Password Change States
+  // Password and administrator login settings
   const [currentPassInput, setCurrentPassInput] = useState('');
   const [newPassInput, setNewPassInput] = useState('');
+  const [newLoginEmailInput, setNewLoginEmailInput] = useState('');
+  const [cleanupBeforeDate, setCleanupBeforeDate] = useState(new Date().toISOString().split('T')[0]);
+  const [cleanupAttendance, setCleanupAttendance] = useState(true);
+  const [cleanupDailyDetails, setCleanupDailyDetails] = useState(true);
+  const [cleanupAnnualLeaves, setCleanupAnnualLeaves] = useState(false);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
 
   const [userRole, setUserRole] = useState({
     is_admin: true,
@@ -197,30 +203,43 @@ const [newDesignation, setNewDesignation] = useState('');
  const [dailyTimesheetSite, setDailyTimesheetSite] = useState('All Workers');
 const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
   useEffect(() => {
-  async function loadDailyWorkDetails() {
-    if (!selectedTimesheetDate || !dailyTimesheetSite) {
-      setSavedDailyWorkDetails('');
-      return;
+    async function loadDailyWorkDetails() {
+      if (!selectedTimesheetDate || !dailyTimesheetSite) {
+        setSavedDailyWorkDetails('');
+        return;
+      }
+
+      let query = supabase
+        .from('daily_work_details')
+        .select('work_site,work_details')
+        .eq('work_date', selectedTimesheetDate);
+
+      if (dailyTimesheetSite !== 'All Workers' && dailyTimesheetSite !== 'All') {
+        query = query.eq('work_site', dailyTimesheetSite);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Daily Work Details load error:', error.message);
+        setSavedDailyWorkDetails('');
+        return;
+      }
+
+      if (dailyTimesheetSite === 'All Workers' || dailyTimesheetSite === 'All') {
+        const combined = (data || [])
+          .filter(item => item.work_details)
+          .map(item => `${item.work_site || 'Site'}: ${item.work_details}`)
+          .join('\n');
+        setSavedDailyWorkDetails(combined);
+      } else {
+        setSavedDailyWorkDetails(data?.[0]?.work_details || '');
+      }
     }
 
-    const { data, error } = await supabase
-      .from('daily_work_details')
-      .select('work_details')
-      .eq('work_date', selectedTimesheetDate)
-      .eq('work_site', dailyTimesheetSite)
-      .maybeSingle();
+    loadDailyWorkDetails();
+  }, [selectedTimesheetDate, dailyTimesheetSite]);
 
-    if (error) {
-      console.error('Daily Work Details load error:', error.message);
-      setSavedDailyWorkDetails('');
-      return;
-    }
-
-    setSavedDailyWorkDetails(data?.work_details || '');
-  }
-
-  loadDailyWorkDetails();
-}, [selectedTimesheetDate, dailyTimesheetSite]);
 
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -312,6 +331,7 @@ async function fetchDesignations() {
 
  async function handleSaveAnnualLeave(e) {
     e.preventDefault();
+     if (!userRole.is_admin) return alert('Sirf admin annual leave records manage kar sakta hai.');
     if (!leaveWorkerId || !leaveStartDate || !leaveExpectedReturnDate) {
       return alert('Mukammal details enter karein!');
     }
@@ -415,6 +435,8 @@ async function fetchAttendance() {
   setAttendanceData(dateMap);
 }
   async function handleUpdateExtension(workerId, newExtensionDays) {
+    if (!userRole.is_admin && !userRole.can_edit_workers) return alert('Permission denied!');
+    if (!userRole.is_admin && !filteredWorkers.some(w => String(w.id) === String(workerId))) return alert('Worker aapke assigned scope mein nahi hai.');
     const { error } = await supabase
       .from('workers')
       .update({ extension_days: parseInt(newExtensionDays) || 0 })
@@ -428,6 +450,8 @@ async function fetchAttendance() {
   }
 
   async function handleMarkReturned(workerId) {
+    if (!userRole.is_admin && !userRole.can_edit_workers) return alert('Permission denied!');
+    if (!userRole.is_admin && !filteredWorkers.some(w => String(w.id) === String(workerId))) return alert('Worker aapke assigned scope mein nahi hai.');
     const todayDate = new Date().toISOString().split('T')[0];
     const { error } = await supabase
       .from('workers')
@@ -511,31 +535,129 @@ async function fetchAttendance() {
 
   async function handleChangePasswordSubmit(e) {
     e.preventDefault();
-    if (!newPassInput.trim()) return alert('Naya password enter karein!');
 
-    if (session.user.email === 'admin@nda.pk') {
-      alert('Admin password updated locally!');
-      setNewPassInput('');
-      setCurrentPassInput('');
-      return;
+    if (!session?.user?.email) return alert('Please login again.');
+    if (!currentPassInput.trim()) return alert('Current password enter karein.');
+
+    const currentEmail = session.user.email.trim().toLowerCase();
+    const { data: account, error: accountError } = await supabase
+      .from('user_permissions')
+      .select('*')
+      .eq('user_email', currentEmail)
+      .maybeSingle();
+
+    if (accountError) return alert('Account check error: ' + accountError.message);
+    if (!account || String(account.user_password) !== currentPassInput.trim()) {
+      return alert('Current password ghalat hai.');
     }
 
-    const { error } = await supabase
-      .from('user_permissions')
-      .update({ user_password: newPassInput.trim() })
-      .eq('user_email', session.user.email);
+    const isAdminAccount = userRole.is_admin && (account.is_admin === true || account.is_admin === 'true');
+    if (userRole.is_admin && !isAdminAccount) {
+      return alert('Admin account database mein verify nahi hua. Default admin credentials ko pehle database mein initialize karna zaroori hai.');
+    }
 
-    if (error) alert('Error: ' + error.message);
-    else {
-      alert('Password successfully changed!');
-      setCurrentPassInput('');
-      setNewPassInput('');
+    const nextEmail = isAdminAccount && newLoginEmailInput.trim()
+      ? newLoginEmailInput.trim().toLowerCase()
+      : currentEmail;
+    const nextPassword = newPassInput.trim() || account.user_password;
+
+    if (!nextEmail) return alert('Login ID / email enter karein.');
+    if (nextPassword.length < 6) return alert('Password kam az kam 6 characters ka hona chahiye.');
+
+    const changes = {
+      user_email: nextEmail,
+      user_password: nextPassword
+    };
+
+    const { error: updateError } = await supabase
+      .from('user_permissions')
+      .update(changes)
+      .eq('user_email', currentEmail);
+
+    if (updateError) {
+      return alert('Login ID / password update nahi hua: ' + updateError.message);
+    }
+
+    const updatedSession = {
+      ...session,
+      user: { ...session.user, email: nextEmail },
+      role: userRole
+    };
+
+    setSession(updatedSession);
+    localStorage.setItem('nda_user_session', JSON.stringify(updatedSession));
+    setCurrentPassInput('');
+    setNewPassInput('');
+    setNewLoginEmailInput('');
+    alert('Login ID / password database mein update ho gaya. Agli login par nayi details use karein.');
+  }
+
+  async function handleDeleteOldRecords() {
+    if (!userRole.is_admin) return alert('Sirf admin purane records delete kar sakta hai.');
+    if (!cleanupBeforeDate) return alert('Cut-off date select karein.');
+
+    const selectedTables = [];
+    if (cleanupAttendance) selectedTables.push('Attendance records');
+    if (cleanupDailyDetails) selectedTables.push('Daily work details');
+    if (cleanupAnnualLeaves) selectedTables.push('Completed annual leave records');
+
+    if (selectedTables.length === 0) return alert('Kam az kam ek record type select karein.');
+
+    const confirmed = window.confirm(
+      `WARNING: ${cleanupBeforeDate} se PEHLE ke selected records permanently delete honge:\n\n${selectedTables.join('\n')}\n\nSelected date ke records delete nahi honge. Yeh action undo nahi ho sakta. Continue?`
+    );
+    if (!confirmed) return;
+
+    setCleanupLoading(true);
+    const results = [];
+    try {
+      if (cleanupAttendance) {
+        const { data, error } = await supabase
+          .from('attendance')
+          .delete()
+          .lt('date', cleanupBeforeDate)
+          .select('worker_id,date');
+        if (error) results.push('Attendance error: ' + error.message);
+        else results.push(`Attendance records deleted: ${(data || []).length}`);
+      }
+
+      if (cleanupDailyDetails) {
+        const { data, error } = await supabase
+          .from('daily_work_details')
+          .delete()
+          .lt('work_date', cleanupBeforeDate)
+          .select('work_date,work_site');
+        if (error) results.push('Daily work details error: ' + error.message);
+        else results.push(`Daily work details deleted: ${(data || []).length}`);
+      }
+
+      if (cleanupAnnualLeaves) {
+        // Only delete completed leave records whose actual return date is before the cutoff.
+        // Active / "On Leave" records are deliberately preserved.
+        const { data, error } = await supabase
+          .from('annual_leaves')
+          .delete()
+          .lt('start_date', cleanupBeforeDate)
+          .lt('actual_return', cleanupBeforeDate)
+          .neq('actual_return', 'On Leave')
+          .select('id');
+        if (error) results.push('Annual leave error: ' + error.message);
+        else results.push(`Completed annual leave records deleted: ${(data || []).length}`);
+      }
+
+      await fetchAttendance();
+      await fetchAnnualLeaves();
+      alert(results.join('\n'));
+    } catch (err) {
+      alert('Record cleanup error: ' + (err?.message || String(err)));
+    } finally {
+      setCleanupLoading(false);
     }
   }
 
   async function handleScanPaperSheet(event) {
-    if (!userRole.is_admin && !userRole.can_edit_timesheet) {
-      return alert('Aapko timesheet scan ki permission nahi hai!');
+    if (!userRole.is_admin && !userRole.can_use_bulk) {
+      return alert('Aapko Bulk/OCR ki permission nahi hai!');
     }
 
     const file = event.target.files[0];
@@ -553,7 +675,7 @@ async function fetchAttendance() {
       });
 
       const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-      if (!apiKey) throw new Error("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");
+      if (!apiKey) throw new Error('OCR API key missing. Configure VITE_OPENAI_API_KEY in Vercel Environment Variables. For security, move OCR calls to a server-side API route.');
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -581,30 +703,6 @@ async function fetchAttendance() {
           response_format: { type: "json_object" }
         })
       });
-      // State for Annual Leave tracking
-  const [annualLeaveList, setAnnualLeaveList] = useState([]);
-  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
-  const [leaveWorkerId, setLeaveWorkerId] = useState('');
-  const [leaveStartDate, setLeaveStartDate] = useState('');
-  const [leaveExpectedReturnDate, setLeaveExpectedReturnDate] = useState('');
-  const [leaveActualReturnDate, setLeaveActualReturnDate] = useState('');
-  const [penaltyPerMonthDays, setPenaltyPerMonthDays] = useState(5); // Default 5 days deduction per month extra
-
-  // Fetch Annual Leaves from Supabase on load
-  async function fetchAnnualLeaves() {
-    const { data, error } = await supabase.from('annual_leaves').select('*');
-    if (error) {
-      console.error('Error fetching annual leaves:', error.message);
-    } else {
-      setAnnualLeaveList(data || []);
-    }
-  }
-    
-  // Component load hone par data fetch karne ke liye (Aap isay apne existing useEffect mein bhi call kar sakte hain)
-  useEffect(() => {
-    fetchAnnualLeaves();
-  }, []);
-  
       const data = await response.json();
       if (data.error) throw new Error(data.error.message);
 
@@ -642,71 +740,129 @@ async function fetchAttendance() {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
 
-    if (cleanEmail === 'admin@nda.pk' && cleanPassword === '123456') {
-      const adminRole = {
-        is_admin: true,
-        assigned_department: 'All',
-        assigned_site: 'All',
-        can_view_dashboard: true,
-        can_use_bulk: true,
-        can_view_workers: true,
-        can_add_workers: true,
-        can_edit_workers: true,
-        can_delete_workers: true,
-        can_view_timesheet: true,
-        can_edit_timesheet: true,
-        can_view_payroll: true
-      };
-      const sessionObj = { user: { email: cleanEmail }, role: adminRole };
-      setSession(sessionObj);
-      setUserRole(adminRole);
-      localStorage.setItem('nda_user_session', JSON.stringify(sessionObj));
-      setAuthLoading(false);
-      setActiveTab('dashboard');
-      return;
-    }
+    try {
+      const { data: account, error: accountError } = await supabase
+        .from('user_permissions')
+        .select('*')
+        .eq('user_email', cleanEmail)
+        .maybeSingle();
 
-    const { data: userPerm } = await supabase
-      .from('user_permissions')
-      .select('*')
-      .eq('user_email', cleanEmail)
-      .eq('user_password', cleanPassword)
-      .maybeSingle();
+      if (accountError) {
+        alert('Login database error: ' + accountError.message);
+        return;
+      }
 
-    if (userPerm) {
+      let resolvedAccount = account;
+
+      // First-time setup for the legacy default administrator.
+      // Once the admin row exists, the hard-coded default login is no longer accepted.
+      if (!resolvedAccount && cleanEmail === 'admin@nda.pk' && cleanPassword === '123456') {
+        const initialAdmin = {
+          staff_id: 'ADMIN',
+          user_email: 'admin@nda.pk',
+          user_password: '123456',
+          assigned_department: 'All',
+          assigned_site: 'All',
+          can_view_dashboard: true,
+          can_use_bulk: true,
+          can_view_workers: true,
+          can_add_workers: true,
+          can_edit_workers: true,
+          can_delete_workers: true,
+          can_view_timesheet: true,
+          can_edit_timesheet: true,
+          can_view_payroll: true,
+          is_admin: true
+        };
+
+        const { data: insertedAdmin, error: insertError } = await supabase
+          .from('user_permissions')
+          .insert([initialAdmin])
+          .select('*')
+          .maybeSingle();
+
+        if (insertError) {
+          alert('Default admin login database mein save nahi ho saka: ' + insertError.message +
+            '\nLogin access temporary milega, lekin password change ke liye database write access theek karni hogi.');
+          resolvedAccount = initialAdmin;
+        } else {
+          resolvedAccount = insertedAdmin || initialAdmin;
+        }
+      }
+
+      if (!resolvedAccount || String(resolvedAccount.user_password) !== cleanPassword) {
+        alert('Invalid Email or Password!');
+        return;
+      }
+
+      const isAdminAccount =
+        resolvedAccount.is_admin === true || resolvedAccount.is_admin === 'true';
+
+      if (isAdminAccount) {
+        const adminRole = {
+          is_admin: true,
+          assigned_department: 'All',
+          assigned_site: 'All',
+          can_view_dashboard: true,
+          can_use_bulk: true,
+          can_view_workers: true,
+          can_add_workers: true,
+          can_edit_workers: true,
+          can_delete_workers: true,
+          can_view_timesheet: true,
+          can_edit_timesheet: true,
+          can_view_payroll: true
+        };
+
+        const sessionObj = { user: { email: cleanEmail }, role: adminRole };
+        setSession(sessionObj);
+        setUserRole(adminRole);
+        localStorage.setItem('nda_user_session', JSON.stringify(sessionObj));
+        setActiveTab('dashboard');
+        return;
+      }
+
       const staffRole = {
         is_admin: false,
-        staff_id: userPerm.staff_id || '',
-        assigned_department: userPerm.assigned_department || 'All',
-        assigned_site: userPerm.assigned_site || 'All',
-        can_view_dashboard: userPerm.can_view_dashboard ?? true,
-        can_use_bulk: userPerm.can_use_bulk ?? false,
-        can_view_workers: userPerm.can_view_workers ?? true,
-        can_add_workers: userPerm.can_add_workers ?? false,
-        can_edit_workers: userPerm.can_edit_workers ?? false,
-        can_delete_workers: userPerm.can_delete_workers ?? false,
-        can_view_timesheet: userPerm.can_view_timesheet ?? true,
-        can_edit_timesheet: userPerm.can_edit_timesheet ?? true,
-        can_view_payroll: userPerm.can_view_payroll ?? false
+        staff_id: resolvedAccount.staff_id || '',
+        assigned_department: resolvedAccount.assigned_department || 'All',
+        assigned_site: resolvedAccount.assigned_site || 'All',
+        can_view_dashboard: resolvedAccount.can_view_dashboard ?? true,
+        can_use_bulk: resolvedAccount.can_use_bulk ?? false,
+        can_view_workers: resolvedAccount.can_view_workers ?? true,
+        can_add_workers: resolvedAccount.can_add_workers ?? false,
+        can_edit_workers: resolvedAccount.can_edit_workers ?? false,
+        can_delete_workers: resolvedAccount.can_delete_workers ?? false,
+        can_view_timesheet: resolvedAccount.can_view_timesheet ?? true,
+        can_edit_timesheet: resolvedAccount.can_edit_timesheet ?? false,
+        can_view_payroll: resolvedAccount.can_view_payroll ?? false
       };
 
       const sessionObj = { user: { email: cleanEmail }, role: staffRole };
       setSession(sessionObj);
       setUserRole(staffRole);
 
-      if (staffRole.assigned_department !== 'All') setSelectedDeptFilter(staffRole.assigned_department);
-      if (staffRole.assigned_site !== 'All') setSelectedSiteFilter(staffRole.assigned_site);
+      if (staffRole.assigned_department !== 'All') {
+        setSelectedDeptFilter(staffRole.assigned_department);
+        setBulkDepartment(staffRole.assigned_department);
+      }
+      if (staffRole.assigned_site !== 'All') {
+        setSelectedSiteFilter(staffRole.assigned_site);
+        setBulkSite(staffRole.assigned_site);
+        setQuickSite(staffRole.assigned_site);
+      }
 
       localStorage.setItem('nda_user_session', JSON.stringify(sessionObj));
 
       if (staffRole.can_view_dashboard) setActiveTab('dashboard');
       else if (staffRole.can_view_timesheet) setActiveTab('attendance');
       else if (staffRole.can_view_workers) setActiveTab('workers');
-
-    } else {
-      alert('Invalid Email or Password!');
+      else setActiveTab('changepass');
+    } catch (err) {
+      alert('Login error: ' + (err?.message || String(err)));
+    } finally {
+      setAuthLoading(false);
     }
-    setAuthLoading(false);
   }
 
   function handleLogout() {
@@ -717,6 +873,9 @@ async function fetchAttendance() {
   async function handleDeleteWorker(id) {
     if (!userRole.is_admin && !userRole.can_delete_workers) {
       return alert('Permission denied!');
+    }
+    if (!userRole.is_admin && !filteredWorkers.some(w => String(w.id) === String(id))) {
+      return alert('Aap sirf apne assigned department/site ke workers delete kar sakte hain.');
     }
     if (window.confirm(`Delete Worker #${id}?`)) {
       const { error } = await supabase.from('workers').delete().eq('id', id);
@@ -768,6 +927,18 @@ async function fetchAttendance() {
 
   async function handleSaveWorker(e) {
     e.preventDefault();
+    if (!userRole.is_admin) {
+      if (editingWorkerId && !userRole.can_edit_workers) return alert('Permission denied: worker edit allowed nahi.');
+      if (!editingWorkerId && !userRole.can_add_workers) return alert('Permission denied: worker add allowed nahi.');
+      if (userRole.assigned_department && userRole.assigned_department !== 'All' &&
+          department.toLowerCase() !== userRole.assigned_department.toLowerCase()) {
+        return alert('Aap sirf apne assigned department mein worker add/edit kar sakte hain.');
+      }
+      if (userRole.assigned_site && userRole.assigned_site !== 'All' &&
+          workSite.toLowerCase() !== userRole.assigned_site.toLowerCase()) {
+        return alert('Aap sirf apni assigned site select kar sakte hain.');
+      }
+    }
     if (!name.trim() || !monthlySalary) return alert('Name and Salary required!');
 
     const monthlyNum = Number(monthlySalary);
@@ -956,7 +1127,6 @@ async function fetchAttendance() {
           </table>
 
           <div class="report-footer">
-            Prepared by Muhammad Naveed
           </div>
 
           <script>
@@ -975,7 +1145,7 @@ async function fetchAttendance() {
 
   // 2. Handle Bulk Attendance & Overtime (Supports 'All' Departments & Designations)
  async function handleBulkAttendance() {
-  if (!userRole.is_admin && !userRole.can_edit_timesheet) return;
+  if (!userRole.is_admin && !userRole.can_use_bulk) return alert('Aapko Bulk Attendance ki permission nahi hai.');
 
   const selectedDesignations =
     bulkDesignation === 'All'
@@ -986,7 +1156,12 @@ async function fetchAttendance() {
           ? ['carpenter', 'carpenter helper']
           : [bulkDesignation.toLowerCase()];
 
-  const deptWorkers = workers.filter(w => {
+  const allowedWorkers = userRole.is_admin ? workers : filteredWorkers;
+  const effectiveBulkSite =
+    userRole.is_admin || userRole.assigned_site === 'All'
+      ? bulkSite
+      : userRole.assigned_site;
+  const deptWorkers = allowedWorkers.filter(w => {
     const matchDept =
       bulkDepartment === 'All' ||
       (w.department &&
@@ -1014,7 +1189,7 @@ async function fetchAttendance() {
     overtime_hours: Number(bulkOT) || 0,
     contract_overtime_hours: Number(bulkContractOT) || 0,
     department: w.department,
-    work_site: bulkSite
+    work_site: effectiveBulkSite
   }));
 
   const { error: attendanceError } = await supabase
@@ -1031,7 +1206,7 @@ async function fetchAttendance() {
     .upsert(
       [{
         work_date: selectedTimesheetDate,
-        work_site: bulkSite,
+        work_site: effectiveBulkSite,
         work_details: bulkWorkDetails.trim()
       }],
       { onConflict: 'work_date,work_site' }
@@ -1059,7 +1234,7 @@ deptWorkers.forEach(w => {
     ot: Number(bulkOT) || 0,
     contract_ot: Number(bulkContractOT) || 0,
     contract_overtime_hours: Number(bulkContractOT) || 0,
-    site: bulkSite
+    site: effectiveBulkSite
   };
 });
 
@@ -1083,11 +1258,19 @@ async function handleSingleAttendanceChange(
   newSite,
   newContractOT = 0
 ) {
+  if (!userRole.is_admin && !userRole.can_edit_timesheet) {
+    throw new Error('Aapko timesheet edit karne ki permission nahi hai.');
+  }
+  if (!userRole.is_admin && !filteredWorkers.some(w => String(w.id) === String(workerId))) {
+    throw new Error('Yeh worker aapki assigned department/site mein nahi hai.');
+  }
   const previousRecord = attendanceData[dateStr]?.[workerId] || {};
-  const worker = workers.find(w => w.id === workerId);
+  const worker = workers.find(w => String(w.id) === String(workerId));
 
   const assignedSite =
-    newSite || previousRecord.site || worker?.work_site || sitesList[0] || 'Sharjah Mamzar';
+    !userRole.is_admin && userRole.assigned_site && userRole.assigned_site !== 'All'
+      ? userRole.assigned_site
+      : (newSite || previousRecord.site || worker?.work_site || sitesList[0] || 'Sharjah Mamzar');
 
   const updatedRecord = {
     ...previousRecord,
@@ -1183,16 +1366,19 @@ async function handleQuickAttendance(e) {
 
   // 4. Handle Mark Single Attendance (For timesheet table)
   async function handleMarkAttendance(workerId, status) {
-    if (!userRole.is_admin && !userRole.can_edit_timesheet) return;
-       const worker = workers.find(w => w.id === workerId);
+    if (!userRole.is_admin && !userRole.can_edit_timesheet) return alert('Aapko timesheet edit karne ki permission nahi hai.');
+    if (!userRole.is_admin && !filteredWorkers.some(w => String(w.id) === String(workerId))) return alert('Yeh worker aapke assigned scope mein nahi hai.');
+    const worker = workers.find(w => String(w.id) === String(workerId));
   const oldRecord = attendanceData[selectedTimesheetDate]?.[workerId] || {};
 
 const assignedSiteForToday =
-  timesheetSiteInputs[workerId] ||
-  oldRecord.site ||
-  oldRecord.work_site ||
-  worker?.work_site ||
-  sitesList[0];
+  !userRole.is_admin && userRole.assigned_site && userRole.assigned_site !== 'All'
+    ? userRole.assigned_site
+    : (timesheetSiteInputs[workerId] ||
+       oldRecord.site ||
+       oldRecord.work_site ||
+       worker?.work_site ||
+       sitesList[0]);
 
 const otHours = Number(
   overtimeInputs[workerId] ??
@@ -1212,7 +1398,9 @@ const otHours = Number(
   // 5. Handle Save Staff Permissions
   async function handleSavePermission(e) {
     e.preventDefault();
-    if (!targetEmail || !targetPassword) return;
+    if (!userRole.is_admin) return alert('Sirf admin staff permissions change kar sakta hai.');
+    if (!targetEmail || !targetPassword) return alert('Staff email aur password enter karein.');
+    if (targetEmail.trim().toLowerCase() === session?.user?.email?.toLowerCase()) return alert('Admin apna account staff permission form se edit nahi kar sakta.');
 
     const permData = {
       staff_id: targetStaffId.trim(),
@@ -1459,7 +1647,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         {(userRole.is_admin || userRole.can_view_timesheet) && (
           <button onClick={() => setActiveTab('attendance')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'attendance' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📅 Timesheet Entry</button>
         )}
-      <button
+      {(userRole.is_admin || userRole.can_view_timesheet) && <button
   onClick={() => setActiveTab('daily-timesheet')}
   style={{
     padding: '10px 15px',
@@ -1473,7 +1661,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
   }}
 >
   📄 Daily Timesheet
-</button>
+</button>}
         {(userRole.is_admin || userRole.can_view_payroll) && (
           <button onClick={() => setActiveTab('payroll')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'payroll' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>💵 Payroll</button>
         )}
@@ -1490,12 +1678,15 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         {userRole.is_admin && (
           <button onClick={() => setActiveTab('annualLeave')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'annualLeave' ? '#059669' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🌴 Annual Leave</button>
         )}
-        <button 
+        {userRole.is_admin && (
+          <button onClick={() => setActiveTab('data-cleanup')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'data-cleanup' ? '#dc2626' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🗑️ Data Cleanup</button>
+        )}
+        {(userRole.is_admin || userRole.can_view_timesheet) && <button 
           onClick={() => setShowMonthlyTimesheetModal(true)} 
           style={{ padding: '10px 15px', backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap', fontWeight: 'bold' }}
         >
           📊 Monthly Timesheet
-        </button>
+        </button>}
       </div>
 
       <main style={{ flex: 1, padding: '20px' }}>
@@ -1953,8 +2144,8 @@ const otherLeaveCount = desigWorkers.filter(
           </thead>
 
           <tbody>
-            {workers
-              .filter(w => w.department === modalDepartment)
+            {(userRole.is_admin ? workers : filteredWorkers)
+              .filter(w => w.department?.toLowerCase() === modalDepartment?.toLowerCase())
               .filter(w => {
                 if (modalLocationTab === 'All') return true;
 
@@ -2252,7 +2443,7 @@ style={{
           </thead>
 
           <tbody>
-            {workers && workers
+            {(userRole.is_admin ? workers : filteredWorkers)
               .filter(w => bulkDepartment === 'All' || w.department === bulkDepartment)
               .map((worker) => {
                 const record = attendanceData[selectedTimesheetDate]?.[worker.id] || { status: 'Present', ot: 0 };
@@ -2497,10 +2688,6 @@ await handleSingleAttendanceChange(
               <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Monthly Salary *</label>
               <input type="number" value={monthlySalary} onChange={e => setMonthlySalary(e.target.value)} placeholder="3000" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
             </div>
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Monthly Salary *</label>
-              <input type="number" value={monthlySalary} onChange={e => setMonthlySalary(e.target.value)} placeholder="3000" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
-            </div>
 
             <div>
               <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Annual Leave Balance (Days)</label>
@@ -2516,13 +2703,18 @@ await handleSingleAttendanceChange(
               <div>
                 <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Passport Copy</label>
                 <input type="file" onChange={async (e) => {
-                  const file = e.target.files[0]; if (!file) return;
-                  const { error } = await supabase.storage.from('worker-documents').upload(`pass_${Date.now()}.${file.name.split('.').pop()}`, file);
-                  if (!error) {
-                    const { data } = supabase.storage.from('worker-documents').getPublicUrl(`pass_${Date.now()}.${file.name.split('.').pop()}`);
-                    // Note: Supabase getPublicUrl direct path se bhi mil jata hai
+                  const file = e.target.files[0];
+                  if (!file) return;
+                  try {
+                    const fileName = `pass_${Date.now()}.${file.name.split('.').pop()}`;
+                    const { error: uploadError } = await supabase.storage.from('worker-documents').upload(fileName, file);
+                    if (uploadError) throw uploadError;
+                    const { data } = supabase.storage.from('worker-documents').getPublicUrl(fileName);
+                    setPassportFileUrl(data.publicUrl);
+                    alert('Passport uploaded successfully!');
+                  } catch (err) {
+                    alert('Passport upload error: ' + err.message);
                   }
-                  alert('Passport selected!');
                 }} style={{ fontSize: '11px' }} />
               </div>
 
@@ -2617,14 +2809,14 @@ await handleSingleAttendanceChange(
 {activeTab === 'attendance' &&
  (userRole.is_admin || userRole.can_view_timesheet) &&
  (() => {
-   const reportWorkers = workers.filter(w => {
-     const deptScope = userRole.is_admin
-       ? selectedDeptFilter
-       : userRole.assigned_department;
-
-     return !deptScope ||
-       deptScope === 'All' ||
+   const reportWorkers = (userRole.is_admin ? workers : filteredWorkers).filter(w => {
+     const deptScope = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
+     const siteScope = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
+     const deptMatch = !deptScope || deptScope === 'All' ||
        w.department?.toLowerCase() === deptScope.toLowerCase();
+     const siteMatch = !siteScope || siteScope === 'All' ||
+       w.work_site?.toLowerCase() === siteScope.toLowerCase();
+     return deptMatch && siteMatch;
    });
 
    const getRecord = worker =>
@@ -2903,7 +3095,7 @@ await handleSingleAttendanceChange(
  })()}
               
         {/* TAB 5A: DAILY TIMESHEET */}
-        {activeTab === 'daily-timesheet' && (
+        {activeTab === 'daily-timesheet' && (userRole.is_admin || userRole.can_view_timesheet) && (
          <div
   className="daily-timesheet-print"
   style={{ padding: '20px', background: '#fff', borderRadius: '8px' }}
@@ -2970,7 +3162,7 @@ await handleSingleAttendanceChange(
                 </thead>
 
                 <tbody>
-                  {workers
+                  {(userRole.is_admin ? workers : filteredWorkers)
                     .filter(worker => {
                       const record =
                         attendanceData[selectedTimesheetDate]?.[worker.id] ||
@@ -3281,16 +3473,29 @@ return (
     </div>
   </div>
 )}
-        {/* TAB 6: CHANGE PASSWORD */}
+        {/* TAB 6: CHANGE LOGIN DETAILS */}
         {activeTab === 'changepass' && (
-          <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', maxWidth: '450px', margin: '0 auto' }}>
-            <h3 style={{ margin: '0 0 15px 0', color: '#0f172a' }}>🔑 Change Password</h3>
+          <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', maxWidth: '500px', margin: '0 auto' }}>
+            <h3 style={{ margin: '0 0 8px 0', color: '#0f172a' }}>🔑 Change Login Details</h3>
+            <p style={{ margin: '0 0 18px 0', color: '#64748b', fontSize: '13px' }}>
+              {userRole.is_admin ? 'Admin yahan apna login email aur password dono change kar sakta hai.' : 'Staff apna password change kar sakta hai. Login email admin hi change karega.'}
+            </p>
             <form onSubmit={handleChangePasswordSubmit}>
               <div style={{ marginBottom: '15px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>New Password</label>
-                <input type="password" value={newPassInput} onChange={e => setNewPassInput(e.target.value)} placeholder="Enter new password" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} required />
+                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Current Password *</label>
+                <input type="password" value={currentPassInput} onChange={e => setCurrentPassInput(e.target.value)} placeholder="Enter current password" autoComplete="current-password" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} required />
               </div>
-              <button type="submit" style={{ width: '100%', padding: '12px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Update Password</button>
+              {userRole.is_admin && (
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>New Admin Login Email</label>
+                  <input type="email" value={newLoginEmailInput} onChange={e => setNewLoginEmailInput(e.target.value)} placeholder={session?.user?.email || 'admin@nda.pk'} autoComplete="username" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                </div>
+              )}
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>New Password {userRole.is_admin ? '(optional if changing email only)' : '*'}</label>
+                <input type="password" value={newPassInput} onChange={e => setNewPassInput(e.target.value)} placeholder="Enter new password" autoComplete="new-password" style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} required={!userRole.is_admin} />
+              </div>
+              <button type="submit" style={{ width: '100%', padding: '12px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Update Login Details</button>
             </form>
           </div>
         )}
@@ -3450,7 +3655,7 @@ return (
                   </tr>
                 </thead>
                 <tbody>
-                  {permissionsList.map((p, idx) => {
+                  {permissionsList.filter(p => !p.is_admin).map((p, idx) => {
                     const activePerms = [];
                     if (p.can_view_dashboard) activePerms.push('Dashboard');
                     if (p.can_use_bulk) activePerms.push('Bulk/OCR');
@@ -3509,8 +3714,40 @@ return (
             </div>
           </div>
         )}
+      {/* ADMIN ONLY: DATA CLEANUP */}
+        {activeTab === 'data-cleanup' && userRole.is_admin && (
+          <div style={{ background: '#fff', padding: '24px', borderRadius: '10px', border: '1px solid #fecaca', maxWidth: '760px' }}>
+            <h2 style={{ marginTop: 0, color: '#991b1b' }}>🗑️ Delete Old Records</h2>
+            <p style={{ color: '#475569', fontSize: '14px', lineHeight: 1.6 }}>
+              Sirf selected date se PEHLE ke records delete honge. Selected date ka record safe rahega.
+              Yeh permanent action hai aur undo nahi ho sakta.
+            </p>
+            <div style={{ marginBottom: '18px' }}>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Delete records before this date</label>
+              <input type="date" value={cleanupBeforeDate} onChange={e => setCleanupBeforeDate(e.target.value)} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+            </div>
+            <div style={{ display: 'grid', gap: '12px', marginBottom: '20px' }}>
+              <label style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <input type="checkbox" checked={cleanupAttendance} onChange={e => setCleanupAttendance(e.target.checked)} />
+                <span><strong>Attendance records</strong> — selected date se pehle ki attendance aur OT entries</span>
+              </label>
+              <label style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <input type="checkbox" checked={cleanupDailyDetails} onChange={e => setCleanupDailyDetails(e.target.checked)} />
+                <span><strong>Daily work details</strong> — selected date se pehle ke site remarks</span>
+              </label>
+              <label style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <input type="checkbox" checked={cleanupAnnualLeaves} onChange={e => setCleanupAnnualLeaves(e.target.checked)} />
+                <span><strong>Completed annual leave records</strong> — sirf woh records jinki actual return date selected date se pehle hai. Active leave records preserve rahenge.</span>
+              </label>
+            </div>
+            <button type="button" disabled={cleanupLoading} onClick={handleDeleteOldRecords} style={{ padding: '11px 18px', background: cleanupLoading ? '#9ca3af' : '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: cleanupLoading ? 'wait' : 'pointer' }}>
+              {cleanupLoading ? 'Deleting records...' : 'Permanently Delete Selected Old Records'}
+            </button>
+          </div>
+        )}
+
      {/* TAB 10: ANNUAL LEAVES, PENALTIES & 12-MONTH DEDUCTION */}
-        {activeTab === 'annualLeave' && (
+        {activeTab === 'annualLeave' && userRole.is_admin && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ color: '#1e293b', margin: 0 }}>UAE Labor Law: Annual Leave & 12-Month Overstay Deductions</h2>
@@ -4125,7 +4362,6 @@ return monthlyRows.map((att, idx) => {
     borderTop: '1px solid #cbd5e1'
   }}
 >
-  Prepared by Muhammad Naveed
 </div>
     </div>
   );
