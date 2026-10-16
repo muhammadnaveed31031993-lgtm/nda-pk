@@ -119,7 +119,7 @@ export default function App() {
   const [permissionsList, setPermissionsList] = useState([]);
   const [personalDocs, setPersonalDocs] = useState([]);
   const [sitesList, setSitesList] = useState(['Sharjah Mamzar', 'Ajman Aaliya', 'Dubai Downtown']);
-  const [departmentsList, setDepartmentsList] = useState(['Plumbing', 'Electrical', 'Civil', 'Mustafa']);
+  const [departmentsList, setDepartmentsList] = useState(['Plumbing', 'Electrical', 'Civil', 'Mustafa', 'Drivers']);
 
   // Edit / Add Worker Form States
   const [editingWorkerId, setEditingWorkerId] = useState(null);
@@ -205,13 +205,16 @@ const [newDesignation, setNewDesignation] = useState('');
   const [quickSaving, setQuickSaving] = useState(false);
   const [siteAttendanceIds, setSiteAttendanceIds] = useState('');
   const [siteAttendanceSite, setSiteAttendanceSite] = useState('Sharjah Mamzar');
+  const [siteAttendanceDepartment, setSiteAttendanceDepartment] = useState('Mustafa');
   const [siteAttendanceSaving, setSiteAttendanceSaving] = useState(false);
   
   const [overtimeInputs, setOvertimeInputs] = useState({});
   const [timesheetSiteInputs, setTimesheetSiteInputs] = useState({});
   const [attendanceData, setAttendanceData] = useState({});
  const [dailyTimesheetSite, setDailyTimesheetSite] = useState('All Workers');
-const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
+ const [dailyTimesheetDepartment, setDailyTimesheetDepartment] = useState('All');
+ const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
+ const [dailyWorkDetailsSaving, setDailyWorkDetailsSaving] = useState(false);
   async function fetchBusinessData(type = businessType) {
     if (!session) return;
     setBusinessLoading(true);
@@ -367,6 +370,61 @@ const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
     await fetchBusinessData();
   }
 
+  async function handleSaveBulkWorkDetails(e, silent = false) {
+    e?.preventDefault?.();
+    if (!userRole.is_admin && !userRole.can_use_bulk && !userRole.can_edit_timesheet) {
+      return alert('Aapko Daily Work Details save karne ki permission nahi hai.');
+    }
+    const workDate = selectedTimesheetDate;
+    const workSite = !userRole.is_admin && userRole.assigned_site && userRole.assigned_site !== 'All' ? userRole.assigned_site : bulkSite;
+    const workDetails = bulkWorkDetails.trim();
+    if (!workDate || !workSite) return alert('Date aur working site select karein.');
+    if (!workDetails) { if (!silent) alert('Daily work details likhein.'); return false; }
+    setDailyWorkDetailsSaving(true);
+    try {
+      // Update existing date/site entries; insert only when none exists. This does not require an id column or unique constraint.
+      const { data: existingRows, error: findError } = await supabase
+        .from('daily_work_details')
+        .select('work_date,work_site')
+        .eq('work_date', workDate)
+        .eq('work_site', workSite);
+      if (findError) throw findError;
+      if ((existingRows || []).length) {
+        const { error: updateError } = await supabase
+          .from('daily_work_details')
+          .update({ work_details: workDetails })
+          .eq('work_date', workDate)
+          .eq('work_site', workSite);
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from('daily_work_details')
+          .insert([{ work_date: workDate, work_site: workSite, work_details: workDetails }]);
+        if (insertError) throw insertError;
+      }
+      if (dailyTimesheetSite === 'All Workers' || dailyTimesheetSite === 'All') {
+        const { data: allDetails, error: allDetailsError } = await supabase
+          .from('daily_work_details')
+          .select('work_site,work_details')
+          .eq('work_date', workDate);
+        if (!allDetailsError) {
+          const detailsBySite = new Map();
+          (allDetails || []).filter(item => item.work_details).forEach(item => detailsBySite.set(String(item.work_site || 'Site'), item.work_details));
+          setSavedDailyWorkDetails([...detailsBySite.entries()].map(([site, details]) => site + ': ' + details).join('\n'));
+        }
+      } else if (dailyTimesheetSite === workSite) {
+        setSavedDailyWorkDetails(workDetails);
+      }
+      if (!silent) alert(`Daily Work Details ${workDate} / ${workSite} ke liye save ho gayi hain.`);
+      return true;
+    } catch (err) {
+      alert('Daily Work Details save nahi hui: ' + (err?.message || String(err)));
+      return false;
+    } finally {
+      setDailyWorkDetailsSaving(false);
+    }
+  }
+
   useEffect(() => {
     async function loadDailyWorkDetails() {
       if (!selectedTimesheetDate || !dailyTimesheetSite) {
@@ -392,10 +450,9 @@ const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
       }
 
       if (dailyTimesheetSite === 'All Workers' || dailyTimesheetSite === 'All') {
-        const combined = (data || [])
-          .filter(item => item.work_details)
-          .map(item => String(item.work_site || 'Site') + ': ' + item.work_details)
-          .join('\n');
+        const detailsBySite = new Map();
+        (data || []).filter(item => item.work_details).forEach(item => detailsBySite.set(String(item.work_site || 'Site'), item.work_details));
+        const combined = [...detailsBySite.entries()].map(([site, details]) => site + ': ' + details).join('\n');
         setSavedDailyWorkDetails(combined);
       } else {
         setSavedDailyWorkDetails(data?.[0]?.work_details || '');
@@ -405,6 +462,26 @@ const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
     loadDailyWorkDetails();
   }, [selectedTimesheetDate, dailyTimesheetSite]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBulkWorkDetails() {
+      if (!selectedTimesheetDate || !bulkSite) { setBulkWorkDetails(''); return; }
+      const { data, error } = await supabase
+        .from('daily_work_details')
+        .select('work_details')
+        .eq('work_date', selectedTimesheetDate)
+        .eq('work_site', bulkSite)
+        .limit(1);
+      if (cancelled) return;
+      if (error) {
+        console.warn('Bulk daily work details load error:', error.message);
+        return;
+      }
+      setBulkWorkDetails(data?.[0]?.work_details || '');
+    }
+    loadBulkWorkDetails();
+    return () => { cancelled = true; };
+  }, [selectedTimesheetDate, bulkSite]);
 
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -749,24 +826,33 @@ async function fetchAttendance() {
     const nextEmail = isAdminAccount && newLoginEmailInput.trim()
       ? newLoginEmailInput.trim().toLowerCase()
       : currentEmail;
-    const nextPassword = newPassInput.trim() || account.user_password;
+    const nextPassword = newPassInput.trim();
 
     if (!nextEmail) return alert('Login ID / email enter karein.');
+    if (!nextPassword) return alert('Naya password lazmi enter karein.');
     if (nextPassword.length < 6) return alert('Password kam az kam 6 characters ka hona chahiye.');
+    if (nextPassword === currentPassInput.trim()) return alert('Naya password purane password se different hona chahiye.');
 
-    const changes = {
-      user_email: nextEmail,
-      user_password: nextPassword
-    };
+    if (nextEmail !== currentEmail) {
+      const { data: emailCollision, error: collisionError } = await supabase
+        .from('user_permissions')
+        .select('user_email')
+        .ilike('user_email', nextEmail);
+      if (collisionError) return alert('New login ID check nahi ho saka: ' + collisionError.message);
+      if ((emailCollision || []).length) return alert('Yeh new login ID pehle se database mein mojood hai. Koi doosri email use karein.');
+    }
 
-    // Update every duplicate row for this login ID, otherwise an old duplicate row could still accept the old password.
-    const { error: updateError } = await supabase
+    const changes = { user_email: nextEmail, user_password: nextPassword };
+    // All duplicate rows for this account must be updated; otherwise a stale row could still accept the old password.
+    const { data: updatedRows, error: updateError } = await supabase
       .from('user_permissions')
       .update(changes)
-      .ilike('user_email', currentEmail);
+      .ilike('user_email', currentEmail)
+      .select('user_email,user_password');
 
-    if (updateError) {
-      return alert('Login ID / password update nahi hua: ' + updateError.message);
+    if (updateError) return alert('Login ID / password update nahi hua: ' + updateError.message);
+    if (!updatedRows || updatedRows.length < accountRows.length || updatedRows.some(row => String(row.user_password) !== nextPassword || String(row.user_email).toLowerCase() !== nextEmail)) {
+      return alert('Database ne tamam duplicate login records update karne ki tasdeeq nahi ki. Password change complete nahi hua. Supabase user_permissions ki UPDATE policy check karein.');
     }
 
     const updatedSession = {
@@ -914,19 +1000,22 @@ async function fetchAttendance() {
         .from('user_permissions')
         .select('*')
         .ilike('user_email', cleanEmail);
-      const accountRows = accounts || [];
-      const account = accountRows.find(row => String(row.user_password) === cleanPassword) || accountRows[0] || null;
-
       if (accountError) {
         alert('Login database error: ' + accountError.message);
         return;
       }
-
+      const accountRows = accounts || [];
+      const distinctPasswords = [...new Set(accountRows.map(row => String(row.user_password ?? '')))];
+      if (distinctPasswords.length > 1) {
+        alert('Is login ID ke duplicate records mein mukhtalif passwords hain. Security ke liye login roka gaya hai. Admin ko password change dobara save karna hoga taa-ke tamam duplicate records update ho jayein.');
+        return;
+      }
+      const account = accountRows.find(row => String(row.user_password) === cleanPassword) || null;
       let resolvedAccount = account;
 
       // First-time setup for the legacy default administrator.
       // Once the admin row exists, the hard-coded default login is no longer accepted.
-      if (!resolvedAccount && cleanEmail === 'admin@nda.pk' && cleanPassword === '123456') {
+      if (!resolvedAccount && accountRows.length === 0 && cleanEmail === 'admin@nda.pk' && cleanPassword === '123456') {
         const initialAdmin = {
           staff_id: 'ADMIN',
           user_email: 'admin@nda.pk',
@@ -1341,8 +1430,9 @@ async function fetchAttendance() {
     const matchDesig =
       selectedDesignations.includes('All') ||
       selectedDesignations.includes(workerDesignation);
+    const matchSite = !effectiveBulkSite || String(w.work_site || '').trim().toLowerCase() === String(effectiveBulkSite).trim().toLowerCase();
 
-    return matchDept && matchDesig;
+    return matchDept && matchDesig && matchSite;
   });
 
   if (deptWorkers.length === 0) {
@@ -1390,8 +1480,11 @@ deptWorkers.forEach(w => {
     return updated;
   });
 
+  if (bulkWorkDetails.trim()) {
+    await handleSaveBulkWorkDetails(null, true);
+  }
   alert(
-    `Overtime updated for ${selectedTimesheetDate}: ${deptWorkers.length} workers. Existing attendance status was preserved.`
+    `Overtime updated for ${selectedTimesheetDate}: ${deptWorkers.length} workers. Existing attendance status was preserved.${bulkWorkDetails.trim() ? ' Daily Work Details bhi save karne ki koshish ki gayi.' : ''}`
   );
 
   fetchAttendance();
@@ -1465,18 +1558,21 @@ async function handleSaveSiteAttendance(e) {
   e.preventDefault();
   if (!userRole.is_admin && !userRole.can_edit_timesheet && !userRole.can_use_bulk) return alert('Aapko attendance save karne ki permission nahi hai.');
   if (!selectedTimesheetDate || !siteAttendanceSite) return alert('Date aur site select karein.');
+  if (!siteAttendanceDepartment || siteAttendanceDepartment === 'All') return alert('Doosre department ki attendance ko affect hone se bachane ke liye ek specific department select karein.');
   const allowedWorkers = userRole.is_admin ? workers : filteredWorkers;
   const enteredIds = [...new Set(siteAttendanceIds.split(/[\s,;]+/).map(x => x.trim()).filter(Boolean))];
-  const presentWorkers = enteredIds.map(id => allowedWorkers.find(w =>
+  const scopedWorkers = allowedWorkers.filter(w => {
+    const siteMatch = String(w.work_site || '').trim().toLowerCase() === siteAttendanceSite.trim().toLowerCase();
+    const deptMatch = siteAttendanceDepartment === 'All' || String(w.department || '').trim().toLowerCase() === siteAttendanceDepartment.trim().toLowerCase();
+    return siteMatch && deptMatch;
+  });
+  const presentWorkers = enteredIds.map(id => scopedWorkers.find(w =>
     String(w.worker_id ?? '').trim() === id || String(w.id).trim() === id
   ));
   const missingIds = enteredIds.filter((id, i) => !presentWorkers[i]);
-  if (missingIds.length) return alert('Yeh Worker ID nahi milin: ' + missingIds.join(', '));
-  const scopedWorkers = allowedWorkers.filter(w =>
-    String(w.work_site || '').trim().toLowerCase() === siteAttendanceSite.trim().toLowerCase()
-  );
-  const selectedWorkers = [...new Map([...scopedWorkers, ...presentWorkers].map(w => [String(w.id), w])).values()];
-  if (!selectedWorkers.length) return alert('Is site ke workers nahi mile. Pehle Workers Directory mein unki site set karein.');
+  if (missingIds.length) return alert('Yeh IDs selected site/department mein nahi milin: ' + missingIds.join(', ') + '. Doosre department ki attendance change nahi ki gayi.');
+  const selectedWorkers = scopedWorkers;
+  if (!selectedWorkers.length) return alert('Is site aur department ke workers nahi mile. Workers Directory mein site/department check karein.');
   setSiteAttendanceSaving(true);
   try {
     const records = selectedWorkers.map(w => {
@@ -1574,8 +1670,9 @@ const otHours = Number(
   0
 );
     
+    const contractOtHours = Number(oldRecord.contract_ot ?? oldRecord.contract_overtime_hours ?? attendance.find(a => String(a.worker_id) === String(workerId) && a.date === selectedTimesheetDate)?.contract_overtime_hours ?? 0) || 0;
     const { error } = await supabase.from('attendance').upsert([
-      { worker_id: workerId, date: selectedTimesheetDate, status, overtime_hours: otHours, department: worker?.department, work_site: assignedSiteForToday }
+      { worker_id: workerId, date: selectedTimesheetDate, status, overtime_hours: otHours, contract_overtime_hours: contractOtHours, department: worker?.department, work_site: assignedSiteForToday }
     ], { onConflict: 'worker_id,date' });
 
     if (error) alert('Error: ' + error.message);
@@ -1839,6 +1936,8 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     const sum = (arr, kind) => arr.filter(t => t.transaction_kind === kind).reduce((n,t) => n + (Number(t.amount)||0), 0);
     const todayIncome = sum(sameCurrencyToday, 'income');
     const todayExpense = sum(sameCurrencyToday, 'expense');
+    const todaySalary = businessSalaryPayments.filter(t => t.payment_date === businessDate && t.currency === businessCurrency).reduce((n,t) => n + (Number(t.amount)||0), 0);
+    const todayProfit = todayIncome - todayExpense - todaySalary;
     const monthIncome = sum(sameCurrencyMonth, 'income');
     const monthExpense = sum(sameCurrencyMonth, 'expense');
     const monthSalary = salaryMonth.reduce((n,t) => n + (Number(t.amount)||0), 0);
@@ -1846,6 +1945,10 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     const cashOut = currencyRows.filter(t => t.payment_mode === 'Cash' && t.transaction_kind === 'expense').reduce((n,t) => n + (Number(t.amount)||0),0) + businessSalaryPayments.filter(t => t.payment_mode === 'Cash' && (t.currency || 'AED') === businessCurrency).reduce((n,t) => n + (Number(t.amount)||0),0);
     const creditIn = currencyRows.filter(t => t.payment_mode === 'Credit' && t.transaction_kind === 'income').reduce((n,t) => n + (Number(t.amount)||0),0);
     const creditOut = currencyRows.filter(t => t.payment_mode === 'Credit' && t.transaction_kind === 'expense').reduce((n,t) => n + (Number(t.amount)||0),0);
+    const todayCashIn = sameCurrencyToday.filter(t => t.payment_mode === 'Cash' && t.transaction_kind === 'income').reduce((n,t) => n + (Number(t.amount)||0), 0);
+    const todayCashOut = sameCurrencyToday.filter(t => t.payment_mode === 'Cash' && t.transaction_kind === 'expense').reduce((n,t) => n + (Number(t.amount)||0), 0) + businessSalaryPayments.filter(t => t.payment_date === businessDate && t.payment_mode === 'Cash' && (t.currency || 'AED') === businessCurrency).reduce((n,t) => n + (Number(t.amount)||0), 0);
+    const todayCreditIn = sameCurrencyToday.filter(t => t.payment_mode === 'Credit' && t.transaction_kind === 'income').reduce((n,t) => n + (Number(t.amount)||0), 0);
+    const todayCreditOut = sameCurrencyToday.filter(t => t.payment_mode === 'Credit' && t.transaction_kind === 'expense').reduce((n,t) => n + (Number(t.amount)||0), 0);
     const money = n => `${businessCurrency} ${Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
     const businessLabel = businessType === 'transport' ? 'Transport Business' : 'Other Business';
     const canAdd = userRole.is_admin || !!businessAccess?.can_add;
@@ -1860,7 +1963,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       <div style={{ minHeight:'100vh', background:'#f1f5f9', fontFamily:"'Segoe UI',sans-serif", color:'#0f172a' }}>
         <header style={{ padding:'22px clamp(16px,3vw,34px)', color:'#fff', background: businessType === 'transport' ? 'linear-gradient(115deg,#0f172a,#1d4ed8)' : 'linear-gradient(115deg,#064e3b,#16a34a)', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
           <div><div style={{fontSize:12,letterSpacing:3,opacity:.8,fontWeight:800}}>NDA.PK BUSINESS</div><h1 style={{margin:'6px 0',fontSize:28}}>{businessLabel} Dashboard</h1><div style={{color:'#dbeafe',fontSize:13}}>Signed in: {session.user.email}</div></div>
-          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button onClick={()=>{setSelectedSystem(null); setBusinessAccess(null);}} style={{padding:'10px 13px',borderRadius:9,border:'1px solid #ffffff80',background:'#ffffff18',color:'#fff',cursor:'pointer'}}>⇄ Switch System</button><button onClick={handleLogout} style={{padding:'10px 13px',borderRadius:9,border:0,background:'#dc2626',color:'#fff',fontWeight:700,cursor:'pointer'}}>Logout</button></div>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button onClick={handleLogout} style={{padding:'10px 13px',borderRadius:9,border:'1px solid #ffffff80',background:'#ffffff18',color:'#fff',cursor:'pointer'}}>⇄ Switch System</button><button onClick={handleLogout} style={{padding:'10px 13px',borderRadius:9,border:0,background:'#dc2626',color:'#fff',fontWeight:700,cursor:'pointer'}}>Logout</button></div>
         </header>
         <main style={{maxWidth:1500,margin:'0 auto',padding:'22px clamp(12px,2vw,28px)'}}>
           <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:18,alignItems:'center'}}>
@@ -1871,7 +1974,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
           </div>
           <section style={{background:'#fff',borderRadius:16,padding:18,boxShadow:'0 5px 22px #0f172a0b',marginBottom:18,display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}><label style={{fontWeight:700}}>Dashboard date <input type="date" value={businessDate} onChange={e=>setBusinessDate(e.target.value)} style={{marginLeft:8,padding:9,border:'1px solid #cbd5e1',borderRadius:8}} /></label><label style={{fontWeight:700}}>Monthly sheet <input type="month" value={businessMonth} onChange={e=>setBusinessMonth(e.target.value)} style={{marginLeft:8,padding:9,border:'1px solid #cbd5e1',borderRadius:8}} /></label><button onClick={()=>fetchBusinessData()} style={{padding:'10px 15px',border:0,borderRadius:8,background:'#0f172a',color:'#fff',cursor:'pointer'}}>↻ Refresh</button></section>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(185px,1fr))',gap:14,marginBottom:20}}>
-            {[['Today Income',money(todayIncome),'#16a34a'],['Today Expense',money(todayExpense),'#dc2626'],['Today Profit',money(todayIncome-todayExpense),'#2563eb'],['Cash Balance',money(cashIn-cashOut),'#7c3aed'],['Credit Balance',money(creditIn-creditOut),'#b45309'],['Month Income',money(monthIncome),'#059669'],['Month Expenses + Salary',money(monthExpense+monthSalary),'#ea580c'],['Month Net Profit',money(monthIncome-monthExpense-monthSalary),'#0f766e'],['Active Drivers / Staff',businessWorkers.filter(w=>w.active!==false).length,'#334155']].map(c=><div key={c[0]} style={{background:'#fff',borderRadius:15,padding:18,boxShadow:'0 5px 22px #0f172a0b',borderTop:`4px solid ${c[2]}`}}><div style={{fontSize:12,color:'#64748b',fontWeight:700}}>{c[0]}</div><div style={{fontSize:21,fontWeight:850,color:c[2],marginTop:8}}>{c[1]}</div></div>)}
+            {[['Today Income',money(todayIncome),'#16a34a'],['Today Expense',money(todayExpense+todaySalary),'#dc2626'],['Today Profit',money(todayProfit),'#2563eb'],['Today Cash Balance',money(todayCashIn-todayCashOut),'#7c3aed'],['Today Credit Balance',money(todayCreditIn-todayCreditOut),'#b45309'],['Overall Cash Balance',money(cashIn-cashOut),'#6d28d9'],['Overall Credit Balance',money(creditIn-creditOut),'#92400e'],['Month Income',money(monthIncome),'#059669'],['Month Expenses + Salary',money(monthExpense+monthSalary),'#ea580c'],['Month Net Profit',money(monthIncome-monthExpense-monthSalary),'#0f766e'],['Active Drivers / Staff',businessWorkers.filter(w=>w.active!==false).length,'#334155']].map(c=><div key={c[0]} style={{background:'#fff',borderRadius:15,padding:18,boxShadow:'0 5px 22px #0f172a0b',borderTop:`4px solid ${c[2]}`}}><div style={{fontSize:12,color:'#64748b',fontWeight:700}}>{c[0]}</div><div style={{fontSize:21,fontWeight:850,color:c[2],marginTop:8}}>{c[1]}</div></div>)}
           </div>
           {(canAdd || userRole.is_admin) && <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:18,marginBottom:20}}>
             <form onSubmit={handleSaveBusinessTransaction} style={{background:'#fff',borderRadius:15,padding:20,boxShadow:'0 5px 22px #0f172a0b'}}><h3 style={{marginTop:0}}>➕ Daily Income / Expense</h3><div style={{display:'grid',gap:10}}><input type="date" value={businessDate} onChange={e=>setBusinessDate(e.target.value)} required style={fieldStyle}/><select value={businessTxnKind} onChange={e=>{setBusinessTxnKind(e.target.value);setBusinessTxnCategory(e.target.value==='income'?'Daily Income':(businessType==='transport'?'Vehicle Maintenance Expense':'Medicine Expense'));}} style={fieldStyle}><option value="income">Income</option><option value="expense">Expense</option></select><select value={businessTxnCategory} onChange={e=>setBusinessTxnCategory(e.target.value)} style={fieldStyle}>{(businessTxnKind==='income'?['Daily Income','Credit Income','Other Income']:businessType==='transport'?['Vehicle Maintenance Expense','Fuel Expense','Vehicle Repair Expense','Driver Salary Expense','Other Business Expense']:['Medicine Expense','Feed / Fodder Expense','Shop Purchase Expense','Other Business Expense','Other Expense']).map(c=><option key={c}>{c}</option>)}</select><input value={businessTxnVehicle} onChange={e=>setBusinessTxnVehicle(e.target.value)} placeholder={businessType==='transport'?'Vehicle number / plate (optional)':'Reference / animal / shop item (optional)'} style={fieldStyle}/><input type="number" min="0.01" step="0.01" value={businessTxnAmount} onChange={e=>setBusinessTxnAmount(e.target.value)} placeholder={`Amount (${businessCurrency})`} required style={fieldStyle}/><select value={businessTxnPaymentMode} onChange={e=>setBusinessTxnPaymentMode(e.target.value)} style={fieldStyle}><option value="Cash">Cash</option><option value="Credit">Credit</option><option value="Bank">Bank</option></select><textarea value={businessTxnDescription} onChange={e=>setBusinessTxnDescription(e.target.value)} placeholder="Details (optional)" rows="2" style={fieldStyle}/><textarea value={businessTxnRemarks} onChange={e=>setBusinessTxnRemarks(e.target.value)} placeholder="Remarks (optional)" rows="2" style={fieldStyle}/><button style={primaryStyle}>Save {businessCurrency} Entry</button></div></form>
@@ -2558,13 +2661,21 @@ style={{
       </div>
     </div>
 
+    <form onSubmit={handleSaveBulkWorkDetails} style={{ marginTop: 18, padding: 18, background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 10 }}>
+      <h3 style={{ margin: '0 0 8px', color: '#1d4ed8' }}>📝 Daily Work Details — Save to Daily Timesheet</h3>
+      <p style={{ margin: '0 0 12px', fontSize: 13, color: '#475569' }}>Selected date aur Bulk section ki working site ke liye details yahan likhein. Save karne ke baad Daily Timesheet mein automatically nazar aayengi.</p>
+      <textarea value={bulkWorkDetails} onChange={e => setBulkWorkDetails(e.target.value)} rows={4} placeholder="Example: Carpenters formwork fixing kar rahe hain; steel fixers reinforcement tying kar rahe hain..." style={{ ...fieldStyle, resize: 'vertical', marginBottom: 10 }} />
+      <button type="submit" disabled={dailyWorkDetailsSaving} style={{ ...primaryStyle, background: '#1d4ed8', opacity: dailyWorkDetailsSaving ? .7 : 1 }}>{dailyWorkDetailsSaving ? 'Saving details…' : 'Save Daily Work Details'}</button>
+    </form>
+
     <div style={{ marginTop: '20px', padding: '18px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '10px' }}>
       <h3 style={{ margin: '0 0 8px', color: '#166534' }}>🟢 Site Attendance by Worker ID</h3>
-      <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#166534' }}>Date aur site select karein, phir sirf Present workers ki IDs comma, space ya new line se likhein. Selected site ke baqi workers Absent mark honge.</p>
+      <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#166534' }}>Date, site aur department select karein; phir usi scope ke Present workers ki IDs likhein. Sirf selected site/department ke baqi workers Absent honge; doosre departments par koi asar nahi hoga.</p>
       <form onSubmit={handleSaveSiteAttendance}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '12px' }}>
           <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Attendance Date</label><input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }} /></div>
           <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Working Site</label><select value={siteAttendanceSite} onChange={e => setSiteAttendanceSite(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{sitesList.map(site => <option key={site} value={site}>{site}</option>)}</select></div>
+          <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Department</label><select value={siteAttendanceDepartment} onChange={e => setSiteAttendanceDepartment(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{departmentsList.map(dept => <option key={dept} value={dept}>{dept}</option>)}</select></div>
         </div>
         <label style={{ display: 'block', fontWeight: 'bold', fontSize: '12px', marginTop: 12 }}>Present Workers — ID No.</label>
         <textarea value={siteAttendanceIds} onChange={e => setSiteAttendanceIds(e.target.value)} rows={3} placeholder={'Example: 101, 102, 108\\n109\\n115'} style={{ ...fieldStyle, marginTop: 5, resize: 'vertical' }} />
@@ -3404,11 +3515,15 @@ await handleSingleAttendanceChange(
                   onChange={e => setDailyTimesheetSite(e.target.value)}
                   style={{ padding: '9px', minWidth: '200px', border: '1px solid #cbd5e1', borderRadius: '5px' }}
                 >
-                 
 <option value="All Workers">All Workers</option>
-{sitesList.map((site, idx) => (
-  <option key={idx} value={site}>{site}</option>
-))}
+{sitesList.map((site, idx) => (<option key={idx} value={site}>{site}</option>))}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Department</label>
+                <select value={dailyTimesheetDepartment} onChange={e => setDailyTimesheetDepartment(e.target.value)} style={{ padding: '9px', minWidth: '200px', border: '1px solid #cbd5e1', borderRadius: '5px' }}>
+                  <option value="All">All Departments</option>
+                  {departmentsList.map(dept => <option key={dept} value={dept}>{dept}</option>)}
                 </select>
               </div>
             </div>
@@ -3445,18 +3560,13 @@ await handleSingleAttendanceChange(
                         ) ||
                         {};
                     
-const workerSite =
-  record.site ||
-  record.work_site ||
-  worker.work_site ||
-  '';
-return (
-  dailyTimesheetSite === 'All' ||
-  dailyTimesheetSite === 'All Workers' ||
-  workerSite.toLowerCase().trim() ===
-    dailyTimesheetSite.toLowerCase().trim()
-);
-})
+const workerSite = record.site || record.work_site || worker.work_site || '';
+                      const workerDept = String(worker.department || '').trim().toLowerCase();
+                      const departmentMatches = dailyTimesheetDepartment === 'All' || workerDept === dailyTimesheetDepartment.toLowerCase().trim();
+                      const siteMatches = dailyTimesheetSite === 'All' || dailyTimesheetSite === 'All Workers' || workerSite.toLowerCase().trim() === dailyTimesheetSite.toLowerCase().trim();
+                      const permittedDept = userRole.is_admin || !userRole.assigned_department || userRole.assigned_department === 'All' || workerDept === String(userRole.assigned_department).toLowerCase().trim();
+                      return departmentMatches && siteMatches && permittedDept;
+                    })
 .map((worker, index) => {
                       const record =
                         attendanceData[selectedTimesheetDate]?.[worker.id] ||
@@ -4283,7 +4393,7 @@ accruedDays = balance.toFixed(1);
                             {(() => {
                               const todayText = new Date().toISOString().slice(0, 10);
                               const displayStatus = leave.actual_return && leave.actual_return !== 'On Leave' ? 'Returned' : (leave.start_date && leave.start_date > todayText ? 'Upcoming' : 'On Leave');
-                              const statusStyle = displayStatus === 'Returned' ? { background: '#dcfce7', color: '#166534' } : displayStatus === 'Upcoming' ? { background: '#dbeafe', color: '#1d4ed8' } : { background: '#bbf7d0', color: '#166534' };
+                              const statusStyle = displayStatus === 'Returned' ? { background: '#dcfce7', color: '#166534' } : displayStatus === 'Upcoming' ? { background: '#bbf7d0', color: '#166534' } : { background: '#bbf7d0', color: '#166534' };
                               return <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, ...statusStyle }}>{displayStatus}</span>;
                             })()}
                           </td>
