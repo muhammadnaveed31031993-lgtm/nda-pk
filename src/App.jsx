@@ -33,6 +33,14 @@ export default function App() {
   const [businessSalaryAmount, setBusinessSalaryAmount] = useState('');
   const [businessSalaryPaymentMode, setBusinessSalaryPaymentMode] = useState('Cash');
   const [businessSalaryDate, setBusinessSalaryDate] = useState(new Date().toISOString().slice(0,10));
+  const [businessCurrency, setBusinessCurrency] = useState('AED');
+  const [businessTxnVehicle, setBusinessTxnVehicle] = useState('');
+  const [businessTxnRemarks, setBusinessTxnRemarks] = useState('');
+  const [businessAccess, setBusinessAccess] = useState(null);
+  const [businessAccessList, setBusinessAccessList] = useState([]);
+  const [businessAccessEmail, setBusinessAccessEmail] = useState('');
+  const [businessAccessType, setBusinessAccessType] = useState('transport');
+  const [businessAccessFlags, setBusinessAccessFlags] = useState({ can_view: true, can_add: false, can_edit: false, can_delete: false, can_manage_workers: false, can_manage_access: false });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
@@ -207,20 +215,30 @@ const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
   async function fetchBusinessData(type = businessType) {
     if (!session) return;
     setBusinessLoading(true);
+    const dbBusinessType = type === 'other' ? 'dairy' : type; // keep compatibility with older records stored as dairy
     try {
       const [tx, ws, pay] = await Promise.all([
-        supabase.from('business_transactions').select('*').eq('business_type', type).order('transaction_date', { ascending: false }),
-        supabase.from('business_workers').select('*').eq('business_type', type).order('worker_name', { ascending: true }),
-        supabase.from('business_salary_payments').select('*').eq('business_type', type).order('payment_date', { ascending: false })
+        supabase.from('business_transactions').select('*').eq('business_type', dbBusinessType).order('transaction_date', { ascending: false }),
+        supabase.from('business_workers').select('*').eq('business_type', dbBusinessType).order('worker_name', { ascending: true }),
+        supabase.from('business_salary_payments').select('*').eq('business_type', dbBusinessType).order('payment_date', { ascending: false })
       ]);
       const firstError = tx.error || ws.error || pay.error;
       if (firstError) throw firstError;
       setBusinessTransactions(tx.data || []);
       setBusinessWorkers(ws.data || []);
       setBusinessSalaryPayments(pay.data || []);
+      if (userRole.is_admin) {
+        setBusinessAccess({ can_view: true, can_add: true, can_edit: true, can_delete: true, can_manage_workers: true, can_manage_access: true });
+        const { data: accessRows, error: accessError } = await supabase.from('business_user_permissions').select('*').eq('business_type', type).order('user_email', { ascending: true });
+        if (!accessError) setBusinessAccessList(accessRows || []);
+      } else {
+        const { data: accessRow, error: accessError } = await supabase.from('business_user_permissions').select('*').eq('business_type', type).ilike('user_email', session?.user?.email || '').maybeSingle();
+        setBusinessAccess(!accessError && accessRow ? accessRow : { can_view: false, can_add: false, can_edit: false, can_delete: false, can_manage_workers: false, can_manage_access: false });
+      }
     } catch (e) {
       console.error('Business data load error:', e);
-      alert('Business tables load nahi huay. Supabase SQL setup chalayein. Detail: ' + (e?.message || e));
+      if (!userRole.is_admin) setBusinessAccess({ can_view: false, can_add: false, can_edit: false, can_delete: false, can_manage_workers: false, can_manage_access: false });
+      alert('Business tables load nahi huay. Pehle business SQL setup run karein. Detail: ' + (e?.message || e));
     } finally { setBusinessLoading(false); }
   }
 
@@ -230,44 +248,122 @@ const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
 
   async function handleSaveBusinessTransaction(e) {
     e.preventDefault();
-    if (!userRole.is_admin) return alert('Business financial entries sirf admin add kar sakta hai.');
+    if (!userRole.is_admin && !businessAccess?.can_add) return alert('Aap ko business entry add karne ki permission nahi hai.');
     const amount = Number(businessTxnAmount);
     if (!businessDate || !Number.isFinite(amount) || amount <= 0) return alert('Date aur amount sahi enter karein.');
-    const payload = { business_type: businessType, transaction_date: businessDate, transaction_kind: businessTxnKind, category: businessTxnCategory.trim() || (businessTxnKind === 'income' ? 'Income' : 'Expense'), description: businessTxnDescription.trim(), amount, payment_mode: businessTxnPaymentMode, created_by: session?.user?.email || '' };
+    const payload = {
+      business_type: businessType === 'other' ? 'dairy' : businessType,
+      transaction_date: businessDate,
+      transaction_kind: businessTxnKind,
+      category: businessTxnCategory.trim() || (businessTxnKind === 'income' ? 'Daily Income' : 'Other Business Expense'),
+      description: businessTxnDescription.trim(),
+      remarks: businessTxnRemarks.trim(),
+      vehicle_number: businessTxnVehicle.trim(),
+      amount,
+      currency: businessCurrency,
+      payment_mode: businessTxnPaymentMode,
+      created_by: session?.user?.email || ''
+    };
     const { error } = await supabase.from('business_transactions').insert([payload]);
-    if (error) return alert('Entry save nahi hui: ' + error.message);
-    setBusinessTxnAmount(''); setBusinessTxnDescription('');
+    if (error) return alert('Entry save nahi hui: ' + error.message + '\nBusiness SQL setup run kiya hai?');
+    setBusinessTxnAmount(''); setBusinessTxnDescription(''); setBusinessTxnRemarks(''); setBusinessTxnVehicle('');
     await fetchBusinessData();
     alert('Business entry save ho gayi.');
   }
 
   async function handleAddBusinessWorker(e) {
     e.preventDefault();
-    if (!userRole.is_admin) return alert('Workers add karne ki permission sirf admin ko hai.');
-    if (!businessWorkerName.trim()) return alert('Worker ka naam likhein.');
-    const payload = { business_type: businessType, worker_name: businessWorkerName.trim(), job_title: businessWorkerJob.trim() || (businessType === 'transport' ? 'Driver' : 'Farm Worker'), phone: businessWorkerPhone.trim(), monthly_salary: Number(businessWorkerSalary) || 0, active: true };
+    if (!userRole.is_admin && !businessAccess?.can_manage_workers) return alert('Drivers/staff add karne ki permission nahi hai.');
+    if (!businessWorkerName.trim()) return alert('Worker/driver ka naam likhein.');
+    const payload = { business_type: businessType === 'other' ? 'dairy' : businessType, worker_name: businessWorkerName.trim(), job_title: businessWorkerJob.trim() || (businessType === 'transport' ? 'Driver' : 'Staff'), phone: businessWorkerPhone.trim(), monthly_salary: Number(businessWorkerSalary) || 0, currency: businessCurrency, active: true };
     const { error } = await supabase.from('business_workers').insert([payload]);
     if (error) return alert('Worker save nahi hua: ' + error.message);
     setBusinessWorkerName(''); setBusinessWorkerPhone(''); setBusinessWorkerSalary('');
-    await fetchBusinessData(); alert('Worker add ho gaya.');
+    await fetchBusinessData(); alert('Driver/staff add ho gaya.');
+  }
+
+  async function handleEditBusinessWorker(worker) {
+    if (!userRole.is_admin && !businessAccess?.can_manage_workers) return alert('Drivers/staff modify karne ki permission nahi hai.');
+    const workerName = window.prompt('Name', worker.worker_name || '');
+    if (workerName === null) return;
+    if (!workerName.trim()) return alert('Name khali nahi ho sakta.');
+    const phone = window.prompt('Phone number', worker.phone || '');
+    if (phone === null) return;
+    const jobTitle = window.prompt('Role / designation', worker.job_title || '');
+    if (jobTitle === null) return;
+    const salaryText = window.prompt('Monthly salary', String(worker.monthly_salary || 0));
+    if (salaryText === null) return;
+    const salary = Number(salaryText);
+    if (!Number.isFinite(salary) || salary < 0) return alert('Salary sahi enter karein.');
+    const { error } = await supabase.from('business_workers').update({ worker_name: workerName.trim(), phone: phone.trim(), job_title: jobTitle.trim(), monthly_salary: salary, currency: businessCurrency }).eq('id', worker.id).eq('business_type', businessType === 'other' ? 'dairy' : businessType);
+    if (error) return alert('Worker details update nahi huin: ' + error.message);
+    await fetchBusinessData();
   }
 
   async function handlePayBusinessSalary(e) {
     e.preventDefault();
-    if (!userRole.is_admin) return alert('Salary payments sirf admin record kar sakta hai.');
+    if (!userRole.is_admin && !businessAccess?.can_add) return alert('Salary payment add karne ki permission nahi hai.');
     const worker = businessWorkers.find(w => String(w.id) === String(businessSalaryWorkerId));
     const amount = Number(businessSalaryAmount);
     if (!worker || !businessSalaryDate || !Number.isFinite(amount) || amount <= 0) return alert('Worker, date aur salary amount sahi select karein.');
-    const { error } = await supabase.from('business_salary_payments').insert([{ business_type: businessType, worker_id: worker.id, payment_date: businessSalaryDate, amount, payment_mode: businessSalaryPaymentMode, notes: 'Monthly salary payment' }]);
+    const { error } = await supabase.from('business_salary_payments').insert([{ business_type: businessType === 'other' ? 'dairy' : businessType, worker_id: worker.id, payment_date: businessSalaryDate, amount, currency: businessCurrency, payment_mode: businessSalaryPaymentMode, notes: 'Salary payment' }]);
     if (error) return alert('Salary payment save nahi hui: ' + error.message);
     setBusinessSalaryAmount(''); await fetchBusinessData(); alert('Salary payment save ho gayi.');
   }
 
   async function handleDeleteBusinessTransaction(id) {
-    if (!userRole.is_admin) return alert('Sirf admin delete kar sakta hai.');
+    if (!userRole.is_admin && !businessAccess?.can_delete) return alert('Delete permission nahi hai.');
     if (!window.confirm('Kya aap is financial entry ko permanently delete karna chahte hain?')) return;
-    const { error } = await supabase.from('business_transactions').delete().eq('id', id).eq('business_type', businessType);
+    const { error } = await supabase.from('business_transactions').delete().eq('id', id).eq('business_type', businessType === 'other' ? 'dairy' : businessType);
     if (error) return alert('Delete error: ' + error.message);
+    await fetchBusinessData();
+  }
+
+  async function handleEditBusinessTransaction(t) {
+    if (!userRole.is_admin && !businessAccess?.can_edit) return alert('Edit permission nahi hai.');
+    const newDate = window.prompt('Transaction date (YYYY-MM-DD)', t.transaction_date || businessDate);
+    if (newDate === null) return;
+    const newCategory = window.prompt('Category', t.category || '');
+    if (newCategory === null) return;
+    const newAmountText = window.prompt('Amount', String(t.amount ?? ''));
+    if (newAmountText === null) return;
+    const newAmount = Number(newAmountText);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate) || !Number.isFinite(newAmount) || newAmount <= 0) return alert('Date ya amount sahi nahi.');
+    const newDescription = window.prompt('Details', t.description || '');
+    if (newDescription === null) return;
+    const newRemarks = window.prompt('Remarks', t.remarks || '');
+    if (newRemarks === null) return;
+    const newVehicle = window.prompt('Vehicle number / reference', t.vehicle_number || '');
+    if (newVehicle === null) return;
+    const newPaymentMode = window.prompt('Payment mode: Cash, Credit, or Bank', t.payment_mode || 'Cash');
+    if (newPaymentMode === null) return;
+    if (!['Cash','Credit','Bank'].includes(newPaymentMode)) return alert('Payment mode sirf Cash, Credit, ya Bank ho sakta hai.');
+    const newCurrency = window.prompt('Currency: PKR, AED, or SAR', t.currency || 'AED');
+    if (newCurrency === null) return;
+    if (!['PKR','AED','SAR'].includes(newCurrency)) return alert('Currency PKR, AED, ya SAR honi chahiye.');
+    const { error } = await supabase.from('business_transactions').update({ transaction_date: newDate, category: newCategory, amount: newAmount, description: newDescription, remarks: newRemarks, vehicle_number: newVehicle, payment_mode: newPaymentMode, currency: newCurrency }).eq('id', t.id).eq('business_type', businessType === 'other' ? 'dairy' : businessType);
+    if (error) return alert('Edit save nahi hua: ' + error.message);
+    await fetchBusinessData();
+  }
+
+  async function handleSaveBusinessAccess(e) {
+    e.preventDefault();
+    if (!userRole.is_admin && !businessAccess?.can_manage_access) return alert('Staff access manage karne ki permission nahi hai.');
+    const cleanEmail = businessAccessEmail.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) return alert('Staff ka valid email enter karein.');
+    const payload = { user_email: cleanEmail, business_type: businessAccessType, ...businessAccessFlags, updated_by: session?.user?.email || '', updated_at: new Date().toISOString() };
+    const { error } = await supabase.from('business_user_permissions').upsert([payload], { onConflict: 'user_email,business_type' });
+    if (error) return alert('Access save nahi hua: ' + error.message + '. Pehle SQL setup run karein.');
+    setBusinessAccessEmail('');
+    await fetchBusinessData();
+    alert('Business staff permissions save ho gayi hain.');
+  }
+
+  async function handleDeleteBusinessAccess(row) {
+    if (!userRole.is_admin && !businessAccess?.can_manage_access) return alert('Access manage karne ki permission nahi hai.');
+    if (!window.confirm(`${row.user_email} ka ${row.business_type} access remove karna hai?`)) return;
+    const { error } = await supabase.from('business_user_permissions').delete().eq('user_email', row.user_email).eq('business_type', row.business_type);
+    if (error) return alert('Access remove nahi hua: ' + error.message);
     await fetchBusinessData();
   }
 
@@ -636,7 +732,7 @@ async function fetchAttendance() {
     const { data: accounts, error: accountError } = await supabase
       .from('user_permissions')
       .select('*')
-      .eq('user_email', currentEmail);
+      .ilike('user_email', currentEmail);
 
     if (accountError) return alert('Account check error: ' + accountError.message);
     const accountRows = accounts || [];
@@ -667,7 +763,7 @@ async function fetchAttendance() {
     const { error: updateError } = await supabase
       .from('user_permissions')
       .update(changes)
-      .eq('user_email', currentEmail);
+      .ilike('user_email', currentEmail);
 
     if (updateError) {
       return alert('Login ID / password update nahi hua: ' + updateError.message);
@@ -817,7 +913,7 @@ async function fetchAttendance() {
       const { data: accounts, error: accountError } = await supabase
         .from('user_permissions')
         .select('*')
-        .eq('user_email', cleanEmail);
+        .ilike('user_email', cleanEmail);
       const accountRows = accounts || [];
       const account = accountRows.find(row => String(row.user_password) === cleanPassword) || accountRows[0] || null;
 
@@ -1725,50 +1821,72 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     );
   }
 
-  if (selectedSystem === 'business' && !userRole.is_admin) {
-    return <div style={{minHeight:'100vh',display:'grid',placeItems:'center',background:'#f1f5f9',padding:20,fontFamily:"'Segoe UI',sans-serif"}}><div style={{background:'#fff',padding:28,borderRadius:16,maxWidth:500,textAlign:'center',boxShadow:'0 8px 30px #0f172a12'}}><h2>Business Access Restricted</h2><p>Business financial records aur salaries filhal admin account ke liye available hain.</p><button onClick={()=>setSelectedSystem(null)} style={primaryStyle}>Back to System Selection</button><button onClick={handleLogout} style={{...primaryStyle,marginTop:10,background:'#64748b'}}>Logout</button></div></div>;
+  if (selectedSystem === 'business' && !userRole.is_admin && businessAccess === null) {
+    return <div style={{minHeight:'100vh',display:'grid',placeItems:'center',background:'#f1f5f9',padding:20,fontFamily:"'Segoe UI',sans-serif"}}><div style={{background:'#fff',padding:28,borderRadius:16,maxWidth:520,textAlign:'center'}}><h2>Checking Business Access…</h2><p>Staff permissions verify ho rahi hain.</p></div></div>;
+  }
+
+  if (selectedSystem === 'business' && !userRole.is_admin && businessAccess && !businessAccess.can_view) {
+    return <div style={{minHeight:'100vh',display:'grid',placeItems:'center',background:'#f1f5f9',padding:20,fontFamily:"'Segoe UI',sans-serif"}}><div style={{background:'#fff',padding:28,borderRadius:16,maxWidth:520,textAlign:'center',boxShadow:'0 8px 30px #0f172a12'}}><h2>Business Access Restricted</h2><p>Admin se is business ke liye access mangain.</p><button onClick={()=>setSelectedSystem(null)} style={primaryStyle}>Back to System Selection</button><button onClick={handleLogout} style={{...primaryStyle,marginTop:10,background:'#64748b'}}>Logout</button></div></div>;
   }
 
   if (selectedSystem === 'business') {
     const txToday = businessTransactions.filter(t => t.transaction_date === businessDate);
     const txMonth = businessTransactions.filter(t => String(t.transaction_date || '').slice(0,7) === businessMonth);
-    const salaryMonth = businessSalaryPayments.filter(t => String(t.payment_date || '').slice(0,7) === businessMonth);
+    const currencyRows = businessTransactions.filter(t => (t.currency || 'AED') === businessCurrency);
+    const salaryMonth = businessSalaryPayments.filter(t => String(t.payment_date || '').slice(0,7) === businessMonth && (t.currency || 'AED') === businessCurrency);
+    const sameCurrencyToday = txToday.filter(t => (t.currency || 'AED') === businessCurrency);
+    const sameCurrencyMonth = txMonth.filter(t => (t.currency || 'AED') === businessCurrency);
     const sum = (arr, kind) => arr.filter(t => t.transaction_kind === kind).reduce((n,t) => n + (Number(t.amount)||0), 0);
-    const todayIncome = sum(txToday, 'income'); const todayExpense = sum(txToday, 'expense');
-    const monthIncome = sum(txMonth, 'income'); const monthExpense = sum(txMonth, 'expense');
+    const todayIncome = sum(sameCurrencyToday, 'income');
+    const todayExpense = sum(sameCurrencyToday, 'expense');
+    const monthIncome = sum(sameCurrencyMonth, 'income');
+    const monthExpense = sum(sameCurrencyMonth, 'expense');
     const monthSalary = salaryMonth.reduce((n,t) => n + (Number(t.amount)||0), 0);
-    const cashIn = businessTransactions.filter(t => t.payment_mode === 'Cash' && t.transaction_kind === 'income').reduce((n,t) => n + (Number(t.amount)||0),0);
-    const cashOut = businessTransactions.filter(t => t.payment_mode === 'Cash' && t.transaction_kind === 'expense').reduce((n,t) => n + (Number(t.amount)||0),0) + businessSalaryPayments.filter(t => t.payment_mode === 'Cash').reduce((n,t) => n + (Number(t.amount)||0),0);
-    const currency = 'AED';
-    const money = n => `${currency} ${Number(n||0).toLocaleString('en-AE',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-    const businessLabel = businessType === 'transport' ? 'Transport Business' : 'Dairy Farming';
+    const cashIn = currencyRows.filter(t => t.payment_mode === 'Cash' && t.transaction_kind === 'income').reduce((n,t) => n + (Number(t.amount)||0),0);
+    const cashOut = currencyRows.filter(t => t.payment_mode === 'Cash' && t.transaction_kind === 'expense').reduce((n,t) => n + (Number(t.amount)||0),0) + businessSalaryPayments.filter(t => t.payment_mode === 'Cash' && (t.currency || 'AED') === businessCurrency).reduce((n,t) => n + (Number(t.amount)||0),0);
+    const creditIn = currencyRows.filter(t => t.payment_mode === 'Credit' && t.transaction_kind === 'income').reduce((n,t) => n + (Number(t.amount)||0),0);
+    const creditOut = currencyRows.filter(t => t.payment_mode === 'Credit' && t.transaction_kind === 'expense').reduce((n,t) => n + (Number(t.amount)||0),0);
+    const money = n => `${businessCurrency} ${Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+    const businessLabel = businessType === 'transport' ? 'Transport Business' : 'Other Business';
+    const canAdd = userRole.is_admin || !!businessAccess?.can_add;
+    const canEdit = userRole.is_admin || !!businessAccess?.can_edit;
+    const canDelete = userRole.is_admin || !!businessAccess?.can_delete;
+    const canManageWorkers = userRole.is_admin || !!businessAccess?.can_manage_workers;
+    const canManageAccess = userRole.is_admin || !!businessAccess?.can_manage_access;
+    const vehicleRows = txMonth.filter(t => /vehicle maintenance|vehicle repair|maintenance expense/i.test(`${t.category||''} ${t.description||''}`) && (t.currency || 'AED') === businessCurrency);
+    const otherExpenseRows = txMonth.filter(t => t.transaction_kind === 'expense' && /other business expense|medicine expense|medical expense|other expense/i.test(`${t.category||''} ${t.description||''}`) && (t.currency || 'AED') === businessCurrency);
+    const sheetTable = (title, rows, emptyText) => <section style={{background:'#fff',borderRadius:15,padding:18,overflowX:'auto',boxShadow:'0 5px 22px #0f172a0b'}}><h3 style={{marginTop:0}}>{title} — {businessMonth}</h3><table style={tableStyle}><thead><tr><th style={thStyle}>Date</th><th style={thStyle}>Category</th><th style={thStyle}>Vehicle</th><th style={thStyle}>Details / Remarks</th><th style={thStyle}>Payment</th><th style={thStyle}>Amount</th>{(canEdit||canDelete)&&<th style={thStyle}>Actions</th>}</tr></thead><tbody>{rows.map(t=><tr key={t.id}><td style={tdStyle}>{t.transaction_date}</td><td style={tdStyle}>{t.category}</td><td style={tdStyle}>{t.vehicle_number||'—'}</td><td style={tdStyle}>{t.description||'—'}{t.remarks&&<><br/><small>Remarks: {t.remarks}</small></>}</td><td style={tdStyle}>{t.payment_mode||'Cash'}</td><td style={tdStyle}><b style={{color:t.transaction_kind==='income'?'#15803d':'#dc2626'}}>{money(t.amount)}</b></td>{(canEdit||canDelete)&&<td style={tdStyle}>{canEdit&&<button onClick={()=>handleEditBusinessTransaction(t)} style={{marginRight:5,border:0,background:'#dbeafe',color:'#1d4ed8',padding:'6px 8px',borderRadius:6,cursor:'pointer'}}>Edit</button>}{canDelete&&<button onClick={()=>handleDeleteBusinessTransaction(t.id)} style={{border:0,background:'#fee2e2',color:'#b91c1c',padding:'6px 8px',borderRadius:6,cursor:'pointer'}}>Delete</button>}</td>}</tr>)}{!rows.length&&<tr><td colSpan={(canEdit||canDelete)?7:6} style={tdStyle}>{emptyText}</td></tr>}</tbody></table></section>;
     return (
       <div style={{ minHeight:'100vh', background:'#f1f5f9', fontFamily:"'Segoe UI',sans-serif", color:'#0f172a' }}>
         <header style={{ padding:'22px clamp(16px,3vw,34px)', color:'#fff', background: businessType === 'transport' ? 'linear-gradient(115deg,#0f172a,#1d4ed8)' : 'linear-gradient(115deg,#064e3b,#16a34a)', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
           <div><div style={{fontSize:12,letterSpacing:3,opacity:.8,fontWeight:800}}>NDA.PK BUSINESS</div><h1 style={{margin:'6px 0',fontSize:28}}>{businessLabel} Dashboard</h1><div style={{color:'#dbeafe',fontSize:13}}>Signed in: {session.user.email}</div></div>
-          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button onClick={handleLogout} style={{padding:'10px 13px',borderRadius:9,border:'1px solid #ffffff80',background:'#ffffff18',color:'#fff',cursor:'pointer'}}>⇄ Switch System</button><button onClick={handleLogout} style={{padding:'10px 13px',borderRadius:9,border:0,background:'#dc2626',color:'#fff',fontWeight:700,cursor:'pointer'}}>Logout</button></div>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button onClick={()=>{setSelectedSystem(null); setBusinessAccess(null);}} style={{padding:'10px 13px',borderRadius:9,border:'1px solid #ffffff80',background:'#ffffff18',color:'#fff',cursor:'pointer'}}>⇄ Switch System</button><button onClick={handleLogout} style={{padding:'10px 13px',borderRadius:9,border:0,background:'#dc2626',color:'#fff',fontWeight:700,cursor:'pointer'}}>Logout</button></div>
         </header>
-        <main style={{maxWidth:1400,margin:'0 auto',padding:'22px clamp(12px,2vw,28px)'}}>
-          <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:18}}>
-            <button onClick={()=>setBusinessType('transport')} style={{padding:'11px 18px',borderRadius:10,border:0,background:businessType==='transport'?'#1d4ed8':'#fff',color:businessType==='transport'?'#fff':'#334155',fontWeight:800,cursor:'pointer'}}>🚚 Transport</button>
-            <button onClick={()=>setBusinessType('dairy')} style={{padding:'11px 18px',borderRadius:10,border:0,background:businessType==='dairy'?'#15803d':'#fff',color:businessType==='dairy'?'#fff':'#334155',fontWeight:800,cursor:'pointer'}}>🐄 Dairy Farming</button>
-            <span style={{alignSelf:'center',color:'#64748b',fontSize:13}}>{businessLoading?'Loading business data…':'Income, expenses, cash balance, salaries and monthly reports'}</span>
+        <main style={{maxWidth:1500,margin:'0 auto',padding:'22px clamp(12px,2vw,28px)'}}>
+          <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:18,alignItems:'center'}}>
+            <button onClick={()=>{if(!userRole.is_admin)setBusinessAccess(null);setBusinessType('transport');}} style={{padding:'11px 18px',borderRadius:10,border:0,background:businessType==='transport'?'#1d4ed8':'#fff',color:businessType==='transport'?'#fff':'#334155',fontWeight:800,cursor:'pointer'}}>🚚 1. Transport</button>
+            <button onClick={()=>{if(!userRole.is_admin)setBusinessAccess(null);setBusinessType('other');}} style={{padding:'11px 18px',borderRadius:10,border:0,background:businessType==='other'?'#15803d':'#fff',color:businessType==='other'?'#fff':'#334155',fontWeight:800,cursor:'pointer'}}>🏪 2. Other Business (Cattle / Grocery / Shop)</button>
+            <label style={{display:'flex',gap:8,alignItems:'center',background:'#fff',padding:'8px 12px',borderRadius:9,fontWeight:700}}>Currency <select value={businessCurrency} onChange={e=>setBusinessCurrency(e.target.value)} style={{padding:8,border:'1px solid #cbd5e1',borderRadius:7}}><option value="PKR">Pakistani Rupee (PKR)</option><option value="AED">UAE Dirham (AED)</option><option value="SAR">Saudi Riyal (SAR)</option></select></label>
+            <span style={{alignSelf:'center',color:'#64748b',fontSize:13}}>{businessLoading?'Loading business data…':'Date-wise records, cash/credit balances, expenses and profit'}</span>
           </div>
-          <section style={{background:'#fff',borderRadius:16,padding:18,boxShadow:'0 5px 22px #0f172a0b',marginBottom:18,display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}><label style={{fontWeight:700}}>Dashboard date <input type="date" value={businessDate} onChange={e=>setBusinessDate(e.target.value)} style={{marginLeft:8,padding:9,border:'1px solid #cbd5e1',borderRadius:8}} /></label><label style={{fontWeight:700}}>Monthly report <input type="month" value={businessMonth} onChange={e=>setBusinessMonth(e.target.value)} style={{marginLeft:8,padding:9,border:'1px solid #cbd5e1',borderRadius:8}} /></label><button onClick={()=>fetchBusinessData()} style={{padding:'10px 15px',border:0,borderRadius:8,background:'#0f172a',color:'#fff',cursor:'pointer'}}>↻ Refresh</button></section>
+          <section style={{background:'#fff',borderRadius:16,padding:18,boxShadow:'0 5px 22px #0f172a0b',marginBottom:18,display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}><label style={{fontWeight:700}}>Dashboard date <input type="date" value={businessDate} onChange={e=>setBusinessDate(e.target.value)} style={{marginLeft:8,padding:9,border:'1px solid #cbd5e1',borderRadius:8}} /></label><label style={{fontWeight:700}}>Monthly sheet <input type="month" value={businessMonth} onChange={e=>setBusinessMonth(e.target.value)} style={{marginLeft:8,padding:9,border:'1px solid #cbd5e1',borderRadius:8}} /></label><button onClick={()=>fetchBusinessData()} style={{padding:'10px 15px',border:0,borderRadius:8,background:'#0f172a',color:'#fff',cursor:'pointer'}}>↻ Refresh</button></section>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(185px,1fr))',gap:14,marginBottom:20}}>
-            {[['Today Income',money(todayIncome),'#16a34a'],['Today Expense',money(todayExpense),'#dc2626'],['Today Profit',money(todayIncome-todayExpense),'#2563eb'],['Cash Balance (all records)',money(cashIn-cashOut),'#7c3aed'],['Month Income',money(monthIncome),'#059669'],['Month Expenses + Salaries',money(monthExpense+monthSalary),'#ea580c'],['Month Net Profit',money(monthIncome-monthExpense-monthSalary),'#0f766e'],['Active Workers',businessWorkers.filter(w=>w.active!==false).length,'#334155']].map((c,i)=><div key={c[0]} style={{background:'#fff',borderRadius:15,padding:18,boxShadow:'0 5px 22px #0f172a0b',borderTop:`4px solid ${c[2]}`}}><div style={{fontSize:12,color:'#64748b',fontWeight:700}}>{c[0]}</div><div style={{fontSize:23,fontWeight:850,color:c[2],marginTop:8}}>{c[1]}</div></div>)}
+            {[['Today Income',money(todayIncome),'#16a34a'],['Today Expense',money(todayExpense),'#dc2626'],['Today Profit',money(todayIncome-todayExpense),'#2563eb'],['Cash Balance',money(cashIn-cashOut),'#7c3aed'],['Credit Balance',money(creditIn-creditOut),'#b45309'],['Month Income',money(monthIncome),'#059669'],['Month Expenses + Salary',money(monthExpense+monthSalary),'#ea580c'],['Month Net Profit',money(monthIncome-monthExpense-monthSalary),'#0f766e'],['Active Drivers / Staff',businessWorkers.filter(w=>w.active!==false).length,'#334155']].map(c=><div key={c[0]} style={{background:'#fff',borderRadius:15,padding:18,boxShadow:'0 5px 22px #0f172a0b',borderTop:`4px solid ${c[2]}`}}><div style={{fontSize:12,color:'#64748b',fontWeight:700}}>{c[0]}</div><div style={{fontSize:21,fontWeight:850,color:c[2],marginTop:8}}>{c[1]}</div></div>)}
           </div>
-          {userRole.is_admin && <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:18,marginBottom:20}}>
-            <form onSubmit={handleSaveBusinessTransaction} style={{background:'#fff',borderRadius:15,padding:20,boxShadow:'0 5px 22px #0f172a0b'}}><h3 style={{marginTop:0}}>➕ Add Daily Income / Expense</h3><div style={{display:'grid',gap:10}}><input type="date" value={businessDate} onChange={e=>setBusinessDate(e.target.value)} required style={fieldStyle}/><select value={businessTxnKind} onChange={e=>{setBusinessTxnKind(e.target.value);setBusinessTxnCategory(e.target.value==='income'?'Daily income':'Fuel / feed / other expense')}} style={fieldStyle}><option value="income">Income</option><option value="expense">Expense</option></select><input value={businessTxnCategory} onChange={e=>setBusinessTxnCategory(e.target.value)} placeholder="Category (fuel, trip, milk, feed...)" style={fieldStyle} required/><input value={businessTxnDescription} onChange={e=>setBusinessTxnDescription(e.target.value)} placeholder={businessType==='transport'?'Vehicle / trip / customer details':'Milk sale / cattle / feed details'} style={fieldStyle}/><input type="number" min="0.01" step="0.01" value={businessTxnAmount} onChange={e=>setBusinessTxnAmount(e.target.value)} placeholder="Amount (AED)" required style={fieldStyle}/><select value={businessTxnPaymentMode} onChange={e=>setBusinessTxnPaymentMode(e.target.value)} style={fieldStyle}><option>Cash</option><option>Bank</option><option>Credit</option></select><button style={primaryStyle}>Save Financial Entry</button></div></form>
-            <form onSubmit={handleAddBusinessWorker} style={{background:'#fff',borderRadius:15,padding:20,boxShadow:'0 5px 22px #0f172a0b'}}><h3 style={{marginTop:0}}>👷 Add {businessType==='transport'?'Driver / Staff':'Farm Worker'}</h3><div style={{display:'grid',gap:10}}><input value={businessWorkerName} onChange={e=>setBusinessWorkerName(e.target.value)} placeholder="Worker full name" required style={fieldStyle}/><input value={businessWorkerJob} onChange={e=>setBusinessWorkerJob(e.target.value)} placeholder={businessType==='transport'?'Driver / Mechanic / Helper':'Farm worker / Milker / Caretaker'} style={fieldStyle}/><input value={businessWorkerPhone} onChange={e=>setBusinessWorkerPhone(e.target.value)} placeholder="Phone (optional)" style={fieldStyle}/><input type="number" min="0" step="0.01" value={businessWorkerSalary} onChange={e=>setBusinessWorkerSalary(e.target.value)} placeholder="Monthly salary (AED)" style={fieldStyle}/><button style={{...primaryStyle,background:'#15803d'}}>Save Worker</button></div></form>
-            <form onSubmit={handlePayBusinessSalary} style={{background:'#fff',borderRadius:15,padding:20,boxShadow:'0 5px 22px #0f172a0b'}}><h3 style={{marginTop:0}}>💳 Record Worker Salary</h3><div style={{display:'grid',gap:10}}><select value={businessSalaryWorkerId} onChange={e=>setBusinessSalaryWorkerId(e.target.value)} required style={fieldStyle}><option value="">Select worker</option>{businessWorkers.map(w=><option key={w.id} value={w.id}>{w.worker_name} — {w.job_title}</option>)}</select><input type="date" value={businessSalaryDate} onChange={e=>setBusinessSalaryDate(e.target.value)} required style={fieldStyle}/><input type="number" min="0.01" step="0.01" value={businessSalaryAmount} onChange={e=>setBusinessSalaryAmount(e.target.value)} placeholder="Salary paid (AED)" required style={fieldStyle}/><select value={businessSalaryPaymentMode} onChange={e=>setBusinessSalaryPaymentMode(e.target.value)} style={fieldStyle}><option>Cash</option><option>Bank</option></select><button style={{...primaryStyle,background:'#7c3aed'}}>Save Salary Payment</button></div></form>
+          {(canAdd || userRole.is_admin) && <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:18,marginBottom:20}}>
+            <form onSubmit={handleSaveBusinessTransaction} style={{background:'#fff',borderRadius:15,padding:20,boxShadow:'0 5px 22px #0f172a0b'}}><h3 style={{marginTop:0}}>➕ Daily Income / Expense</h3><div style={{display:'grid',gap:10}}><input type="date" value={businessDate} onChange={e=>setBusinessDate(e.target.value)} required style={fieldStyle}/><select value={businessTxnKind} onChange={e=>{setBusinessTxnKind(e.target.value);setBusinessTxnCategory(e.target.value==='income'?'Daily Income':(businessType==='transport'?'Vehicle Maintenance Expense':'Medicine Expense'));}} style={fieldStyle}><option value="income">Income</option><option value="expense">Expense</option></select><select value={businessTxnCategory} onChange={e=>setBusinessTxnCategory(e.target.value)} style={fieldStyle}>{(businessTxnKind==='income'?['Daily Income','Credit Income','Other Income']:businessType==='transport'?['Vehicle Maintenance Expense','Fuel Expense','Vehicle Repair Expense','Driver Salary Expense','Other Business Expense']:['Medicine Expense','Feed / Fodder Expense','Shop Purchase Expense','Other Business Expense','Other Expense']).map(c=><option key={c}>{c}</option>)}</select><input value={businessTxnVehicle} onChange={e=>setBusinessTxnVehicle(e.target.value)} placeholder={businessType==='transport'?'Vehicle number / plate (optional)':'Reference / animal / shop item (optional)'} style={fieldStyle}/><input type="number" min="0.01" step="0.01" value={businessTxnAmount} onChange={e=>setBusinessTxnAmount(e.target.value)} placeholder={`Amount (${businessCurrency})`} required style={fieldStyle}/><select value={businessTxnPaymentMode} onChange={e=>setBusinessTxnPaymentMode(e.target.value)} style={fieldStyle}><option value="Cash">Cash</option><option value="Credit">Credit</option><option value="Bank">Bank</option></select><textarea value={businessTxnDescription} onChange={e=>setBusinessTxnDescription(e.target.value)} placeholder="Details (optional)" rows="2" style={fieldStyle}/><textarea value={businessTxnRemarks} onChange={e=>setBusinessTxnRemarks(e.target.value)} placeholder="Remarks (optional)" rows="2" style={fieldStyle}/><button style={primaryStyle}>Save {businessCurrency} Entry</button></div></form>
+            {canManageWorkers && <form onSubmit={handleAddBusinessWorker} style={{background:'#fff',borderRadius:15,padding:20,boxShadow:'0 5px 22px #0f172a0b'}}><h3 style={{marginTop:0}}>👤 {businessType==='transport'?'Add Driver / Transport Staff':'Add Other Business Staff'}</h3><div style={{display:'grid',gap:10}}><input value={businessWorkerName} onChange={e=>setBusinessWorkerName(e.target.value)} placeholder={businessType==='transport'?'Driver full name':'Worker / caretaker / staff name'} required style={fieldStyle}/><input value={businessWorkerPhone} onChange={e=>setBusinessWorkerPhone(e.target.value)} placeholder="Driver / staff phone number" style={fieldStyle}/><input value={businessWorkerJob} onChange={e=>setBusinessWorkerJob(e.target.value)} placeholder={businessType==='transport'?'Driver / Mechanic / Helper':'Shop worker / Farm worker / Caretaker'} style={fieldStyle}/><input type="number" min="0" step="0.01" value={businessWorkerSalary} onChange={e=>setBusinessWorkerSalary(e.target.value)} placeholder={`Monthly salary (${businessCurrency})`} style={fieldStyle}/><button style={{...primaryStyle,background:'#15803d'}}>Save Name and Number</button></div></form>}
+            {canAdd && <form onSubmit={handlePayBusinessSalary} style={{background:'#fff',borderRadius:15,padding:20,boxShadow:'0 5px 22px #0f172a0b'}}><h3 style={{marginTop:0}}>💳 Record Staff Salary</h3><div style={{display:'grid',gap:10}}><select value={businessSalaryWorkerId} onChange={e=>setBusinessSalaryWorkerId(e.target.value)} required style={fieldStyle}><option value="">Select worker</option>{businessWorkers.map(w=><option key={w.id} value={w.id}>{w.worker_name} — {w.job_title}</option>)}</select><input type="date" value={businessSalaryDate} onChange={e=>setBusinessSalaryDate(e.target.value)} required style={fieldStyle}/><input type="number" min="0.01" step="0.01" value={businessSalaryAmount} onChange={e=>setBusinessSalaryAmount(e.target.value)} placeholder={`Salary paid (${businessCurrency})`} required style={fieldStyle}/><select value={businessSalaryPaymentMode} onChange={e=>setBusinessSalaryPaymentMode(e.target.value)} style={fieldStyle}><option>Cash</option><option>Bank</option></select><button style={{...primaryStyle,background:'#7c3aed'}}>Save Salary Payment</button></div></form>}
           </div>}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:18}}>
-            <section style={{background:'#fff',borderRadius:15,padding:18,overflowX:'auto',boxShadow:'0 5px 22px #0f172a0b'}}><h3>📋 {businessLabel} Workers</h3><table style={tableStyle}><thead><tr><th style={thStyle}>Name</th><th style={thStyle}>Role</th><th style={thStyle}>Monthly Salary</th></tr></thead><tbody>{businessWorkers.map(w=><tr key={w.id}><td style={tdStyle}>{w.worker_name}</td><td style={tdStyle}>{w.job_title}</td><td style={tdStyle}>{money(w.monthly_salary)}</td></tr>)}{!businessWorkers.length&&<tr><td colSpan="3" style={tdStyle}>No workers added yet.</td></tr>}</tbody></table></section>
-            <section style={{background:'#fff',borderRadius:15,padding:18,overflowX:'auto',boxShadow:'0 5px 22px #0f172a0b'}}><h3>🧾 Monthly Transactions — {businessMonth}</h3><table style={tableStyle}><thead><tr><th style={thStyle}>Date</th><th style={thStyle}>Type / Category</th><th style={thStyle}>Details</th><th style={thStyle}>Amount</th>{userRole.is_admin&&<th style={thStyle}>Action</th>}</tr></thead><tbody>{txMonth.map(t=><tr key={t.id}><td style={tdStyle}>{t.transaction_date}</td><td style={tdStyle}><b style={{color:t.transaction_kind==='income'?'#15803d':'#dc2626'}}>{t.transaction_kind}</b><br/>{t.category}</td><td style={tdStyle}>{t.description||'—'}<br/><small>{t.payment_mode}</small></td><td style={tdStyle}>{money(t.amount)}</td>{userRole.is_admin&&<td style={tdStyle}><button onClick={()=>handleDeleteBusinessTransaction(t.id)} style={{border:0,background:'#fee2e2',color:'#b91c1c',padding:'6px 8px',borderRadius:6,cursor:'pointer'}}>Delete</button></td>}</tr>)}{!txMonth.length&&<tr><td colSpan={userRole.is_admin?5:4} style={tdStyle}>No transactions for this month.</td></tr>}</tbody></table></section>
-            <section style={{background:'#fff',borderRadius:15,padding:18,overflowX:'auto',boxShadow:'0 5px 22px #0f172a0b'}}><h3>💰 Salary Payments — {businessMonth}</h3><table style={tableStyle}><thead><tr><th style={thStyle}>Date</th><th style={thStyle}>Worker</th><th style={thStyle}>Amount</th></tr></thead><tbody>{salaryMonth.map(p=><tr key={p.id}><td style={tdStyle}>{p.payment_date}</td><td style={tdStyle}>{businessWorkers.find(w=>String(w.id)===String(p.worker_id))?.worker_name||`Worker #${p.worker_id}`}</td><td style={tdStyle}>{money(p.amount)}</td></tr>)}{!salaryMonth.length&&<tr><td colSpan="3" style={tdStyle}>No salary payments for this month.</td></tr>}</tbody></table></section>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:18,marginBottom:18}}>
+            <section style={{background:'#fff',borderRadius:15,padding:18,overflowX:'auto',boxShadow:'0 5px 22px #0f172a0b'}}><h3 style={{marginTop:0}}>📋 {businessLabel} Drivers / Staff</h3><table style={tableStyle}><thead><tr><th style={thStyle}>Name</th><th style={thStyle}>Phone Number</th><th style={thStyle}>Role</th><th style={thStyle}>Monthly Salary</th>{canManageWorkers&&<th style={thStyle}>Action</th>}</tr></thead><tbody>{businessWorkers.map(w=><tr key={w.id}><td style={tdStyle}>{w.worker_name}</td><td style={tdStyle}>{w.phone||'—'}</td><td style={tdStyle}>{w.job_title}</td><td style={tdStyle}>{money(w.monthly_salary)}</td>{canManageWorkers&&<td style={tdStyle}><button onClick={()=>handleEditBusinessWorker(w)} style={{border:0,background:'#dbeafe',color:'#1d4ed8',padding:'6px 8px',borderRadius:6,cursor:'pointer'}}>Edit</button></td>}</tr>)}{!businessWorkers.length&&<tr><td colSpan={canManageWorkers?5:4} style={tdStyle}>No drivers/staff added yet.</td></tr>}</tbody></table></section>
+            {sheetTable('📅 Daily Transactions Sheet', txMonth.filter(t=>(t.currency||'AED')===businessCurrency), 'Is month mein koi transaction nahi.')}
+            {sheetTable('🚚 Vehicle Maintenance Expense Sheet', vehicleRows, 'Is month mein vehicle maintenance expense nahi.')}
+            {sheetTable('🧾 Other Business / Medicine Expense Sheet', otherExpenseRows, 'Is month mein other/medicine expense nahi.')}
+            <section style={{background:'#fff',borderRadius:15,padding:18,overflowX:'auto',boxShadow:'0 5px 22px #0f172a0b'}}><h3 style={{marginTop:0}}>💰 Staff Salary Payments — {businessMonth}</h3><table style={tableStyle}><thead><tr><th style={thStyle}>Date</th><th style={thStyle}>Staff</th><th style={thStyle}>Amount</th><th style={thStyle}>Payment</th></tr></thead><tbody>{salaryMonth.map(p=><tr key={p.id}><td style={tdStyle}>{p.payment_date}</td><td style={tdStyle}>{businessWorkers.find(w=>String(w.id)===String(p.worker_id))?.worker_name||`Worker #${p.worker_id}`}</td><td style={tdStyle}>{money(p.amount)}</td><td style={tdStyle}>{p.payment_mode||'Cash'}</td></tr>)}{!salaryMonth.length&&<tr><td colSpan="4" style={tdStyle}>No salary payments for this month.</td></tr>}</tbody></table></section>
           </div>
-          <p style={{fontSize:12,color:'#64748b',marginTop:20}}>Cash balance shown here is the net of all recorded Cash income minus Cash expenses. Monthly net profit subtracts recorded salary payments from income minus operating expenses.</p>
+          {canManageAccess && <section style={{background:'#fff',borderRadius:15,padding:20,boxShadow:'0 5px 22px #0f172a0b',marginBottom:20}}><h3 style={{marginTop:0}}>🔐 Business Staff Access / Permissions</h3><p style={{color:'#64748b',fontSize:13}}>Staff email enter karein aur sirf woh permissions select karein jo deni hain. Access selected business ke liye hoga.</p><form onSubmit={handleSaveBusinessAccess} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12,alignItems:'center'}}><input type="email" value={businessAccessEmail} onChange={e=>setBusinessAccessEmail(e.target.value)} placeholder="Staff login email" required style={fieldStyle}/><select value={businessAccessType} onChange={e=>setBusinessAccessType(e.target.value)} style={fieldStyle}><option value="transport">Transport</option><option value="other">Other Business</option></select>{Object.entries({can_view:'View records',can_add:'Add entries',can_edit:'Edit entries',can_delete:'Delete entries',can_manage_workers:'Add drivers / staff',can_manage_access:'Manage staff access'}).map(([key,label])=><label key={key} style={{display:'flex',gap:8,alignItems:'center',fontSize:13}}><input type="checkbox" checked={!!businessAccessFlags[key]} onChange={e=>setBusinessAccessFlags(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}<button style={primaryStyle}>Save Staff Access</button></form><div style={{overflowX:'auto',marginTop:18}}><table style={tableStyle}><thead><tr><th style={thStyle}>Email</th><th style={thStyle}>Business</th><th style={thStyle}>Permissions</th><th style={thStyle}>Action</th></tr></thead><tbody>{businessAccessList.map(row=><tr key={`${row.user_email}-${row.business_type}`}><td style={tdStyle}>{row.user_email}</td><td style={tdStyle}>{row.business_type==='transport'?'Transport':'Other Business'}</td><td style={tdStyle}>{['can_view','can_add','can_edit','can_delete','can_manage_workers','can_manage_access'].filter(k=>row[k]).join(', ')||'No permissions'}</td><td style={tdStyle}><button onClick={()=>{setBusinessAccessEmail(row.user_email);setBusinessAccessType(row.business_type);setBusinessAccessFlags({can_view:!!row.can_view,can_add:!!row.can_add,can_edit:!!row.can_edit,can_delete:!!row.can_delete,can_manage_workers:!!row.can_manage_workers,can_manage_access:!!row.can_manage_access});}} style={{marginRight:6,padding:'6px 8px',border:0,borderRadius:6,background:'#dbeafe',color:'#1d4ed8',cursor:'pointer'}}>Load to Edit</button><button onClick={()=>handleDeleteBusinessAccess(row)} style={{padding:'6px 8px',border:0,borderRadius:6,background:'#fee2e2',color:'#b91c1c',cursor:'pointer'}}>Remove</button></td></tr>)}{!businessAccessList.length&&<tr><td colSpan="4" style={tdStyle}>No business staff permissions created.</td></tr>}</tbody></table></div></section>}
+          <p style={{fontSize:12,color:'#64748b',marginTop:20}}>Profit = recorded income minus recorded expenses and staff salary payments. Cash and credit balances are calculated separately from transactions entered in the selected currency. This is a record-keeping calculation, not a currency conversion; choose the matching currency for each entry.</p>
         </main>
       </div>
     );
