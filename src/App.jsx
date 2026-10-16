@@ -636,8 +636,7 @@ async function fetchAttendance() {
     const { data: accounts, error: accountError } = await supabase
       .from('user_permissions')
       .select('*')
-      .eq('user_email', currentEmail)
-      .order('id', { ascending: true });
+      .eq('user_email', currentEmail);
 
     if (accountError) return alert('Account check error: ' + accountError.message);
     const accountRows = accounts || [];
@@ -818,8 +817,7 @@ async function fetchAttendance() {
       const { data: accounts, error: accountError } = await supabase
         .from('user_permissions')
         .select('*')
-        .eq('user_email', cleanEmail)
-        .order('id', { ascending: true });
+        .eq('user_email', cleanEmail);
       const accountRows = accounts || [];
       const account = accountRows.find(row => String(row.user_password) === cleanPassword) || accountRows[0] || null;
 
