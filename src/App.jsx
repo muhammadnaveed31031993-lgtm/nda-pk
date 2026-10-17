@@ -215,6 +215,7 @@ const [newDesignation, setNewDesignation] = useState('');
  const [dailyTimesheetDepartment, setDailyTimesheetDepartment] = useState('All');
  const [payrollDepartment, setPayrollDepartment] = useState('All');
  const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
+ const [dailyWorkDetailsLoadError, setDailyWorkDetailsLoadError] = useState('');
  const [dailyWorkDetailsSaving, setDailyWorkDetailsSaving] = useState(false);
   async function fetchBusinessData(type = businessType) {
     if (!session) return;
@@ -429,27 +430,39 @@ const [newDesignation, setNewDesignation] = useState('');
   useEffect(() => {
     let cancelled = false;
     async function loadDailyWorkDetails() {
-      if (!selectedTimesheetDate || !dailyTimesheetSite) {
+      if (!selectedTimesheetDate) {
         setSavedDailyWorkDetails('');
+        setDailyWorkDetailsLoadError('');
         return;
       }
-      let query = supabase
+      setDailyWorkDetailsLoadError('');
+      // Load by date first, then filter in the browser. This avoids exact-match
+      // issues caused by legacy site/department labels and ensures All Workers works.
+      const { data, error } = await supabase
         .from('daily_work_details')
-        .select('work_site,work_department,work_details')
+        .select('work_date,work_site,work_department,work_details')
         .eq('work_date', selectedTimesheetDate);
-      if (dailyTimesheetSite !== 'All Workers' && dailyTimesheetSite !== 'All') query = query.eq('work_site', dailyTimesheetSite);
-      if (dailyTimesheetDepartment !== 'All') query = query.eq('work_department', dailyTimesheetDepartment);
-      const { data, error } = await query;
       if (cancelled) return;
       if (error) {
         console.error('Daily Work Details load error:', error.message);
         setSavedDailyWorkDetails('');
+        setDailyWorkDetailsLoadError(error.message || 'Database read failed');
         return;
       }
-      const rows = (data || []).filter(item => item.work_details);
+      const norm = value => String(value || '').trim().toLowerCase();
+      const rows = (data || []).filter(item => {
+        if (!String(item.work_details || '').trim()) return false;
+        const siteMatches = dailyTimesheetSite === 'All Workers' || dailyTimesheetSite === 'All' || norm(item.work_site) === norm(dailyTimesheetSite);
+        const departmentMatches = dailyTimesheetDepartment === 'All' || norm(item.work_department) === norm(dailyTimesheetDepartment);
+        return siteMatches && departmentMatches;
+      });
+      // De-duplicate legacy rows with the same site + department, keeping the latest row.
+      const uniqueRows = new Map();
+      rows.forEach(item => uniqueRows.set(`${norm(item.work_site)}|${norm(item.work_department)}`, item));
+      const visibleRows = Array.from(uniqueRows.values());
       const combined = dailyTimesheetDepartment === 'All'
-        ? rows.map(item => `${item.work_site || 'Site'} / ${item.work_department || 'Department'}: ${item.work_details}`).join('\n')
-        : rows.map(item => item.work_details).join('\n');
+        ? visibleRows.map(item => `${item.work_site || 'Site'} / ${item.work_department || 'Department'}: ${item.work_details}`).join('\n')
+        : visibleRows.map(item => item.work_details).join('\n');
       setSavedDailyWorkDetails(combined);
     }
     loadDailyWorkDetails();
@@ -3668,7 +3681,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
             }}>
               <strong>Daily Work Details / Remarks</strong>
               <p style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap' }}>
-                {savedDailyWorkDetails || 'Is date aur site ke liye koi Daily Work Details save nahi hain.'}
+                {dailyWorkDetailsLoadError ? `Details read nahi ho sakin: ${dailyWorkDetailsLoadError}. Supabase SQL policy fix run karein.` : (savedDailyWorkDetails || 'Is date, site aur department ke liye koi Daily Work Details save nahi hain.')}
               </p>
             </div>
 
