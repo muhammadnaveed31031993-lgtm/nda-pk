@@ -173,7 +173,7 @@ const [newDesignation, setNewDesignation] = useState('');
   const [targetStaffId, setTargetStaffId] = useState('');
   const [targetEmail, setTargetEmail] = useState('');
   const [targetPassword, setTargetPassword] = useState('');
-  const [targetDept, setTargetDept] = useState('Plumbing');
+  const [targetDept, setTargetDept] = useState('All');
   const [targetSite, setTargetSite] = useState('Sharjah Mamzar');
   
   const [permDashboard, setPermDashboard] = useState(true);
@@ -213,6 +213,7 @@ const [newDesignation, setNewDesignation] = useState('');
   const [attendanceData, setAttendanceData] = useState({});
  const [dailyTimesheetSite, setDailyTimesheetSite] = useState('All Workers');
  const [dailyTimesheetDepartment, setDailyTimesheetDepartment] = useState('All');
+ const [payrollDepartment, setPayrollDepartment] = useState('All');
  const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
  const [dailyWorkDetailsSaving, setDailyWorkDetailsSaving] = useState(false);
   async function fetchBusinessData(type = businessType) {
@@ -377,48 +378,48 @@ const [newDesignation, setNewDesignation] = useState('');
     }
     const workDate = selectedTimesheetDate;
     const workSite = !userRole.is_admin && userRole.assigned_site && userRole.assigned_site !== 'All' ? userRole.assigned_site : bulkSite;
+    const workDepartment = !userRole.is_admin && userRole.assigned_department && userRole.assigned_department !== 'All' ? userRole.assigned_department : bulkDepartment;
     const workDetails = bulkWorkDetails.trim();
-    if (!workDate || !workSite) return alert('Date aur working site select karein.');
+    if (!workDate || !workSite || !workDepartment || workDepartment === 'All') return alert('Date, working site aur ek specific department select karein.');
     if (!workDetails) { if (!silent) alert('Daily work details likhein.'); return false; }
     setDailyWorkDetailsSaving(true);
     try {
-      // Update existing date/site entries; insert only when none exists. This does not require an id column or unique constraint.
       const { data: existingRows, error: findError } = await supabase
         .from('daily_work_details')
-        .select('work_date,work_site')
+        .select('work_date,work_site,work_department')
         .eq('work_date', workDate)
-        .eq('work_site', workSite);
+        .eq('work_site', workSite)
+        .eq('work_department', workDepartment);
       if (findError) throw findError;
       if ((existingRows || []).length) {
         const { error: updateError } = await supabase
           .from('daily_work_details')
           .update({ work_details: workDetails })
           .eq('work_date', workDate)
-          .eq('work_site', workSite);
+          .eq('work_site', workSite)
+          .eq('work_department', workDepartment);
         if (updateError) throw updateError;
       } else {
         const { error: insertError } = await supabase
           .from('daily_work_details')
-          .insert([{ work_date: workDate, work_site: workSite, work_details: workDetails }]);
+          .insert([{ work_date: workDate, work_site: workSite, work_department: workDepartment, work_details: workDetails }]);
         if (insertError) throw insertError;
       }
-      if (dailyTimesheetSite === 'All Workers' || dailyTimesheetSite === 'All') {
-        const { data: allDetails, error: allDetailsError } = await supabase
-          .from('daily_work_details')
-          .select('work_site,work_details')
-          .eq('work_date', workDate);
-        if (!allDetailsError) {
-          const detailsBySite = new Map();
-          (allDetails || []).filter(item => item.work_details).forEach(item => detailsBySite.set(String(item.work_site || 'Site'), item.work_details));
-          setSavedDailyWorkDetails([...detailsBySite.entries()].map(([site, details]) => site + ': ' + details).join('\n'));
+      const currentSiteMatches = dailyTimesheetSite === 'All Workers' || dailyTimesheetSite === 'All' || String(dailyTimesheetSite).trim().toLowerCase() === String(workSite).trim().toLowerCase();
+      const currentDepartmentMatches = dailyTimesheetDepartment === 'All' || String(dailyTimesheetDepartment).trim().toLowerCase() === String(workDepartment).trim().toLowerCase();
+      if (currentSiteMatches && currentDepartmentMatches) {
+        if (dailyTimesheetDepartment === 'All') {
+          const line = `${workSite} / ${workDepartment}: ${workDetails}`;
+          setSavedDailyWorkDetails(previous => [...previous.split('\n').filter(item => item && !item.toLowerCase().startsWith(`${workSite} / ${workDepartment}:`.toLowerCase())), line].join('\n'));
+        } else {
+          setSavedDailyWorkDetails(workDetails);
         }
-      } else if (dailyTimesheetSite === workSite) {
-        setSavedDailyWorkDetails(workDetails);
       }
-      if (!silent) alert(`Daily Work Details ${workDate} / ${workSite} ke liye save ho gayi hain.`);
+      setBulkWorkDetails('');
+      if (!silent) alert(`Daily Work Details ${workDate} / ${workSite} / ${workDepartment} ke liye save ho gayi hain.`);
       return true;
     } catch (err) {
-      alert('Daily Work Details save nahi hui: ' + (err?.message || String(err)));
+      alert('Daily Work Details save nahi hui: ' + (err?.message || String(err)) + '. Agar work_department column missing ho to corrected SQL setup run karein.');
       return false;
     } finally {
       setDailyWorkDetailsSaving(false);
@@ -426,51 +427,45 @@ const [newDesignation, setNewDesignation] = useState('');
   }
 
   useEffect(() => {
+    let cancelled = false;
     async function loadDailyWorkDetails() {
       if (!selectedTimesheetDate || !dailyTimesheetSite) {
         setSavedDailyWorkDetails('');
         return;
       }
-
       let query = supabase
         .from('daily_work_details')
-        .select('work_site,work_details')
+        .select('work_site,work_department,work_details')
         .eq('work_date', selectedTimesheetDate);
-
-      if (dailyTimesheetSite !== 'All Workers' && dailyTimesheetSite !== 'All') {
-        query = query.eq('work_site', dailyTimesheetSite);
-      }
-
+      if (dailyTimesheetSite !== 'All Workers' && dailyTimesheetSite !== 'All') query = query.eq('work_site', dailyTimesheetSite);
+      if (dailyTimesheetDepartment !== 'All') query = query.eq('work_department', dailyTimesheetDepartment);
       const { data, error } = await query;
-
+      if (cancelled) return;
       if (error) {
         console.error('Daily Work Details load error:', error.message);
         setSavedDailyWorkDetails('');
         return;
       }
-
-      if (dailyTimesheetSite === 'All Workers' || dailyTimesheetSite === 'All') {
-        const detailsBySite = new Map();
-        (data || []).filter(item => item.work_details).forEach(item => detailsBySite.set(String(item.work_site || 'Site'), item.work_details));
-        const combined = [...detailsBySite.entries()].map(([site, details]) => site + ': ' + details).join('\n');
-        setSavedDailyWorkDetails(combined);
-      } else {
-        setSavedDailyWorkDetails(data?.[0]?.work_details || '');
-      }
+      const rows = (data || []).filter(item => item.work_details);
+      const combined = dailyTimesheetDepartment === 'All'
+        ? rows.map(item => `${item.work_site || 'Site'} / ${item.work_department || 'Department'}: ${item.work_details}`).join('\n')
+        : rows.map(item => item.work_details).join('\n');
+      setSavedDailyWorkDetails(combined);
     }
-
     loadDailyWorkDetails();
-  }, [selectedTimesheetDate, dailyTimesheetSite]);
+    return () => { cancelled = true; };
+  }, [selectedTimesheetDate, dailyTimesheetSite, dailyTimesheetDepartment]);
 
   useEffect(() => {
     let cancelled = false;
     async function loadBulkWorkDetails() {
-      if (!selectedTimesheetDate || !bulkSite) { setBulkWorkDetails(''); return; }
+      if (!selectedTimesheetDate || !bulkSite || !bulkDepartment || bulkDepartment === 'All') { setBulkWorkDetails(''); return; }
       const { data, error } = await supabase
         .from('daily_work_details')
         .select('work_details')
         .eq('work_date', selectedTimesheetDate)
         .eq('work_site', bulkSite)
+        .eq('work_department', bulkDepartment)
         .limit(1);
       if (cancelled) return;
       if (error) {
@@ -481,7 +476,7 @@ const [newDesignation, setNewDesignation] = useState('');
     }
     loadBulkWorkDetails();
     return () => { cancelled = true; };
-  }, [selectedTimesheetDate, bulkSite]);
+  }, [selectedTimesheetDate, bulkSite, bulkDepartment]);
 
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -777,9 +772,9 @@ async function fetchAttendance() {
     e.preventDefault();
     if (!userRole.is_admin) return alert('Access Denied!');
     if (!newDeptInput.trim()) return alert('Department name enter karein!');
-    if (departmentsList.includes(newDeptInput.trim())) return alert('Yeh department pehle se mojood hai!');
+    if (departmentsList.some(d => String(d).trim().toLowerCase() === newDeptInput.trim().toLowerCase())) return alert('Yeh department pehle se mojood hai!');
 
-    setDepartmentsList([...departmentsList, newDeptInput.trim()]);
+    setDepartmentsList([...uniqueDepartments, newDeptInput.trim()]);
     alert(`New department '${newDeptInput.trim()}' added successfully!`);
     setNewDeptInput('');
   }
@@ -789,7 +784,7 @@ async function fetchAttendance() {
       return alert('Kam az kam ek department hona lazmi hai!');
     }
     if (window.confirm(`Kya aap waqai '${deptToDelete}' department delete karna chahte hain?`)) {
-      const updatedDepts = departmentsList.filter(dept => dept !== deptToDelete);
+      const updatedDepts = uniqueDepartments.filter(dept => String(dept).trim().toLowerCase() !== String(deptToDelete).trim().toLowerCase());
       setDepartmentsList(updatedDepts);
       
       if (selectedDeptFilter === deptToDelete) setSelectedDeptFilter('All');
@@ -1561,13 +1556,19 @@ async function handleSaveSiteAttendance(e) {
   if (!siteAttendanceDepartment || siteAttendanceDepartment === 'All') return alert('Doosre department ki attendance ko affect hone se bachane ke liye ek specific department select karein.');
   const allowedWorkers = userRole.is_admin ? workers : filteredWorkers;
   const enteredIds = [...new Set(siteAttendanceIds.split(/[\s,;]+/).map(x => x.trim()).filter(Boolean))];
+  const normalizeWorkerId = value => String(value ?? '').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim().toLowerCase();
+  const getWorkerSiteForDate = w => {
+    const saved = attendance.find(a => String(a.worker_id) === String(w.id) && a.date === selectedTimesheetDate);
+    return String(saved?.work_site || saved?.site || w.work_site || '').trim();
+  };
   const scopedWorkers = allowedWorkers.filter(w => {
-    const siteMatch = String(w.work_site || '').trim().toLowerCase() === siteAttendanceSite.trim().toLowerCase();
-    const deptMatch = siteAttendanceDepartment === 'All' || String(w.department || '').trim().toLowerCase() === siteAttendanceDepartment.trim().toLowerCase();
+    const assignedSite = getWorkerSiteForDate(w);
+    const siteMatch = normalizeWorkerId(assignedSite) === normalizeWorkerId(siteAttendanceSite);
+    const deptMatch = siteAttendanceDepartment === 'All' || normalizeWorkerId(w.department) === normalizeWorkerId(siteAttendanceDepartment);
     return siteMatch && deptMatch;
   });
   const presentWorkers = enteredIds.map(id => scopedWorkers.find(w =>
-    String(w.worker_id ?? '').trim() === id || String(w.id).trim() === id
+    [w.worker_id, w.id, w.employee_id].some(value => normalizeWorkerId(value) === normalizeWorkerId(id))
   ));
   const missingIds = enteredIds.filter((id, i) => !presentWorkers[i]);
   if (missingIds.length) return alert('Yeh IDs selected site/department mein nahi milin: ' + missingIds.join(', ') + '. Doosre department ki attendance change nahi ki gayi.');
@@ -1690,7 +1691,7 @@ const otHours = Number(
       staff_id: targetStaffId.trim(),
       user_email: targetEmail.trim().toLowerCase(),
       user_password: targetPassword.trim(),
-      assigned_department: targetDept,
+      assigned_department: 'All',
       assigned_site: targetSite,
       can_view_dashboard: permDashboard,
       can_use_bulk: permBulk,
@@ -1711,9 +1712,16 @@ const otHours = Number(
       setTargetStaffId('');
       setTargetEmail('');
       setTargetPassword('');
+      setTargetDept('All');
       fetchPermissionsList();
     }
   }
+
+  // Deduplicate department names case-insensitively for every dropdown and department card.
+  const uniqueDepartments = Array.from(new Map((departmentsList || []).map(value => {
+    const label = String(value || '').trim();
+    return [label.toLowerCase(), label];
+  }).filter(([key, label]) => key && label)).values());
 
   const filteredWorkers = workers.filter(w => {
     const userDeptScope = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
@@ -1799,9 +1807,9 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
 
   // Admin ko tamam sites ke workers dikhayein
   // Staff ko sirf apni permitted workers list dikhayein
-  const payrollWorkers = userRole.is_admin
-    ? workers
-    : filteredWorkers;
+  const payrollWorkers = (userRole.is_admin ? workers : filteredWorkers).filter(worker =>
+    payrollDepartment === 'All' || String(worker.department || '').trim().toLowerCase() === payrollDepartment.trim().toLowerCase()
+  );
 
   payrollWorkers.forEach(worker => {
     // Sirf selected month ke attendance records
@@ -2078,13 +2086,13 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         
         {/* Filters Bar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#fff', padding: '12px 18px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', flexWrap: 'wrap', gap: '10px' }}>
-          {userRole.is_admin ? (
+          {!['changepass', 'sites', 'departments', 'permissions'].includes(activeTab) && (userRole.is_admin ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <div>
                 <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#2563eb', marginRight: '5px' }}>Dept:</label>
                 <select value={selectedDeptFilter} onChange={e => setSelectedDeptFilter(e.target.value)} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #2563eb' }}>
                   <option value="All">All Depts</option>
-                  {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
+                  {uniqueDepartments.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
                 </select>
               </div>
               <div>
@@ -2096,8 +2104,8 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
               </div>
             </div>
           ) : (
-            <span style={{ fontWeight: 'bold', color: '#0369a1' }}>Site: {userRole.assigned_site} | Dept: {userRole.assigned_department}</span>
-          )}
+            !['changepass', 'sites', 'departments', 'permissions'].includes(activeTab) && <span style={{ fontWeight: 'bold', color: '#0369a1' }}>Site: {userRole.assigned_site} | Dept: {userRole.assigned_department}</span>
+          ))}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <select value={selectedCurrency} onChange={e => setSelectedCurrency(e.target.value)} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
@@ -2178,8 +2186,8 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       gap: '20px'
     }}>
      {(userRole.is_admin
-  ? departmentsList
-  : departmentsList.filter(dept =>
+  ? uniqueDepartments
+  : uniqueDepartments.filter(dept =>
       !userRole.assigned_department ||
       userRole.assigned_department === 'All' ||
       dept.toLowerCase() === userRole.assigned_department.toLowerCase()
@@ -2609,7 +2617,7 @@ style={{
         <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Department</label>
         <select value={bulkDepartment} onChange={e => setBulkDepartment(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
           <option value="All">All Departments</option>
-          {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
+          {uniqueDepartments.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
         </select>
       </div>
 
@@ -2663,7 +2671,7 @@ style={{
 
     <form onSubmit={handleSaveBulkWorkDetails} style={{ marginTop: 18, padding: 18, background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 10 }}>
       <h3 style={{ margin: '0 0 8px', color: '#1d4ed8' }}>📝 Daily Work Details — Save to Daily Timesheet</h3>
-      <p style={{ margin: '0 0 12px', fontSize: 13, color: '#475569' }}>Selected date aur Bulk section ki working site ke liye details yahan likhein. Save karne ke baad Daily Timesheet mein automatically nazar aayengi.</p>
+      <p style={{ margin: '0 0 12px', fontSize: 13, color: '#475569' }}>Selected date, site aur department ki details yahan likhein. Har department ki details alag save hongi aur save hote hi box khali ho jayega.</p>
       <textarea value={bulkWorkDetails} onChange={e => setBulkWorkDetails(e.target.value)} rows={4} placeholder="Example: Carpenters formwork fixing kar rahe hain; steel fixers reinforcement tying kar rahe hain..." style={{ ...fieldStyle, resize: 'vertical', marginBottom: 10 }} />
       <button type="submit" disabled={dailyWorkDetailsSaving} style={{ ...primaryStyle, background: '#1d4ed8', opacity: dailyWorkDetailsSaving ? .7 : 1 }}>{dailyWorkDetailsSaving ? 'Saving details…' : 'Save Daily Work Details'}</button>
     </form>
@@ -2675,7 +2683,7 @@ style={{
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '12px' }}>
           <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Attendance Date</label><input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }} /></div>
           <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Working Site</label><select value={siteAttendanceSite} onChange={e => setSiteAttendanceSite(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{sitesList.map(site => <option key={site} value={site}>{site}</option>)}</select></div>
-          <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Department</label><select value={siteAttendanceDepartment} onChange={e => setSiteAttendanceDepartment(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{departmentsList.map(dept => <option key={dept} value={dept}>{dept}</option>)}</select></div>
+          <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Department</label><select value={siteAttendanceDepartment} onChange={e => setSiteAttendanceDepartment(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{uniqueDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}</select></div>
         </div>
         <label style={{ display: 'block', fontWeight: 'bold', fontSize: '12px', marginTop: 12 }}>Present Workers — ID No.</label>
         <textarea value={siteAttendanceIds} onChange={e => setSiteAttendanceIds(e.target.value)} rows={3} placeholder={'Example: 101, 102, 108\\n109\\n115'} style={{ ...fieldStyle, marginTop: 5, resize: 'vertical' }} />
@@ -2989,7 +2997,7 @@ await handleSingleAttendanceChange(
             <div>
               <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Department</label>
               <select value={department} onChange={e => setDepartment(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
+                {uniqueDepartments.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
               </select>
             </div>
             <div>
@@ -3312,7 +3320,7 @@ await handleSingleAttendanceChange(
              style={{ padding: '8px', borderRadius: '6px' }}
            >
              <option value="All">All Departments</option>
-             {departmentsList.map((d, i) => (
+             {uniqueDepartments.map((d, i) => (
                <option key={i} value={d}>{d}</option>
              ))}
            </select>
@@ -3523,7 +3531,7 @@ await handleSingleAttendanceChange(
                 <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Department</label>
                 <select value={dailyTimesheetDepartment} onChange={e => setDailyTimesheetDepartment(e.target.value)} style={{ padding: '9px', minWidth: '200px', border: '1px solid #cbd5e1', borderRadius: '5px' }}>
                   <option value="All">All Departments</option>
-                  {departmentsList.map(dept => <option key={dept} value={dept}>{dept}</option>)}
+                  {uniqueDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
                 </select>
               </div>
             </div>
@@ -3769,8 +3777,15 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
       </button>
     </div>
 
-    <div style={{ marginBottom: '15px', fontWeight: 'bold' }}>
-      Monthly Salary & Overtime Sheet
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 15 }}>
+      <div style={{ fontWeight: 'bold' }}>Monthly Salary & Overtime Sheet</div>
+      <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+        Department:
+        <select value={payrollDepartment} onChange={e => setPayrollDepartment(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6 }}>
+          <option value="All">All Departments</option>
+          {uniqueDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
+        </select>
+      </label>
     </div>
 
     <div
@@ -3923,7 +3938,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
             </form>
             <h4>Current Active Departments:</h4>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {departmentsList.map((dept, index) => (
+              {uniqueDepartments.map((dept, index) => (
                 <li key={index} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', backgroundColor: '#f8fafc', marginBottom: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', fontWeight: '600', color: '#334155' }}>
                   <span>{dept}</span>
                   <button 
@@ -3978,13 +3993,6 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Password *</label>
                   <input type="text" value={targetPassword} onChange={e => setTargetPassword(e.target.value)} placeholder="Password" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Assigned Dept</label>
-                  <select value={targetDept} onChange={e => setTargetDept(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                    <option value="All">All Depts</option>
-                    {departmentsList.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
-                  </select>
                 </div>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Assigned Site</label>
@@ -4541,7 +4549,7 @@ accruedDays = balance.toFixed(1);
               style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', minWidth: '150px' }}
             >
               <option value="All">All Departments</option>
-              {departmentsList.map((d, idx) => (
+              {uniqueDepartments.map((d, idx) => (
                 <option key={idx} value={d}>{d}</option>
               ))}
             </select>
