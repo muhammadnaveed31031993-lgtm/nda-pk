@@ -372,61 +372,59 @@ const [newDesignation, setNewDesignation] = useState('');
     await fetchBusinessData();
   }
 
-  async function handleSaveBulkWorkDetails(e, silent = false) {
-    e?.preventDefault?.();
-    if (!userRole.is_admin && !userRole.can_use_bulk && !userRole.can_edit_timesheet) {
-      return alert('Aapko Daily Work Details save karne ki permission nahi hai.');
-    }
-    const workDate = selectedTimesheetDate;
-    const workSite = !userRole.is_admin && userRole.assigned_site && userRole.assigned_site !== 'All' ? userRole.assigned_site : bulkSite;
-    const workDepartment = !userRole.is_admin && userRole.assigned_department && userRole.assigned_department !== 'All' ? userRole.assigned_department : bulkDepartment;
-    const workDetails = bulkWorkDetails.trim();
-    if (!workDate || !workSite || !workDepartment || workDepartment === 'All') return alert('Date, working site aur ek specific department select karein.');
-    if (!workDetails) { if (!silent) alert('Daily work details likhein.'); return false; }
-    setDailyWorkDetailsSaving(true);
-    try {
-      const { data: existingRows, error: findError } = await supabase
-        .from('daily_work_details')
-        .select('work_date,work_site,work_department')
-        .eq('work_date', workDate)
-        .eq('work_site', workSite)
-        .eq('work_department', workDepartment);
-      if (findError) throw findError;
-      if ((existingRows || []).length) {
-        const { error: updateError } = await supabase
-          .from('daily_work_details')
-          .update({ work_details: workDetails })
-          .eq('work_date', workDate)
-          .eq('work_site', workSite)
-          .eq('work_department', workDepartment);
-        if (updateError) throw updateError;
-      } else {
-        const { error: insertError } = await supabase
-          .from('daily_work_details')
-          .insert([{ work_date: workDate, work_site: workSite, work_department: workDepartment, work_details: workDetails }]);
-        if (insertError) throw insertError;
-      }
-      const currentSiteMatches = dailyTimesheetSite === 'All Workers' || dailyTimesheetSite === 'All' || String(dailyTimesheetSite).trim().toLowerCase() === String(workSite).trim().toLowerCase();
-      const currentDepartmentMatches = dailyTimesheetDepartment === 'All' || String(dailyTimesheetDepartment).trim().toLowerCase() === String(workDepartment).trim().toLowerCase();
-      if (currentSiteMatches && currentDepartmentMatches) {
-        if (dailyTimesheetDepartment === 'All') {
-          const line = `${workSite} / ${workDepartment}: ${workDetails}`;
-          setSavedDailyWorkDetails(previous => [...previous.split('\n').filter(item => item && !item.toLowerCase().startsWith(`${workSite} / ${workDepartment}:`.toLowerCase())), line].join('\n'));
-        } else {
-          setSavedDailyWorkDetails(workDetails);
-        }
-      }
-      setBulkWorkDetails('');
-      if (!silent) alert(`Daily Work Details ${workDate} / ${workSite} / ${workDepartment} ke liye save ho gayi hain.`);
-      return true;
-    } catch (err) {
-      alert('Daily Work Details save nahi hui: ' + (err?.message || String(err)) + '. Agar work_department column missing ho to corrected SQL setup run karein.');
-      return false;
-    } finally {
-      setDailyWorkDetailsSaving(false);
-    }
+ async function handleSaveBulkWorkDetails(e, silent = false) {
+  e?.preventDefault?.();
+  if (!userRole.is_admin && !userRole.can_use_bulk && !userRole.can_edit_timesheet) {
+    return alert('Aapko Daily Work Details save karne ki permission nahi hai.');
+  }
+  const workDate = selectedTimesheetDate;
+  const workSite = !userRole.is_admin && userRole.assigned_site && userRole.assigned_site !== 'All' ? userRole.assigned_site : bulkSite;
+  const workDepartment = !userRole.is_admin && userRole.assigned_department && userRole.assigned_department !== 'All' ? userRole.assigned_department : bulkDepartment;
+  const workDetails = bulkWorkDetails.trim();
+  
+  if (!workDate || !workSite || !workDepartment || workDepartment === 'All') {
+    return alert('Date, working site aur ek specific department select karein.');
+  }
+  if (!workDetails) { 
+    if (!silent) alert('Daily work details likhein.'); 
+    return false; 
   }
 
+  setDailyWorkDetailsSaving(true);
+  try {
+    const { error: upsertError } = await supabase
+      .from('daily_work_details')
+      .upsert([{ 
+        work_date: workDate, 
+        work_site: workSite, 
+        work_department: workDepartment, 
+        work_details: workDetails 
+      }], { onConflict: 'work_date,work_site' });
+
+    if (upsertError) throw upsertError;
+
+    const currentSiteMatches = dailyTimesheetSite === 'All Workers' || dailyTimesheetSite === 'All' || String(dailyTimesheetSite).trim().toLowerCase() === String(workSite).trim().toLowerCase();
+    const currentDepartmentMatches = dailyTimesheetDepartment === 'All' || String(dailyTimesheetDepartment).trim().toLowerCase() === String(workDepartment).trim().toLowerCase();
+    
+    if (currentSiteMatches && currentDepartmentMatches) {
+      if (dailyTimesheetDepartment === 'All') {
+        const line = `${workSite} / ${workDepartment}: ${workDetails}`;
+        setSavedDailyWorkDetails(previous => [...previous.split('\n').filter(item => item && !item.toLowerCase().startsWith(`${workSite} / ${workDepartment}:`.toLowerCase())), line].join('\n'));
+      } else {
+        setSavedDailyWorkDetails(workDetails);
+      }
+    }
+    
+    setBulkWorkDetails('');
+    if (!silent) alert(`Daily Work Details ${workDate} / ${workSite} / ${workDepartment} ke liye save ho gayi hain.`);
+    return true;
+  } catch (err) {
+    alert('Daily Work Details save nahi hui: ' + (err?.message || String(err)));
+    return false;
+  } finally {
+    setDailyWorkDetailsSaving(false);
+  }
+}
   useEffect(() => {
     let cancelled = false;
     async function loadDailyWorkDetails() {
