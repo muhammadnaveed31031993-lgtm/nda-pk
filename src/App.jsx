@@ -1727,11 +1727,15 @@ const otHours = Number(
     const userDeptScope = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
     const userSiteScope = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
     
-    let deptMatch = (!userDeptScope || userDeptScope === 'All' || w.department?.toLowerCase() === userDeptScope.toLowerCase());
-    let siteMatch = (!userSiteScope || userSiteScope === 'All' || w.work_site?.toLowerCase() === userSiteScope.toLowerCase());
+    let deptMatch = (!userDeptScope || userDeptScope === 'All' || String(w.department || '').trim().toLowerCase() === String(userDeptScope).trim().toLowerCase());
+    let siteMatch = (!userSiteScope || userSiteScope === 'All' || String(w.work_site || '').trim().toLowerCase() === String(userSiteScope).trim().toLowerCase());
     
     return deptMatch && siteMatch;
   });
+
+  // Annual Leave records follow the same selected department/site scope as the worker list.
+  const annualLeaveScopedWorkerIds = new Set(filteredWorkers.map(w => String(w.id)));
+  const annualLeaveScopedList = annualLeaveList.filter(leave => annualLeaveScopedWorkerIds.has(String(leave.worker_id)));
 
   const activeWorkerIds = new Set(filteredWorkers.map(w => w.id));
   const selectedDateAttendance = attendance.filter(a => a.date === selectedTimesheetDate && activeWorkerIds.has(a.worker_id));
@@ -1807,9 +1811,16 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
 
   // Admin ko tamam sites ke workers dikhayein
   // Staff ko sirf apni permitted workers list dikhayein
-  const payrollWorkers = (userRole.is_admin ? workers : filteredWorkers).filter(worker =>
-    payrollDepartment === 'All' || String(worker.department || '').trim().toLowerCase() === payrollDepartment.trim().toLowerCase()
-  );
+  const payrollWorkers = (userRole.is_admin ? workers : filteredWorkers).filter(worker => {
+    const workerDepartment = String(worker.department || '').trim().toLowerCase();
+    const selectedPayrollDepartment = String(payrollDepartment || 'All').trim().toLowerCase();
+    const selectedGlobalDepartment = String(selectedDeptFilter || 'All').trim().toLowerCase();
+    const selectedGlobalSite = String(selectedSiteFilter || 'All').trim().toLowerCase();
+    const payrollDeptMatch = selectedPayrollDepartment === 'all' || workerDepartment === selectedPayrollDepartment;
+    const globalDeptMatch = selectedGlobalDepartment === 'all' || workerDepartment === selectedGlobalDepartment;
+    const globalSiteMatch = selectedGlobalSite === 'all' || String(worker.work_site || '').trim().toLowerCase() === selectedGlobalSite;
+    return payrollDeptMatch && globalDeptMatch && globalSiteMatch;
+  });
 
   payrollWorkers.forEach(worker => {
     // Sirf selected month ke attendance records
@@ -4162,7 +4173,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
                       <label style={{ fontSize: '12px', display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Select Worker</label>
                       <select value={leaveWorkerId} onChange={e => setLeaveWorkerId(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required>
                         <option value="">Choose Worker...</option>
-                        {workers.map(w => (
+                        {filteredWorkers.map(w => (
                           <option key={w.id} value={w.id}>#{w.id} - {w.name} ({w.department})</option>
                         ))}
                       </select>
@@ -4252,10 +4263,10 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
                   </tr>
                 </thead>
                 <tbody>
-                  {annualLeaveList.length === 0 ? (
+                  {annualLeaveScopedList.length === 0 ? (
                     <tr><td colSpan={userRole.is_admin ? 8 : 7} style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>No annual leave records found.</td></tr>
                   ) : (
-                    annualLeaveList.map((leave, idx) => {
+                    annualLeaveScopedList.map((leave, idx) => {
                       
 
 let accruedDays = 0;
@@ -4447,7 +4458,7 @@ accruedDays = balance.toFixed(1);
                 <h3 style={{ marginTop: 0 }}>Leave Count — All Workers</h3>
                 <p style={{ color: '#475569', fontSize: 13 }}>Calculation: 30 days per year (2.5 days per month). Leave salary receive hone ki last date se balance zero samjha jayega; us ke baad nayi leave accrual shuru hoti hai. Har worker ki joining date pehle save karein.</p>
                 <table style={tableStyle}><thead><tr><th style={thStyle}>Worker</th><th style={thStyle}>Joining Date</th><th style={thStyle}>Last Leave Salary Date</th><th style={thStyle}>Earned Days</th><th style={thStyle}>Leave Used</th><th style={thStyle}>Available Balance</th></tr></thead><tbody>
-                  {workers.map(w => {
+                  {filteredWorkers.map(w => {
                     const emp = employmentRecords.find(r => String(r.worker_id) === String(w.id)) || {};
                     const salaryRecords = leaveSalaryRecords.filter(r => String(r.worker_id) === String(w.id)).sort((a,b) => String(b.leave_salary_last_date || '').localeCompare(String(a.leave_salary_last_date || '')));
                     const latestSalaryRecord = salaryRecords[0];
@@ -4466,12 +4477,12 @@ accruedDays = balance.toFixed(1);
                 <h3 style={{ marginTop: 0 }}>Leave Salary Received — Reset Leave Balance</h3>
                 <p style={{ fontSize: 13, color: '#475569' }}>Yahan salary ki woh last date dalein jis tak leave salary pay hui. Is record ke baad earned leave dobara us date se calculate hogi.</p>
                 <form onSubmit={saveLeaveSalaryReceived} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10, alignItems: 'end' }}>
-                  <label style={{ fontSize: 12, fontWeight: 700 }}>Worker<select value={leaveSalaryWorkerId} onChange={e => setLeaveSalaryWorkerId(e.target.value)} required style={fieldStyle}><option value="">Choose worker</option>{workers.map(w => <option key={w.id} value={w.id}>#{w.worker_id || w.id} — {w.name}</option>)}</select></label>
+                  <label style={{ fontSize: 12, fontWeight: 700 }}>Worker<select value={leaveSalaryWorkerId} onChange={e => setLeaveSalaryWorkerId(e.target.value)} required style={fieldStyle}><option value="">Choose worker</option>{filteredWorkers.map(w => <option key={w.id} value={w.id}>#{w.worker_id || w.id} — {w.name} ({w.department})</option>)}</select></label>
                   <label style={{ fontSize: 12, fontWeight: 700 }}>Leave salary paid up to<input type="date" value={leaveSalaryLastDate} onChange={e => setLeaveSalaryLastDate(e.target.value)} required style={fieldStyle} /></label>
                   <label style={{ fontSize: 12, fontWeight: 700 }}>Amount (AED, optional)<input type="number" min="0" step="0.01" value={leaveSalaryAmount} onChange={e => setLeaveSalaryAmount(e.target.value)} style={fieldStyle} /></label>
                   <button type="submit" style={{ ...primaryStyle, background: '#047857' }}>Leave Salary Received</button>
                 </form>
-                <div style={{ marginTop: 14, overflowX: 'auto' }}><table style={tableStyle}><thead><tr><th style={thStyle}>Worker</th><th style={thStyle}>Paid Up To</th><th style={thStyle}>Amount</th><th style={thStyle}>Recorded</th></tr></thead><tbody>{leaveSalaryRecords.map(r => <tr key={r.id}><td style={tdStyle}>{workers.find(w => String(w.id) === String(r.worker_id))?.name || `Worker #${r.worker_id}`}</td><td style={tdStyle}>{r.leave_salary_last_date}</td><td style={tdStyle}>{Number(r.amount || 0).toFixed(2)} AED</td><td style={tdStyle}>{r.received_at ? String(r.received_at).slice(0,10) : ''}</td></tr>)}{!leaveSalaryRecords.length && <tr><td colSpan="4" style={tdStyle}>No leave salary records yet.</td></tr>}</tbody></table></div>
+                <div style={{ marginTop: 14, overflowX: 'auto' }}><table style={tableStyle}><thead><tr><th style={thStyle}>Worker</th><th style={thStyle}>Paid Up To</th><th style={thStyle}>Amount</th><th style={thStyle}>Recorded</th></tr></thead><tbody>{leaveSalaryRecords.filter(r => annualLeaveScopedWorkerIds.has(String(r.worker_id))).map(r => <tr key={r.id}><td style={tdStyle}>{workers.find(w => String(w.id) === String(r.worker_id))?.name || `Worker #${r.worker_id}`}</td><td style={tdStyle}>{r.leave_salary_last_date}</td><td style={tdStyle}>{Number(r.amount || 0).toFixed(2)} AED</td><td style={tdStyle}>{r.received_at ? String(r.received_at).slice(0,10) : ''}</td></tr>)}{!leaveSalaryRecords.length && <tr><td colSpan="4" style={tdStyle}>No leave salary records yet.</td></tr>}</tbody></table></div>
               </section>
             </div>}
 
@@ -4479,7 +4490,7 @@ accruedDays = balance.toFixed(1);
               <h3 style={{ marginTop: 0 }}>Final Calculation — UAE Private-Sector Gratuity Estimate</h3>
               <p style={{ color: '#475569', fontSize: 13 }}>Estimate basic salary par hota hai, total salary par zaroori nahi. App mein joining date, cancellation/last working date aur basic salary save karein. General full-time formula: 1 saal se kam service par gratuity nahi; pehle 5 saal ke liye har saal 21 din basic wage, 5 saal ke baad har additional saal 30 din, aur total cap 2 saal ki basic wage. Final payment se pehle HR/UAE labour guidance se verify karein.</p>
               <table style={tableStyle}><thead><tr><th style={thStyle}>Worker</th><th style={thStyle}>Joining Date</th><th style={thStyle}>Cancellation / Last Date</th><th style={thStyle}>Basic Salary AED</th><th style={thStyle}>Service</th><th style={thStyle}>Gratuity Days</th><th style={thStyle}>Estimated Gratuity AED</th><th style={thStyle}>Save</th></tr></thead><tbody>
-                {workers.map(w => {
+                {filteredWorkers.map(w => {
                   const emp = employmentRecords.find(r => String(r.worker_id) === String(w.id)) || {};
                   const edit = employmentEdit[String(w.id)] || { joining_date: emp.joining_date || w.joining_date || w.start_date || (w.created_at ? String(w.created_at).slice(0,10) : ''), cancellation_date: emp.cancellation_date || '', basic_salary: emp.basic_salary || w.basic_salary || '' };
                   const endDate = edit.cancellation_date || finalCalcDate;
