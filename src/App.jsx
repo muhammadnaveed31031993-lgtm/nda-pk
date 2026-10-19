@@ -10,7 +10,20 @@ const thStyle = { padding:'10px 8px', borderBottom:'1px solid #e2e8f0', color:'#
 const tdStyle = { padding:'10px 8px', borderBottom:'1px solid #f1f5f9', verticalAlign:'top' };
 
 export default function App() {
-  const [session, setSession] = useState(null);
+  // Keep the login for this browser tab: refresh will restore it, while closing the tab
+  // normally clears sessionStorage. Do not use localStorage for persistent login.
+  const [session, setSession] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('nda_user_session');
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      if (parsed?.user?.email && parsed?.role) return parsed;
+      sessionStorage.removeItem('nda_user_session');
+      return null;
+    } catch {
+      return null;
+    }
+  });
   // Select which system to open before entering either workspace.
   const [selectedSystem, setSelectedSystem] = useState(null); // 'hr' | 'business'
   const [businessType, setBusinessType] = useState('transport');
@@ -518,7 +531,19 @@ const [newDesignation, setNewDesignation] = useState('');
   const currentMonth = now.getMonth();
   const totalDaysInCurrentMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
-  // Security: do not restore a logged-in session from localStorage; login is required on every fresh app load.
+  // Save login for the current tab so refreshing the page does not log the user out.
+  // sessionStorage is cleared when the tab is closed in normal browser behavior.
+  useEffect(() => {
+    try {
+      if (session?.user?.email && session?.role) {
+        sessionStorage.setItem('nda_user_session', JSON.stringify(session));
+      } else {
+        sessionStorage.removeItem('nda_user_session');
+      }
+    } catch (err) {
+      console.warn('Tab session could not be saved:', err);
+    }
+  }, [session]);
 
  useEffect(() => {
   if (session) {
@@ -1153,7 +1178,12 @@ async function fetchAttendance() {
   }
 
   function handleLogout() {
-    localStorage.removeItem('nda_user_session');
+    try {
+      sessionStorage.removeItem('nda_user_session');
+      localStorage.removeItem('nda_user_session'); // Clear any old saved session from earlier versions.
+    } catch (err) {
+      console.warn('Could not clear saved session:', err);
+    }
     setSession(null);
     setSelectedSystem(null);
   }
