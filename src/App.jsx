@@ -2355,9 +2355,16 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
 
         const totalAttendanceCount = deptAttendanceWorkers.length;
 
-        const designationsInDept = Array.from(
-          new Set(deptWorkers.map(w => w.designation || 'Worker'))
-        );
+        // Group designations case-insensitively so 'steel fixer' and 'STEEL FIXER' are one trade.
+        const normaliseTradeName = value =>
+          String(value || 'Worker').normalize('NFKC').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+        const designationLabelsByKey = new Map();
+        deptWorkers.forEach(worker => {
+          const rawName = String(worker.designation || 'Worker').normalize('NFKC').trim().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+          const key = normaliseTradeName(rawName);
+          if (key && !designationLabelsByKey.has(key)) designationLabelsByKey.set(key, rawName.toUpperCase());
+        });
+        const designationsInDept = Array.from(designationLabelsByKey.values());
 
         return (
           <div
@@ -2393,7 +2400,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
 
             {designationsInDept.map(desig => {
               const desigWorkers = deptWorkers.filter(
-                w => (w.designation || 'Worker') === desig
+                w => normaliseTradeName(w.designation || 'Worker') === normaliseTradeName(desig)
               );
 
               const desigAttendanceWorkers = desigWorkers.filter(w =>
@@ -3173,6 +3180,38 @@ await handleSingleAttendanceChange(
   }}
 >
   + Add
+</button>
+<button
+  type="button"
+  onClick={async () => {
+    const selected = String(designation || '').trim();
+    if (!selected) return alert('Pehle delete karne ke liye designation select karein.');
+    if (!window.confirm(`Kya aap designation "${selected}" ko list se delete karna chahte hain? Existing workers ka record delete nahi hoga.`)) return;
+
+    const { error } = await supabase
+      .from('designations')
+      .delete()
+      .ilike('name', selected);
+
+    if (error) {
+      alert('Designation delete nahi hui: ' + error.message);
+      return;
+    }
+
+    setDesignationsList(prev => prev.filter(d => d.trim().toLowerCase() !== selected.toLowerCase()));
+    setDesignation('');
+    alert('Designation list se delete ho gayi. Existing workers ke records safe hain.');
+  }}
+  style={{
+    padding: '8px 12px',
+    borderRadius: '6px',
+    border: 'none',
+    backgroundColor: '#dc2626',
+    color: 'white',
+    cursor: 'pointer'
+  }}
+>
+  Delete
 </button>
 </div>
             </div>
