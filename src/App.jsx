@@ -2562,6 +2562,22 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         );
       })}
     </div>
+
+{attendanceListModal && (
+         <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+           <div style={{ background: '#fff', borderRadius: 12, padding: 20, width: 'min(850px, 96vw)', maxHeight: '85vh', overflow: 'auto', boxShadow: '0 20px 50px rgba(0,0,0,.25)' }}>
+             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+               <h3 style={{ margin: 0 }}>{attendanceListModal.title} — {selectedTimesheetDate}</h3>
+               <button onClick={() => setAttendanceListModal(null)} style={{ padding: '8px 12px', border: 0, borderRadius: 7, background: '#e2e8f0', cursor: 'pointer' }}>Close</button>
+             </div>
+             {attendanceListModal.workers.length === 0 ? <p>{isHolidayDate(selectedTimesheetDate) ? 'Holiday hai; is date par Present/Absent/Leave count nahi hota.' : 'Is status mein koi worker nahi.'}</p> : (
+               <div style={{ overflowX: 'auto', marginTop: 14 }}><table style={tableStyle}><thead><tr><th style={thStyle}>ID</th><th style={thStyle}>Worker Name</th><th style={thStyle}>Designation</th><th style={thStyle}>Department</th><th style={thStyle}>Site</th></tr></thead><tbody>
+                 {attendanceListModal.workers.map(w => <tr key={w.id}><td style={tdStyle}>{w.worker_id || w.employee_id || w.id_no || w.id}</td><td style={tdStyle}>{w.name || w.worker_name || '—'}</td><td style={tdStyle}>{w.designation || '—'}</td><td style={tdStyle}>{w.department || '—'}</td><td style={tdStyle}>{attendanceData[selectedTimesheetDate]?.[w.id]?.site || attendanceData[selectedTimesheetDate]?.[w.id]?.work_site || w.work_site || w.site || '—'}</td></tr>)}
+               </tbody></table></div>
+             )}
+           </div>
+         </div>
+       )}
   </>
 )}
 
@@ -3422,57 +3438,6 @@ await handleSingleAttendanceChange(
                <option key={i} value={d}>{d}</option>
              ))}
            </select>
-         </div>
-       )}
-
-       <div style={{
-         display: 'none',
-         gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))',
-         gap: '10px',
-         marginBottom: '20px'
-       }}>
-         {[
-           { label: 'Total Workers', value: reportWorkers.length, color: '#334155', bg: '#f1f5f9' },
-           { label: 'Present', value: presentCount, color: '#166534', bg: '#dcfce7' },
-           { label: 'Absent', value: absentWorkers.length, color: '#991b1b', bg: '#fee2e2' },
-           { label: 'Annual Leave', value: annualLeaveCount, color: '#92400e', bg: '#fef3c7' },
-           { label: 'Other Leave', value: otherLeaveCount, color: '#1e40af', bg: '#dbeafe' },
-           { label: 'Mamzar Absent', value: mamzarAbsent, color: '#9f1239', bg: '#ffe4e6' },
-           { label: 'Other Site Absent', value: otherSiteAbsent, color: '#6b21a8', bg: '#f3e8ff' }
-         ].map(item => {
-           const categoryWorkers = item.label === 'Total Workers' ? reportWorkers
-             : item.label === 'Present' ? reportWorkers.filter(w => getStatus(w) === 'present')
-             : item.label === 'Absent' ? absentWorkers
-             : item.label === 'Annual Leave' ? reportWorkers.filter(w => ['annual leave', 'annual-leave'].includes(getStatus(w)))
-             : item.label === 'Other Leave' ? reportWorkers.filter(w => ['leave', 'sick leave', 'other leave'].includes(getStatus(w)))
-             : item.label === 'Mamzar Absent' ? absentWorkers.filter(w => getSite(w).toLowerCase().includes('mamzar'))
-             : absentWorkers.filter(w => !getSite(w).toLowerCase().includes('mamzar'));
-           const holidayCard = isHolidayDate(selectedTimesheetDate) && ['Present', 'Absent', 'Annual Leave', 'Other Leave', 'Mamzar Absent', 'Other Site Absent'].includes(item.label);
-           return (
-           <button type="button" key={item.label} onClick={() => setAttendanceListModal({ title: item.label, workers: holidayCard ? [] : categoryWorkers })} style={{
-             padding: '13px', border: '1px solid transparent', borderRadius: '8px', background: item.bg,
-             color: item.color, textAlign: 'left', cursor: 'pointer', opacity: holidayCard ? 0.55 : 1
-           }}>
-             <div style={{ fontSize: '12px', fontWeight: 'bold' }}>{item.label} {holidayCard ? '(Holiday)' : ''}</div>
-             <div style={{ fontSize: '25px', fontWeight: 'bold', marginTop: '5px' }}>{holidayCard ? '—' : item.value}</div>
-             <div style={{ fontSize: '10px', marginTop: 4 }}>Click to view workers</div>
-           </button>
-         );})}
-       </div>
-
-       {attendanceListModal && (
-         <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-           <div style={{ background: '#fff', borderRadius: 12, padding: 20, width: 'min(850px, 96vw)', maxHeight: '85vh', overflow: 'auto', boxShadow: '0 20px 50px rgba(0,0,0,.25)' }}>
-             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-               <h3 style={{ margin: 0 }}>{attendanceListModal.title} — {selectedTimesheetDate}</h3>
-               <button onClick={() => setAttendanceListModal(null)} style={{ padding: '8px 12px', border: 0, borderRadius: 7, background: '#e2e8f0', cursor: 'pointer' }}>Close</button>
-             </div>
-             {attendanceListModal.workers.length === 0 ? <p>{isHolidayDate(selectedTimesheetDate) ? 'Holiday hai; is date par Present/Absent/Leave count nahi hota.' : 'Is status mein koi worker nahi.'}</p> : (
-               <div style={{ overflowX: 'auto', marginTop: 14 }}><table style={tableStyle}><thead><tr><th style={thStyle}>ID</th><th style={thStyle}>Worker Name</th><th style={thStyle}>Designation</th><th style={thStyle}>Department</th><th style={thStyle}>Site</th></tr></thead><tbody>
-                 {attendanceListModal.workers.map(w => <tr key={w.id}><td style={tdStyle}>{w.worker_id || w.employee_id || w.id_no || w.id}</td><td style={tdStyle}>{w.name || w.worker_name || '—'}</td><td style={tdStyle}>{w.designation || '—'}</td><td style={tdStyle}>{w.department || '—'}</td><td style={tdStyle}>{attendanceData[selectedTimesheetDate]?.[w.id]?.site || attendanceData[selectedTimesheetDate]?.[w.id]?.work_site || w.work_site || w.site || '—'}</td></tr>)}
-               </tbody></table></div>
-             )}
-           </div>
          </div>
        )}
 
