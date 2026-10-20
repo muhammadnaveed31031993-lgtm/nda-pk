@@ -125,6 +125,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [modalDepartment, setModalDepartment] = useState(null);
   const [modalLocationTab, setModalLocationTab] = useState('All');
+  const [attendanceListModal, setAttendanceListModal] = useState(null);
+  const [holidayDates, setHolidayDates] = useState([]);
+  const isHolidayDate = dateStr => Boolean(dateStr && (new Date(`${dateStr}T12:00:00`).getDay() === 0 || holidayDates.some(h => h.holiday_date === dateStr)));
 
   // Data States
   const [workers, setWorkers] = useState([]);
@@ -220,6 +223,8 @@ const [newDesignation, setNewDesignation] = useState('');
   const [siteAttendanceSite, setSiteAttendanceSite] = useState('Sharjah Mamzar');
   const [siteAttendanceDepartment, setSiteAttendanceDepartment] = useState('Mustafa');
   const [siteAttendanceSaving, setSiteAttendanceSaving] = useState(false);
+  const [siteHolidayNormalOT, setSiteHolidayNormalOT] = useState('2');
+  const [siteHolidayContractOT, setSiteHolidayContractOT] = useState('0');
   
   const [overtimeInputs, setOvertimeInputs] = useState({});
   const [timesheetSiteInputs, setTimesheetSiteInputs] = useState({});
@@ -263,6 +268,10 @@ const [newDesignation, setNewDesignation] = useState('');
   useEffect(() => {
     if (session && selectedSystem === 'business') fetchBusinessData(businessType);
   }, [session, selectedSystem, businessType]);
+
+  useEffect(() => {
+    if (session && selectedSystem === 'hr') fetchHolidayDates();
+  }, [session, selectedSystem]);
 
   async function handleSaveBusinessTransaction(e) {
     e.preventDefault();
@@ -755,6 +764,39 @@ async function fetchAttendance() {
 
   setAttendanceData(dateMap);
 }
+
+async function fetchHolidayDates() {
+  const { data, error } = await supabase.from('attendance_holidays').select('holiday_date, description').order('holiday_date', { ascending: true });
+  if (error) {
+    // Holiday support is optional until the one-time SQL setup below is applied.
+    console.warn('Holiday calendar not loaded:', error.message);
+    return;
+  }
+  setHolidayDates(data || []);
+}
+
+async function handleToggleHolidayDate() {
+  if (!userRole.is_admin) return alert('Sirf Admin holiday dates manage kar sakta hai.');
+  if (!selectedTimesheetDate) return alert('Pehle date select karein.');
+  if (new Date(`${selectedTimesheetDate}T12:00:00`).getDay() === 0) {
+    return alert('Sunday pehle se automatic holiday hai.');
+  }
+  const existing = holidayDates.find(h => h.holiday_date === selectedTimesheetDate);
+  if (existing) {
+    const { error } = await supabase.from('attendance_holidays').delete().eq('holiday_date', selectedTimesheetDate);
+    if (error) return alert('Holiday remove nahi hui: ' + error.message);
+    setHolidayDates(prev => prev.filter(h => h.holiday_date !== selectedTimesheetDate));
+    alert(`${selectedTimesheetDate} holiday list se remove ho gayi.`);
+  } else {
+    const description = window.prompt('Holiday ka naam/reason likhein:', 'Public Holiday');
+    if (description === null) return;
+    const { error } = await supabase.from('attendance_holidays').upsert([{ holiday_date: selectedTimesheetDate, description: description.trim() || 'Holiday' }], { onConflict: 'holiday_date' });
+    if (error) return alert('Holiday save nahi hui: ' + error.message);
+    setHolidayDates(prev => [...prev.filter(h => h.holiday_date !== selectedTimesheetDate), { holiday_date: selectedTimesheetDate, description: description.trim() || 'Holiday' }]);
+    alert(`${selectedTimesheetDate} holiday mark ho gayi.`);
+  }
+}
+
   async function handleUpdateExtension(workerId, newExtensionDays) {
     if (!userRole.is_admin && !userRole.can_edit_workers) return alert('Permission denied!');
     if (!userRole.is_admin && !filteredWorkers.some(w => String(w.id) === String(workerId))) return alert('Worker aapke assigned scope mein nahi hai.');
@@ -1465,14 +1507,17 @@ async function fetchAttendance() {
  async function handleBulkAttendance() {
   if (!userRole.is_admin && !userRole.can_use_bulk) return alert('Aapko Bulk Attendance ki permission nahi hai.');
 
-  const selectedDesignations =
-    bulkDesignation === 'All'
-      ? ['All']
-      : bulkDesignation.toLowerCase() === 'steel fixer'
-        ? ['steel fixer', 'steel fixer helper', 'steel labour', 'steel fixer labour', 'steel foreman', 'steel fixer foreman']
-        : bulkDesignation.toLowerCase() === 'carpenter'
-          ? ['carpenter', 'carpenter helper']
-          : [bulkDesignation.toLowerCase()];
+  const normalizeDesignation = value => String(value || '').normalize('NFKC').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  const steelDesignationAliases = ['steel fixer', 'steel fixer helper', 'steel labour', 'steel labor', 'steel fixer labour', 'steel fixer labor', 'steel foreman', 'steel fixer foreman', 'steel fixer forman', 'steel forman'];
+  const carpenterDesignationAliases = ['carpenter', 'carpenter helper', 'carpenter foreman', 'carpenter forman'];
+  const selectedDesignationKey = normalizeDesignation(bulkDesignation);
+  const selectedDesignations = selectedDesignationKey === 'all'
+    ? ['All']
+    : selectedDesignationKey === 'steel fixer'
+      ? steelDesignationAliases
+      : selectedDesignationKey === 'carpenter'
+        ? carpenterDesignationAliases
+        : [selectedDesignationKey];
 
   const allowedWorkers = userRole.is_admin ? workers : filteredWorkers;
   const effectiveBulkSite =
@@ -1485,7 +1530,7 @@ async function fetchAttendance() {
       (w.department &&
         w.department.toLowerCase() === bulkDepartment.toLowerCase());
 
-    const workerDesignation = (w.designation || '').toLowerCase();
+    const workerDesignation = normalizeDesignation(w.designation);
 
     const matchDesig =
       selectedDesignations.includes('All') ||
@@ -1501,15 +1546,21 @@ async function fetchAttendance() {
     );
   }
 
-  const records = deptWorkers.map(w => ({
-    worker_id: w.id,
-    date: selectedTimesheetDate,
-    status: attendanceData[selectedTimesheetDate]?.[w.id]?.status || attendance.find(a => String(a.worker_id) === String(w.id) && a.date === selectedTimesheetDate)?.status || 'Absent',
-    overtime_hours: Number(bulkOT) || 0,
-    contract_overtime_hours: Number(bulkContractOT) || 0,
-    department: w.department,
-    work_site: effectiveBulkSite
-  }));
+  const selectedDateIsHoliday = isHolidayDate(selectedTimesheetDate);
+  const records = deptWorkers.map(w => {
+    const existing = attendanceData[selectedTimesheetDate]?.[w.id] || attendance.find(a => String(a.worker_id) === String(w.id) && a.date === selectedTimesheetDate) || {};
+    return {
+      worker_id: w.id,
+      date: selectedTimesheetDate,
+      // Overtime-only bulk must never turn an unrecorded worker into an Absent worker.
+      // Holiday overtime is recorded with a neutral Holiday status, not Present/Absent.
+      status: selectedDateIsHoliday ? 'Holiday' : (existing.status || 'Present'),
+      overtime_hours: Number(bulkOT) || 0,
+      contract_overtime_hours: Number(bulkContractOT) || 0,
+      department: w.department,
+      work_site: effectiveBulkSite
+    };
+  });
 
   const { error: attendanceError } = await supabase
     .from('attendance')
@@ -1529,7 +1580,7 @@ async function fetchAttendance() {
     
 deptWorkers.forEach(w => {
   updated[selectedTimesheetDate][w.id] = {
-    status: attendanceData[selectedTimesheetDate]?.[w.id]?.status || attendance.find(a => String(a.worker_id) === String(w.id) && a.date === selectedTimesheetDate)?.status || 'Absent',
+    status: selectedDateIsHoliday ? 'Holiday' : (attendanceData[selectedTimesheetDate]?.[w.id]?.status || attendance.find(a => String(a.worker_id) === String(w.id) && a.date === selectedTimesheetDate)?.status || 'Present'),
     ot: Number(bulkOT) || 0,
     contract_ot: Number(bulkContractOT) || 0,
     contract_overtime_hours: Number(bulkContractOT) || 0,
@@ -1653,13 +1704,17 @@ async function handleSaveSiteAttendance(e) {
   if (!selectedWorkers.length) return alert('Is site aur department ke workers nahi mile. Workers Directory mein site/department check karein.');
   setSiteAttendanceSaving(true);
   try {
+    const siteDateIsHoliday = isHolidayDate(selectedTimesheetDate);
     const records = selectedWorkers.map(w => {
       const old = attendance.find(a => String(a.worker_id) === String(w.id) && a.date === selectedTimesheetDate);
       const isPresent = presentWorkers.some(p => p && String(p.id) === String(w.id));
       return {
-        worker_id: w.id, date: selectedTimesheetDate, status: isPresent ? 'Present' : 'Absent',
-        overtime_hours: Number(old?.overtime_hours) || 0,
-        contract_overtime_hours: Number(old?.contract_overtime_hours) || 0,
+        worker_id: w.id, date: selectedTimesheetDate,
+        // Sunday/holiday must not create Present or Absent records. Use Holiday status;
+        // overtime hours can be entered through the Bulk Overtime Only controls.
+        status: siteDateIsHoliday ? 'Holiday' : (isPresent ? 'Present' : 'Absent'),
+        overtime_hours: siteDateIsHoliday ? (isPresent ? (Number(siteHolidayNormalOT) || 0) : 0) : (Number(old?.overtime_hours) || 0),
+        contract_overtime_hours: siteDateIsHoliday ? (isPresent ? (Number(siteHolidayContractOT) || 0) : 0) : (Number(old?.contract_overtime_hours) || 0),
         department: w.department || '', work_site: siteAttendanceSite
       };
     });
@@ -1667,7 +1722,7 @@ async function handleSaveSiteAttendance(e) {
     if (error) throw error;
     setSiteAttendanceIds('');
     await fetchAttendance();
-    alert(`Attendance save ho gayi: ${records.filter(r => r.status === 'Present').length} Present, ${records.filter(r => r.status === 'Absent').length} Absent (${siteAttendanceSite}).`);
+    alert(siteDateIsHoliday ? `Holiday status save ho gaya (${siteAttendanceSite}). Sunday/holiday ke OT hours Bulk Overtime Only mein enter karein.` : `Attendance save ho gayi: ${records.filter(r => r.status === 'Present').length} Present, ${records.filter(r => r.status === 'Absent').length} Absent (${siteAttendanceSite}).`);
   } catch (err) {
     alert('Attendance save nahi hui: ' + (err?.message || String(err)));
   } finally { setSiteAttendanceSaving(false); }
@@ -1912,10 +1967,18 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       );
     });
 
-    // Present days count karein
-    const presentDays = monthlyRecords.filter(a =>
-      String(a.status || '').trim().toLowerCase() === 'present'
+    // Every Sunday and admin-marked holiday counts as a paid Holiday Present day
+    // for every worker, even when no attendance row exists for that date.
+    const monthPrefix = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
+    const monthHolidayDates = new Set();
+    for (let day = 1; day <= payrollMonthDays; day++) {
+      const d = `${monthPrefix}-${String(day).padStart(2, '0')}`;
+      if (new Date(`${d}T12:00:00`).getDay() === 0 || holidayDates.some(h => h.holiday_date === d)) monthHolidayDates.add(d);
+    }
+    const workedPresentDays = monthlyRecords.filter(a =>
+      String(a.status || '').trim().toLowerCase() === 'present' && !monthHolidayDates.has(String(a.date || '').slice(0, 10))
     ).length;
+    const presentDays = workedPresentDays + monthHolidayDates.size;
 
     // Normal OT + Contract OT
     const totalOT = monthlyRecords.reduce((total, record) => {
@@ -2766,16 +2829,22 @@ style={{
 
     <div style={{ marginTop: '20px', padding: '18px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '10px' }}>
       <h3 style={{ margin: '0 0 8px', color: '#166534' }}>🟢 Site Attendance by Worker ID</h3>
-      <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#166534' }}>Date, site aur department select karein; phir usi scope ke Present workers ki IDs likhein. Sirf selected site/department ke baqi workers Absent honge; doosre departments par koi asar nahi hoga.</p>
+      <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#166534' }}>Date, site aur department select karein. Normal working day par entered IDs Present aur selected scope ke baqi workers Absent honge. Sunday/holiday par koi Present/Absent nahi hoga; entered IDs ke sirf Normal OT aur Contract OT hours save honge.</p>
       <form onSubmit={handleSaveSiteAttendance}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '12px' }}>
           <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Attendance Date</label><input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }} /></div>
           <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Working Site</label><select value={siteAttendanceSite} onChange={e => setSiteAttendanceSite(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{sitesList.map(site => <option key={site} value={site}>{site}</option>)}</select></div>
           <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Department</label><select value={siteAttendanceDepartment} onChange={e => setSiteAttendanceDepartment(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{uniqueDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}</select></div>
         </div>
-        <label style={{ display: 'block', fontWeight: 'bold', fontSize: '12px', marginTop: 12 }}>Present Workers — ID No.</label>
-        <textarea value={siteAttendanceIds} onChange={e => setSiteAttendanceIds(e.target.value)} rows={3} placeholder={'Example: 101, 102, 108\\n109\\n115'} style={{ ...fieldStyle, marginTop: 5, resize: 'vertical' }} />
-        <button type="submit" disabled={siteAttendanceSaving} style={{ ...primaryStyle, marginTop: 12, background: '#15803d', opacity: siteAttendanceSaving ? .7 : 1 }}>{siteAttendanceSaving ? 'Saving Attendance…' : 'Save Site Attendance (Others Absent)'}</button>
+        <label style={{ display: 'block', fontWeight: 'bold', fontSize: '12px', marginTop: 12 }}>{isHolidayDate(selectedTimesheetDate) ? 'Holiday Duty Workers — ID No.' : 'Present Workers — ID No.'}</label>
+        <textarea value={siteAttendanceIds} onChange={e => setSiteAttendanceIds(e.target.value)} rows={3} placeholder={'Example: 101, 102, 108\n109\n115'} style={{ ...fieldStyle, marginTop: 5, resize: 'vertical' }} />
+        {isHolidayDate(selectedTimesheetDate) && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, marginTop: 10, padding: 12, background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8 }}>
+            <div><label style={{ fontWeight: 'bold', fontSize: 12 }}>Normal OT Hours (per entered ID)</label><input type="number" min="0" step="0.25" value={siteHolidayNormalOT} onChange={e => setSiteHolidayNormalOT(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }} /></div>
+            <div><label style={{ fontWeight: 'bold', fontSize: 12 }}>Contract OT Hours (per entered ID)</label><input type="number" min="0" step="0.25" value={siteHolidayContractOT} onChange={e => setSiteHolidayContractOT(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }} /></div>
+          </div>
+        )}
+        <button type="submit" disabled={siteAttendanceSaving} style={{ ...primaryStyle, marginTop: 12, background: '#15803d', opacity: siteAttendanceSaving ? .7 : 1 }}>{siteAttendanceSaving ? 'Saving Attendance…' : (isHolidayDate(selectedTimesheetDate) ? 'Save Holiday OT by Worker ID' : 'Save Site Attendance (Others Absent)')}</button>
       </form>
     </div>
 
@@ -3313,7 +3382,8 @@ await handleSingleAttendanceChange(
      worker.work_site ||
      'Unassigned';
 
-  const presentCount = reportWorkers.filter(w => {
+  const reportIsHoliday = isHolidayDate(selectedTimesheetDate);
+   const presentCount = reportIsHoliday ? 0 : reportWorkers.filter(w => {
   const status = getStatus(w);
 
   const isOnAnnualLeave = annualLeaveList.some(leave => {
@@ -3334,17 +3404,11 @@ await handleSingleAttendanceChange(
 
   return status === 'present' && !isOnAnnualLeave;
 }).length;
-   const absentWorkers = reportWorkers.filter(w =>
-     getStatus(w) === 'absent'
-   );
+   const absentWorkers = reportIsHoliday ? [] : reportWorkers.filter(w => getStatus(w) === 'absent');
 
-   const annualLeaveCount = reportWorkers.filter(w =>
-     ['annual leave', 'annual-leave'].includes(getStatus(w))
-   ).length;
+   const annualLeaveCount = reportIsHoliday ? 0 : reportWorkers.filter(w => ['annual leave', 'annual-leave'].includes(getStatus(w))).length;
 
-   const otherLeaveCount = reportWorkers.filter(w =>
-     ['leave', 'sick leave', 'other leave'].includes(getStatus(w))
-   ).length;
+   const otherLeaveCount = reportIsHoliday ? 0 : reportWorkers.filter(w => ['leave', 'sick leave', 'other leave'].includes(getStatus(w))).length;
 
    const mamzarAbsent = absentWorkers.filter(w =>
      getSite(w).toLowerCase().includes('mamzar')
@@ -3397,6 +3461,17 @@ await handleSingleAttendanceChange(
          </div>
        </div>
 
+       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+         <span style={{ fontWeight: 800, color: isHolidayDate(selectedTimesheetDate) ? '#92400e' : '#475569' }}>
+           {isHolidayDate(selectedTimesheetDate) ? `HOLIDAY${holidayDates.find(h => h.holiday_date === selectedTimesheetDate)?.description ? ': ' + holidayDates.find(h => h.holiday_date === selectedTimesheetDate).description : ' (Sunday)'}` : 'Working day'}
+         </span>
+         {userRole.is_admin && new Date(`${selectedTimesheetDate}T12:00:00`).getDay() !== 0 && (
+           <button onClick={handleToggleHolidayDate} style={{ padding: '8px 12px', border: '1px solid #d97706', borderRadius: 7, background: holidayDates.some(h => h.holiday_date === selectedTimesheetDate) ? '#fff7ed' : '#fffbeb', color: '#92400e', fontWeight: 700, cursor: 'pointer' }}>
+             {holidayDates.some(h => h.holiday_date === selectedTimesheetDate) ? 'Remove Holiday' : 'Mark Selected Date as Holiday'}
+           </button>
+         )}
+       </div>
+
        {userRole.is_admin && (
          <div style={{ marginBottom: '16px' }}>
            <label style={{ fontWeight: 'bold', marginRight: '8px' }}>
@@ -3429,22 +3504,42 @@ await handleSingleAttendanceChange(
            { label: 'Other Leave', value: otherLeaveCount, color: '#1e40af', bg: '#dbeafe' },
            { label: 'Mamzar Absent', value: mamzarAbsent, color: '#9f1239', bg: '#ffe4e6' },
            { label: 'Other Site Absent', value: otherSiteAbsent, color: '#6b21a8', bg: '#f3e8ff' }
-         ].map(item => (
-           <div key={item.label} style={{
-             padding: '13px',
-             borderRadius: '8px',
-             background: item.bg,
-             color: item.color
+         ].map(item => {
+           const categoryWorkers = item.label === 'Total Workers' ? reportWorkers
+             : item.label === 'Present' ? reportWorkers.filter(w => getStatus(w) === 'present')
+             : item.label === 'Absent' ? absentWorkers
+             : item.label === 'Annual Leave' ? reportWorkers.filter(w => ['annual leave', 'annual-leave'].includes(getStatus(w)))
+             : item.label === 'Other Leave' ? reportWorkers.filter(w => ['leave', 'sick leave', 'other leave'].includes(getStatus(w)))
+             : item.label === 'Mamzar Absent' ? absentWorkers.filter(w => getSite(w).toLowerCase().includes('mamzar'))
+             : absentWorkers.filter(w => !getSite(w).toLowerCase().includes('mamzar'));
+           const holidayCard = isHolidayDate(selectedTimesheetDate) && ['Present', 'Absent', 'Annual Leave', 'Other Leave', 'Mamzar Absent', 'Other Site Absent'].includes(item.label);
+           return (
+           <button type="button" key={item.label} onClick={() => setAttendanceListModal({ title: item.label, workers: holidayCard ? [] : categoryWorkers })} style={{
+             padding: '13px', border: '1px solid transparent', borderRadius: '8px', background: item.bg,
+             color: item.color, textAlign: 'left', cursor: 'pointer', opacity: holidayCard ? 0.55 : 1
            }}>
-             <div style={{ fontSize: '12px', fontWeight: 'bold' }}>
-               {item.label}
-             </div>
-             <div style={{ fontSize: '25px', fontWeight: 'bold', marginTop: '5px' }}>
-               {item.value}
-             </div>
-           </div>
-         ))}
+             <div style={{ fontSize: '12px', fontWeight: 'bold' }}>{item.label} {holidayCard ? '(Holiday)' : ''}</div>
+             <div style={{ fontSize: '25px', fontWeight: 'bold', marginTop: '5px' }}>{holidayCard ? '—' : item.value}</div>
+             <div style={{ fontSize: '10px', marginTop: 4 }}>Click to view workers</div>
+           </button>
+         );})}
        </div>
+
+       {attendanceListModal && (
+         <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+           <div style={{ background: '#fff', borderRadius: 12, padding: 20, width: 'min(850px, 96vw)', maxHeight: '85vh', overflow: 'auto', boxShadow: '0 20px 50px rgba(0,0,0,.25)' }}>
+             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+               <h3 style={{ margin: 0 }}>{attendanceListModal.title} — {selectedTimesheetDate}</h3>
+               <button onClick={() => setAttendanceListModal(null)} style={{ padding: '8px 12px', border: 0, borderRadius: 7, background: '#e2e8f0', cursor: 'pointer' }}>Close</button>
+             </div>
+             {attendanceListModal.workers.length === 0 ? <p>{isHolidayDate(selectedTimesheetDate) ? 'Holiday hai; is date par Present/Absent/Leave count nahi hota.' : 'Is category mein koi worker nahi.'}</p> : (
+               <div style={{ overflowX: 'auto', marginTop: 14 }}><table style={tableStyle}><thead><tr><th style={thStyle}>ID</th><th style={thStyle}>Worker Name</th><th style={thStyle}>Designation</th><th style={thStyle}>Department</th><th style={thStyle}>Site</th></tr></thead><tbody>
+                 {attendanceListModal.workers.map(w => <tr key={w.id}><td style={tdStyle}>{w.worker_id || w.employee_id || w.id_no || w.id}</td><td style={tdStyle}>{w.name || w.worker_name || '—'}</td><td style={tdStyle}>{w.designation || '—'}</td><td style={tdStyle}>{w.department || '—'}</td><td style={tdStyle}>{w.work_site || w.site || '—'}</td></tr>)}
+               </tbody></table></div>
+             )}
+           </div>
+         </div>
+       )}
 
        <div style={{ overflowX: 'auto' }}>
          <table style={{
@@ -3677,25 +3772,20 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
                         selectedTimesheetDate
                       );
 
-                      const status = annualLeave
-                        ? 'Annual Leave'
-                        : (record.status || 'Absent');
+                      const rowIsHoliday = isHolidayDate(selectedTimesheetDate);
+                      const status = rowIsHoliday ? 'Holiday Present' : (annualLeave ? 'Annual Leave' : (record.status || 'Absent'));
 
-                      const ot = annualLeave
+                      const ot = annualLeave && !rowIsHoliday
                         ? 0
                         : (Number(record.ot ?? record.overtime_hours ?? 0) || 0);
 
-                      const contractOT = annualLeave
+                      const contractOT = annualLeave && !rowIsHoliday
                         ? 0
                         : (Number(record.contract_ot ?? record.contract_overtime_hours ?? 0) || 0);
 
                       const totalOT = ot + contractOT;
 
-                      const normalHours =
-                        !annualLeave &&
-                        String(status).toLowerCase() === 'present'
-                          ? 8
-                          : 0;
+                      const normalHours = rowIsHoliday ? 8 : (!annualLeave && String(status).toLowerCase() === 'present' ? 8 : 0);
 
                       return (                       
 <tr
