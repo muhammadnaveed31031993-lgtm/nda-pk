@@ -2579,85 +2579,57 @@ const otherLeaveCount = desigWorkers.filter(
     fontSize: '12px',
     fontWeight: '600'
   }}>
-    <div style={{
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '6px',
-    marginTop: '10px',
-    marginBottom: '10px'
-  }}>
-    <button onClick={() => {
-    setAttendanceFilter('present');
-    setLeaveFilter('all');
-    setShowAnnualPopup(false);
-  }}
-  style={{
-    background: '#dcfce7',
-    color: '#166534',
-    padding: '5px 8px',
-    borderRadius: '5px',
-    fontSize: '12px',
-    fontWeight: '600',
-    border: 'none',
-    cursor: 'pointer'
-  }}>
     Present: {presentCount}
-</button>
+  </span>
 
-<button onClick={() => {
-    setAttendanceFilter('absent');
-    setLeaveFilter('all');
-    setShowAnnualPopup(false);
-  }}
-  style={{
+  <span style={{
     background: '#fee2e2',
     color: '#991b1b',
     padding: '5px 8px',
     borderRadius: '5px',
     fontSize: '12px',
-    fontWeight: '600',
-    border: 'none',
-    cursor: 'pointer'
+    fontWeight: '600'
   }}>
     Absent: {absentCount}
-</button>
+  </span>
 
-<button onClick={() => {
-    setAttendanceFilter('all');
-    setLeaveFilter('annual leave');
-    setShowAnnualPopup(false);
-  }}
-  style={{
+  <span style={{
     background: '#fef3c7',
     color: '#92400e',
     padding: '5px 8px',
     borderRadius: '5px',
     fontSize: '12px',
-    fontWeight: '600',
-    border: 'none',
-    cursor: 'pointer'
+    fontWeight: '600'
   }}>
     Annual Leave: {annualLeaveCount}
-</button>
+  </span>
 
-<button onClick={() => {
-    setAttendanceFilter('all');
-    setLeaveFilter('other leave');
-    setShowAnnualPopup(false);
-  }}
-  style={{
+  <span style={{
     background: '#dbeafe',
     color: '#1e40af',
     padding: '5px 8px',
     borderRadius: '5px',
     fontSize: '12px',
-    fontWeight: '600',
-    border: 'none',
-    cursor: 'pointer'
+    fontWeight: '600'
   }}>
     Other Leave: {otherLeaveCount}
-</button>
+  </span>
+</div>
+                  {desigAttendanceWorkers.length === 0 && (
+                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '5px' }}>
+                      No attendance saved for this date
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
+  </>
+)}
+
 {/* Modal / Popup for Specific Department Workers */}
 {modalDepartment && (
   <div style={{
@@ -4999,7 +4971,6 @@ return monthlyRows.map((att, idx) => {
     </div>
   </div>
 )}
-      </div>
       </main>
      
 {/* Footer */}
