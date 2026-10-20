@@ -2399,105 +2399,31 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
               const desigAttendanceWorkers = desigWorkers.filter(w =>
                 Boolean(attendanceData[selectedTimesheetDate]?.[w.id])
               );
-            const getAttendanceStatus = (worker) =>
-  attendanceData[selectedTimesheetDate]?.[worker.id]?.status || '';
-
-const presentCount = desigWorkers.filter(w => {
-  const status = getAttendanceStatus(w)
-    .toLowerCase()
-    .replace(/_/g, ' ')
-    .replace(/-/g, ' ')
-    .trim();
-
-  if (status !== 'present') return false;
-
-  const workerKey = String(w.id);
-
-  const onAnnualLeave = annualLeaveList.some(leave => {
-    const sameWorker =
-      String(leave.worker_id) === workerKey;
-
-    const start = leave.start_date;
-    const end = leave.actual_return;
-
-    const isStillOnLeave =
-      leave.status !== 'Returned' &&
-      (!end || end === 'On Leave' || selectedTimesheetDate < end);
-
-    return (
-      sameWorker &&
-      isStillOnLeave &&
-      start &&
-      start <= selectedTimesheetDate
-    );
-  });
-
-  return !onAnnualLeave;
-}).length;
-
-const absentCount = desigWorkers.filter(w => {
-  const status = getAttendanceStatus(w)
-    .toLowerCase()
-    .replace(/_/g, ' ')
-    .replace(/-/g, ' ')
-    .trim();
-
-  if (status !== 'absent') return false;
-
-  const workerKey = String(w.worker_id ?? w.id);
-
-  const onAnnualLeave = annualLeaveList.some(leave => {
-    const sameWorker = String(leave.worker_id) === workerKey;
-    const start = leave.start_date;
-    const end = leave.actual_return;
-
-    const isStillOnLeave =
-      leave.status !== 'Returned' &&
-      (!end || end === 'On Leave');
-
-    return (
-      sameWorker &&
-      isStillOnLeave &&
-      start &&
-      start <= selectedTimesheetDate
-    );
-  });
-
-  return !onAnnualLeave;
-}).length;
-
-const annualLeaveCount = desigWorkers.filter(w => {
-  const status = getAttendanceStatus(w)
-    .toLowerCase()
-    .replace(/_/g, ' ')
-    .replace(/-/g, ' ')
-    .trim();
-
-  const workerKey = String(w.worker_id ?? w.id);
-
-  const onAnnualLeave = annualLeaveList.some(leave => {
-    const sameWorker = String(leave.worker_id) === workerKey;
-
-    const start = leave.start_date;
-    const isStillOnLeave =
-      leave.status !== 'Returned' &&
-      (!leave.actual_return || leave.actual_return === 'On Leave');
-
-    return (
-      sameWorker &&
-      isStillOnLeave &&
-      start &&
-      start <= selectedTimesheetDate
-    );
-  });
-
-  return status === 'annual leave' || onAnnualLeave;
-}).length;
-const otherLeaveCount = desigWorkers.filter(
-  w => ['leave', 'sick leave', 'sick_leave', 'other leave'].includes(
-    getAttendanceStatus(w).toLowerCase()
-  )
-).length;
+            const getAttendanceStatus = worker =>
+              attendanceData[selectedTimesheetDate]?.[worker.id]?.status || '';
+            const normaliseDashboardStatus = value =>
+              String(value || '').toLowerCase().replace(/_/g, ' ').replace(/-/g, ' ').trim();
+            const isWorkerOnAnnualLeave = worker => {
+              const workerKey = String(worker.id);
+              return annualLeaveList.some(leave => {
+                const sameWorker = String(leave.worker_id) === workerKey;
+                const start = String(leave.start_date || '').slice(0, 10);
+                const actualReturn = String(leave.actual_return || '');
+                return sameWorker && start && start <= selectedTimesheetDate &&
+                  leave.status !== 'Returned' &&
+                  (!actualReturn || actualReturn === 'On Leave' || selectedTimesheetDate < actualReturn.slice(0, 10));
+              });
+            };
+            const statusWorkers = {
+              Present: desigWorkers.filter(w => normaliseDashboardStatus(getAttendanceStatus(w)) === 'present' && !isWorkerOnAnnualLeave(w)),
+              Absent: desigWorkers.filter(w => normaliseDashboardStatus(getAttendanceStatus(w)) === 'absent' && !isWorkerOnAnnualLeave(w)),
+              'Annual Leave': desigWorkers.filter(w => normaliseDashboardStatus(getAttendanceStatus(w)) === 'annual leave' || isWorkerOnAnnualLeave(w)),
+              'Other Leave': desigWorkers.filter(w => ['leave', 'sick leave', 'other leave'].includes(normaliseDashboardStatus(getAttendanceStatus(w))))
+            };
+            const presentCount = statusWorkers.Present.length;
+            const absentCount = statusWorkers.Absent.length;
+            const annualLeaveCount = statusWorkers['Annual Leave'].length;
+            const otherLeaveCount = statusWorkers['Other Leave'].length;
 
               return (
                 <div
@@ -2572,49 +2498,57 @@ const otherLeaveCount = desigWorkers.filter(
   marginTop: '10px',
   marginBottom: '10px'
 }}>
-  <span style={{
+  <button type="button" onClick={() => setAttendanceListModal({ title: `${desig} — Present`, workers: statusWorkers['Present'] })} style={{
     background: '#dcfce7',
     color: '#166534',
     padding: '5px 8px',
+    border: '1px solid transparent',
     borderRadius: '5px',
     fontSize: '12px',
-    fontWeight: '600'
+    fontWeight: '600',
+    cursor: 'pointer'
   }}>
-    Present: {presentCount}
-  </span>
+    Present: {presentCount} · View workers
+  </button>
 
-  <span style={{
+  <button type="button" onClick={() => setAttendanceListModal({ title: `${desig} — Absent`, workers: statusWorkers['Absent'] })} style={{
     background: '#fee2e2',
     color: '#991b1b',
     padding: '5px 8px',
+    border: '1px solid transparent',
     borderRadius: '5px',
     fontSize: '12px',
-    fontWeight: '600'
+    fontWeight: '600',
+    cursor: 'pointer'
   }}>
-    Absent: {absentCount}
-  </span>
+    Absent: {absentCount} · View workers
+  </button>
 
-  <span style={{
+  <button type="button" onClick={() => setAttendanceListModal({ title: `${desig} — Annual Leave`, workers: statusWorkers['Annual Leave'] })} style={{
     background: '#fef3c7',
     color: '#92400e',
     padding: '5px 8px',
+    border: '1px solid transparent',
     borderRadius: '5px',
     fontSize: '12px',
-    fontWeight: '600'
+    fontWeight: '600',
+    cursor: 'pointer'
   }}>
-    Annual Leave: {annualLeaveCount}
-  </span>
+    Annual Leave: {annualLeaveCount} · View workers
+  </button>
 
-  <span style={{
+  <button type="button" onClick={() => setAttendanceListModal({ title: `${desig} — Other Leave`, workers: statusWorkers['Other Leave'] })} style={{
     background: '#dbeafe',
     color: '#1e40af',
     padding: '5px 8px',
+    border: '1px solid transparent',
     borderRadius: '5px',
     fontSize: '12px',
-    fontWeight: '600'
+    fontWeight: '600',
+    cursor: 'pointer'
   }}>
-    Other Leave: {otherLeaveCount}
-  </span>
+    Other Leave: {otherLeaveCount} · View workers
+  </button>
 </div>
                   {desigAttendanceWorkers.length === 0 && (
                     <div style={{ fontSize: '12px', color: '#64748b', marginTop: '5px' }}>
@@ -3533,9 +3467,9 @@ await handleSingleAttendanceChange(
                <h3 style={{ margin: 0 }}>{attendanceListModal.title} — {selectedTimesheetDate}</h3>
                <button onClick={() => setAttendanceListModal(null)} style={{ padding: '8px 12px', border: 0, borderRadius: 7, background: '#e2e8f0', cursor: 'pointer' }}>Close</button>
              </div>
-             {attendanceListModal.workers.length === 0 ? <p>{isHolidayDate(selectedTimesheetDate) ? 'Holiday hai; is date par Present/Absent/Leave count nahi hota.' : 'Is category mein koi worker nahi.'}</p> : (
+             {attendanceListModal.workers.length === 0 ? <p>{isHolidayDate(selectedTimesheetDate) ? 'Holiday hai; is date par Present/Absent/Leave count nahi hota.' : 'Is status mein koi worker nahi.'}</p> : (
                <div style={{ overflowX: 'auto', marginTop: 14 }}><table style={tableStyle}><thead><tr><th style={thStyle}>ID</th><th style={thStyle}>Worker Name</th><th style={thStyle}>Designation</th><th style={thStyle}>Department</th><th style={thStyle}>Site</th></tr></thead><tbody>
-                 {attendanceListModal.workers.map(w => <tr key={w.id}><td style={tdStyle}>{w.worker_id || w.employee_id || w.id_no || w.id}</td><td style={tdStyle}>{w.name || w.worker_name || '—'}</td><td style={tdStyle}>{w.designation || '—'}</td><td style={tdStyle}>{w.department || '—'}</td><td style={tdStyle}>{w.work_site || w.site || '—'}</td></tr>)}
+                 {attendanceListModal.workers.map(w => <tr key={w.id}><td style={tdStyle}>{w.worker_id || w.employee_id || w.id_no || w.id}</td><td style={tdStyle}>{w.name || w.worker_name || '—'}</td><td style={tdStyle}>{w.designation || '—'}</td><td style={tdStyle}>{w.department || '—'}</td><td style={tdStyle}>{attendanceData[selectedTimesheetDate]?.[w.id]?.site || attendanceData[selectedTimesheetDate]?.[w.id]?.work_site || w.work_site || w.site || '—'}</td></tr>)}
                </tbody></table></div>
              )}
            </div>
