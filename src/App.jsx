@@ -2650,6 +2650,7 @@ const otherLeaveCount = desigWorkers.filter(
   }}>
     Other Leave: {otherLeaveCount}
 </button>
+    </div>
 {/* Modal / Popup for Specific Department Workers */}
 {modalDepartment && (
   <div style={{
