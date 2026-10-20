@@ -4978,12 +4978,13 @@ return monthlyRows.map((att, idx) => {
           Close
         </button>
       </div>
-
-    </div>
-  </div>
-)}
-        </div>
-      </main>
+          );
+        })}
+      </div>
+    );
+  })}
+</div>
+        </main>
 
       {/* Footer */}
       <div
