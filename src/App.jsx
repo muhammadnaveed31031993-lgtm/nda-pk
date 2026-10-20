@@ -4963,7 +4963,7 @@ return monthlyRows.map((att, idx) => {
         </table>
       </div>
 
-      {/* Action Buttons inside View Modal */}
+     {/* Action Buttons inside View Modal */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
         <button 
           onClick={() => handlePrintWorkerMonthlyReport(viewingWorkerTimesheet)}
@@ -4978,12 +4978,6 @@ return monthlyRows.map((att, idx) => {
           Close
         </button>
       </div>
-          );
-        })}
-      </div>
-    );
-  })}
-</div>
         </main>
 
       {/* Footer */}
