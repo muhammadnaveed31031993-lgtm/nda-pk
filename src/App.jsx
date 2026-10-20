@@ -2328,308 +2328,318 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     </div>
 
     {/* Department & Designation Attendance Breakdown */}
-    <h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#1e293b' }}>
-      Workers by Trade & Site — {selectedTimesheetDate}
-    </h3>
+<h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#1e293b' }}>
+  Workers by Trade & Site — {selectedTimesheetDate}
+</h3>
 
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-      gap: '20px'
-    }}>
-     {(userRole.is_admin
-  ? uniqueDepartments
-  : uniqueDepartments.filter(dept =>
-      !userRole.assigned_department ||
-      userRole.assigned_department === 'All' ||
-      dept.toLowerCase() === userRole.assigned_department.toLowerCase()
-    )
-).map(dept => {
-  const deptWorkers = filteredWorkers.filter(
-    w => w.department?.toLowerCase() === dept.toLowerCase()
-  );
-        // Workers who have an attendance record for the selected date
-        const deptAttendanceWorkers = deptWorkers.filter(w =>
-          Boolean(attendanceData[selectedTimesheetDate]?.[w.id])
-        );
+<div style={{
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+  gap: '20px'
+}}>
+  {(userRole.is_admin
+    ? uniqueDepartments
+    : uniqueDepartments.filter(dept =>
+        !userRole.assigned_department ||
+        userRole.assigned_department === 'All' ||
+        dept.toLowerCase() === userRole.assigned_department.toLowerCase()
+      )
+  ).map(dept => {
+    const deptWorkers = filteredWorkers.filter(
+      w => w.department?.toLowerCase() === dept.toLowerCase()
+    );
+    
+    const totalAttendanceCount = deptWorkers.filter(w =>
+      Boolean(attendanceData[selectedTimesheetDate]?.[w.id])
+    ).length;
 
-        const totalAttendanceCount = deptAttendanceWorkers.length;
-
-        const designationsInDept = Array.from(
-          new Set(deptWorkers.map(w => w.designation || 'Worker'))
-        );
-
-        return (
-          <div
-            key={dept}
-            onClick={() => setModalDepartment(dept)}
-            style={{
-              background: '#ffffff',
-              border: '1px solid #cbd5e1',
-              padding: '20px',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
-            }}
-          >
-            <h3 style={{
-              margin: '0 0 5px 0',
-              color: '#1e293b',
-              borderBottom: '2px solid #2563eb',
-              paddingBottom: '6px'
-            }}>
-              🏢 {dept}
-            </h3>
-
-            <p style={{ margin: '6px 0 12px 0', color: '#0f172a', fontSize: '14px' }}>
-              Workers with attendance: <strong>{totalAttendanceCount}</strong>
-            </p>
-
-            <hr style={{
-              border: '0',
-              borderTop: '1px solid #e2e8f0',
-              margin: '10px 0'
-            }} />
-
-            {designationsInDept.map(desig => {
-              const desigWorkers = deptWorkers.filter(
-                w => (w.designation || 'Worker') === desig
-              );
-
-              const desigAttendanceWorkers = desigWorkers.filter(w =>
-                Boolean(attendanceData[selectedTimesheetDate]?.[w.id])
-              );
-            const getAttendanceStatus = (worker) =>
-  attendanceData[selectedTimesheetDate]?.[worker.id]?.status || '';
-
-const presentCount = desigWorkers.filter(w => {
-  const status = getAttendanceStatus(w)
-    .toLowerCase()
-    .replace(/_/g, ' ')
-    .replace(/-/g, ' ')
-    .trim();
-
-  if (status !== 'present') return false;
-
-  const workerKey = String(w.id);
-
-  const onAnnualLeave = annualLeaveList.some(leave => {
-    const sameWorker =
-      String(leave.worker_id) === workerKey;
-
-    const start = leave.start_date;
-    const end = leave.actual_return;
-
-    const isStillOnLeave =
-      leave.status !== 'Returned' &&
-      (!end || end === 'On Leave' || selectedTimesheetDate < end);
+    const designationsInDept = Array.from(
+      new Set(deptWorkers.map(w => w.designation || 'Worker'))
+    );
 
     return (
-      sameWorker &&
-      isStillOnLeave &&
-      start &&
-      start <= selectedTimesheetDate
-    );
-  });
+      <div
+        key={dept}
+        style={{
+          background: '#ffffff',
+          border: '1px solid #cbd5e1',
+          padding: '20px',
+          borderRadius: '8px',
+          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
+        }}
+      >
+        <h3 style={{
+          margin: '0 0 5px 0',
+          color: '#1e293b',
+          borderBottom: '2px solid #2563eb',
+          paddingBottom: '6px'
+        }}>
+          🏢 {dept}
+        </h3>
 
-  return !onAnnualLeave;
-}).length;
+        <p style={{ margin: '6px 0 12px 0', color: '#0f172a', fontSize: '14px' }}>
+          Workers with attendance: <strong>{totalAttendanceCount}</strong>
+        </p>
 
-const absentCount = desigWorkers.filter(w => {
-  const status = getAttendanceStatus(w)
-    .toLowerCase()
-    .replace(/_/g, ' ')
-    .replace(/-/g, ' ')
-    .trim();
+        <hr style={{
+          border: '0',
+          borderTop: '1px solid #e2e8f0',
+          margin: '10px 0'
+        }} />
 
-  if (status !== 'absent') return false;
+        {designationsInDept.map(desig => {
+          const desigWorkers = deptWorkers.filter(
+            w => (w.designation || 'Worker') === desig
+          );
 
-  const workerKey = String(w.worker_id ?? w.id);
+          const desigAttendanceWorkers = desigWorkers.filter(w =>
+            Boolean(attendanceData[selectedTimesheetDate]?.[w.id])
+          );
 
-  const onAnnualLeave = annualLeaveList.some(leave => {
-    const sameWorker = String(leave.worker_id) === workerKey;
-    const start = leave.start_date;
-    const end = leave.actual_return;
+          const getAttendanceStatus = (worker) =>
+            attendanceData[selectedTimesheetDate]?.[worker.id]?.status || '';
 
-    const isStillOnLeave =
-      leave.status !== 'Returned' &&
-      (!end || end === 'On Leave');
+          const presentCount = desigWorkers.filter(w => {
+            const status = getAttendanceStatus(w).toLowerCase().replace(/_/g, ' ').replace(/-/g, ' ').trim();
+            if (status !== 'present') return false;
+            const workerKey = String(w.id);
+            const onAnnualLeave = annualLeaveList.some(leave => {
+              const sameWorker = String(leave.worker_id) === workerKey;
+              const start = leave.start_date;
+              const end = leave.actual_return;
+              const isStillOnLeave = leave.status !== 'Returned' && (!end || end === 'On Leave' || selectedTimesheetDate < end);
+              return sameWorker && isStillOnLeave && start && start <= selectedTimesheetDate;
+            });
+            return !onAnnualLeave;
+          }).length;
 
-    return (
-      sameWorker &&
-      isStillOnLeave &&
-      start &&
-      start <= selectedTimesheetDate
-    );
-  });
+          const absentCount = desigWorkers.filter(w => {
+            const status = getAttendanceStatus(w).toLowerCase().replace(/_/g, ' ').replace(/-/g, ' ').trim();
+            if (status !== 'absent') return false;
+            const workerKey = String(w.worker_id ?? w.id);
+            const onAnnualLeave = annualLeaveList.some(leave => {
+              const sameWorker = String(leave.worker_id) === workerKey;
+              const start = leave.start_date;
+              const end = leave.actual_return;
+              const isStillOnLeave = leave.status !== 'Returned' && (!end || end === 'On Leave');
+              return sameWorker && isStillOnLeave && start && start <= selectedTimesheetDate;
+            });
+            return !onAnnualLeave;
+          }).length;
 
-  return !onAnnualLeave;
-}).length;
+          const annualLeaveCount = desigWorkers.filter(w => {
+            const status = getAttendanceStatus(w).toLowerCase().replace(/_/g, ' ').replace(/-/g, ' ').trim();
+            const workerKey = String(w.worker_id ?? w.id);
+            const onAnnualLeave = annualLeaveList.some(leave => {
+              const sameWorker = String(leave.worker_id) === workerKey;
+              const start = leave.start_date;
+              const isStillOnLeave = leave.status !== 'Returned' && (!leave.actual_return || leave.actual_return === 'On Leave');
+              return sameWorker && isStillOnLeave && start && start <= selectedTimesheetDate;
+            });
+            return status === 'annual leave' || onAnnualLeave;
+          }).length;
 
-const annualLeaveCount = desigWorkers.filter(w => {
-  const status = getAttendanceStatus(w)
-    .toLowerCase()
-    .replace(/_/g, ' ')
-    .replace(/-/g, ' ')
-    .trim();
+          const otherLeaveCount = desigWorkers.filter(
+            w => ['leave', 'sick leave', 'sick_leave', 'other leave'].includes(
+              getAttendanceStatus(w).toLowerCase()
+            )
+          ).length;
 
-  const workerKey = String(w.worker_id ?? w.id);
+          const desigKey = `${dept}-${desig}`;
+          const currentFilter = selectedDesignationStatus[desigKey] || 'All';
 
-  const onAnnualLeave = annualLeaveList.some(leave => {
-    const sameWorker = String(leave.worker_id) === workerKey;
+          // WORKERS FILTER LOGIC
+          const filteredWorkersList = desigAttendanceWorkers.filter(w => {
+            if (currentFilter === 'All') return true;
+            const status = getAttendanceStatus(w).toLowerCase();
+            if (currentFilter === 'Present') return status.includes('present');
+            if (currentFilter === 'Absent') return status.includes('absent');
+            if (currentFilter === 'Annual Leave') return status.includes('annual leave') || status.includes('annual');
+            if (currentFilter === 'Other Leave') return status.includes('leave') || status.includes('sick');
+            return true;
+          });
 
-    const start = leave.start_date;
-    const isStillOnLeave =
-      leave.status !== 'Returned' &&
-      (!leave.actual_return || leave.actual_return === 'On Leave');
+          return (
+            <div
+              key={desig}
+              style={{
+                marginTop: '10px',
+                backgroundColor: '#f8fafc',
+                padding: '10px',
+                borderRadius: '6px',
+                border: '1px solid #e2e8f0'
+              }}
+            >
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: '8px',
+                fontSize: '13px',
+                fontWeight: 'bold',
+                color: '#1e293b',
+                marginBottom: '6px'
+              }}>
+                <span>🛠️ {desig}</span>
+                <span style={{
+                  backgroundColor: '#2563eb',
+                  color: '#fff',
+                  padding: '2px 7px',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  whiteSpace: 'nowrap'
+                }}>
+                  {desigAttendanceWorkers.length} Attended
+                </span>
+              </div>
 
-    return (
-      sameWorker &&
-      isStillOnLeave &&
-      start &&
-      start <= selectedTimesheetDate
-    );
-  });
+              {sitesList.map(site => {
+                const siteWorkersCount = desigWorkers.filter(w => {
+                  const attendanceRecord = attendanceData[selectedTimesheetDate]?.[w.id];
+                  return Boolean(attendanceRecord) &&
+                    (attendanceRecord.site || attendanceRecord.work_site) === site;
+                }).length;
 
-  return status === 'annual leave' || onAnnualLeave;
-}).length;
-const otherLeaveCount = desigWorkers.filter(
-  w => ['leave', 'sick leave', 'sick_leave', 'other leave'].includes(
-    getAttendanceStatus(w).toLowerCase()
-  )
-).length;
+                if (siteWorkersCount === 0) return null;
 
-              return (
-                <div
-                  key={desig}
+                return (
+                  <div
+                    key={site}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: '8px',
+                      fontSize: '12px',
+                      paddingLeft: '8px',
+                      color: '#334155',
+                      margin: '5px 0',
+                      borderLeft: '3px solid #0ea5e9'
+                    }}
+                  >
+                    <span>📍 {site}</span>
+                    <strong style={{ color: '#0284c7', fontSize: '13px' }}>
+                      {siteWorkersCount} Workers
+                    </strong>
+                  </div>
+                );
+              })}
+
+              {/* CLICKABLE STATUS BADGES */}
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '6px',
+                marginTop: '10px',
+                marginBottom: '10px'
+              }}>
+                <span 
+                  onClick={() => setSelectedDesignationStatus(prev => ({ ...prev, [desigKey]: prev[desigKey] === 'Present' ? 'All' : 'Present' }))}
                   style={{
-                    marginTop: '10px',
-                    backgroundColor: '#f8fafc',
-                    padding: '10px',
-                    borderRadius: '6px',
-                    border: '1px solid #e2e8f0'
+                    background: currentFilter === 'Present' ? '#166534' : '#dcfce7',
+                    color: currentFilter === 'Present' ? '#ffffff' : '#166534',
+                    padding: '5px 8px',
+                    borderRadius: '5px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    border: currentFilter === 'Present' ? '1px solid #166534' : '1px solid transparent'
                   }}
                 >
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: '8px',
-                    fontSize: '13px',
-                    fontWeight: 'bold',
-                    color: '#1e293b',
-                    marginBottom: '6px'
-                  }}>
-                    <span>🛠️ {desig}</span>
-                    <span style={{
-                      backgroundColor: '#2563eb',
-                      color: '#fff',
-                      padding: '2px 7px',
-                      borderRadius: '4px',
-                      fontSize: '11px',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {desigAttendanceWorkers.length} Attended
-                    </span>
+                  Present: {presentCount}
+                </span>
+
+                <span 
+                  onClick={() => setSelectedDesignationStatus(prev => ({ ...prev, [desigKey]: prev[desigKey] === 'Absent' ? 'All' : 'Absent' }))}
+                  style={{
+                    background: currentFilter === 'Absent' ? '#991b1b' : '#fee2e2',
+                    color: currentFilter === 'Absent' ? '#ffffff' : '#991b1b',
+                    padding: '5px 8px',
+                    borderRadius: '5px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    border: currentFilter === 'Absent' ? '1px solid #991b1b' : '1px solid transparent'
+                  }}
+                >
+                  Absent: {absentCount}
+                </span>
+
+                <span 
+                  onClick={() => setSelectedDesignationStatus(prev => ({ ...prev, [desigKey]: prev[desigKey] === 'Annual Leave' ? 'All' : 'Annual Leave' }))}
+                  style={{
+                    background: currentFilter === 'Annual Leave' ? '#92400e' : '#fef3c7',
+                    color: currentFilter === 'Annual Leave' ? '#ffffff' : '#92400e',
+                    padding: '5px 8px',
+                    borderRadius: '5px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    border: currentFilter === 'Annual Leave' ? '1px solid #92400e' : '1px solid transparent'
+                  }}
+                >
+                  Annual Leave: {annualLeaveCount}
+                </span>
+
+                <span 
+                  onClick={() => setSelectedDesignationStatus(prev => ({ ...prev, [desigKey]: prev[desigKey] === 'Other Leave' ? 'All' : 'Other Leave' }))}
+                  style={{
+                    background: currentFilter === 'Other Leave' ? '#1e40af' : '#dbeafe',
+                    color: currentFilter === 'Other Leave' ? '#ffffff' : '#1e40af',
+                    padding: '5px 8px',
+                    borderRadius: '5px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    border: currentFilter === 'Other Leave' ? '1px solid #1e40af' : '1px solid transparent'
+                  }}
+                >
+                  Other Leave: {otherLeaveCount}
+                </span>
+
+                {currentFilter !== 'All' && (
+                  <span 
+                    onClick={() => setSelectedDesignationStatus(prev => ({ ...prev, [desigKey]: 'All' }))}
+                    style={{ fontSize: '12px', color: '#2563eb', cursor: 'pointer', alignSelf: 'center', textDecoration: 'underline' }}
+                  >
+                    Show All
+                  </span>
+                )}
+              </div>
+
+              {/* FILTERED WORKERS TABLE */}
+              <div style={{ marginTop: '8px', borderTop: '1px solid #e2e8f0', paddingTop: '6px', overflowX: 'auto' }}>
+                {filteredWorkersList.length === 0 ? (
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '5px', padding: '5px' }}>
+                    {desigAttendanceWorkers.length === 0 ? 'No attendance saved for this date' : `No workers found for "${currentFilter}"`}
                   </div>
+                ) : (
+                  <table style={tableStyle}>
+                    <thead>
+                      <tr>
+                        <th style={thStyle}>Worker Name</th>
+                        <th style={thStyle}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredWorkersList.map(worker => (
+                        <tr key={worker.id}>
+                          <td style={tdStyle}>👤 {worker.name || worker.worker_name}</td>
+                          <td style={{ ...tdStyle, fontWeight: '600', color: '#0f172a' }}>
+                            {getAttendanceStatus(worker)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
 
-                  {sitesList.map(site => {
-                    const siteWorkersCount = desigWorkers.filter(w => {
-                      const attendanceRecord =
-                        attendanceData[selectedTimesheetDate]?.[w.id];
-
-                      return Boolean(attendanceRecord) &&
-                        (attendanceRecord.site || attendanceRecord.work_site) === site;
-                    }).length;
-
-                    if (siteWorkersCount === 0) return null;
-
-                    return (
-                      <div
-                        key={site}
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          gap: '8px',
-                          fontSize: '12px',
-                          paddingLeft: '8px',
-                          color: '#334155',
-                          margin: '5px 0',
-                          borderLeft: '3px solid #0ea5e9'
-                        }}
-                      >
-                        <span>📍 {site}</span>
-                        <strong style={{ color: '#0284c7', fontSize: '13px' }}>
-                          {siteWorkersCount} Workers
-                        </strong>
-                      </div>
-                    );
-                  })}
-
-                  <div style={{
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: '6px',
-  marginTop: '10px',
-  marginBottom: '10px'
-}}>
-  <span style={{
-    background: '#dcfce7',
-    color: '#166534',
-    padding: '5px 8px',
-    borderRadius: '5px',
-    fontSize: '12px',
-    fontWeight: '600'
-  }}>
-    Present: {presentCount}
-  </span>
-
-  <span style={{
-    background: '#fee2e2',
-    color: '#991b1b',
-    padding: '5px 8px',
-    borderRadius: '5px',
-    fontSize: '12px',
-    fontWeight: '600'
-  }}>
-    Absent: {absentCount}
-  </span>
-
-  <span style={{
-    background: '#fef3c7',
-    color: '#92400e',
-    padding: '5px 8px',
-    borderRadius: '5px',
-    fontSize: '12px',
-    fontWeight: '600'
-  }}>
-    Annual Leave: {annualLeaveCount}
-  </span>
-
-  <span style={{
-    background: '#dbeafe',
-    color: '#1e40af',
-    padding: '5px 8px',
-    borderRadius: '5px',
-    fontSize: '12px',
-    fontWeight: '600'
-  }}>
-    Other Leave: {otherLeaveCount}
-  </span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  })}
 </div>
-                  {desigAttendanceWorkers.length === 0 && (
-                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '5px' }}>
-                      No attendance saved for this date
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
-    </div>
-  </>
-)}
 
 {/* Modal / Popup for Specific Department Workers */}
 {modalDepartment && (
