@@ -85,6 +85,7 @@ export default function App() {
   const [leaveExpectedReturnDate, setLeaveExpectedReturnDate] = useState('');
   const [leaveActualReturnDate, setLeaveActualReturnDate] = useState('');
   const [penaltyPerMonthDays, setPenaltyPerMonthDays] = useState(5);
+  const [selectedDesignationStatus, setSelectedDesignationStatus] = useState({});
   
   // 12 Months dynamic deduction days state
   const [monthlyDeductions, setMonthlyDeductions] = useState({});
