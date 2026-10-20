@@ -640,22 +640,55 @@ function getAnnualLeaveForWorker(workerId, date) {
   }
 
 async function fetchDesignations() {
-  const { data, error } = await supabase
+  const defaultNames = [
+    'Carpenter', 'Carpenter Helper', 'Steel Fixer', 'Steel Fixer Helper',
+    'Plumber', 'Mason', 'Electrician', 'Painter', 'Helper', 'Foreman',
+    'Driver', 'Office Boy', 'Timekeeper'
+  ];
+
+  // Keep the database as the source of truth. Inactive rows are retained as
+  // tombstones so a deleted default designation does not return after refresh.
+  const { data: allRows, error: readError } = await supabase
     .from('designations')
-    .select('*')
+    .select('id,name,is_active')
     .order('name', { ascending: true });
 
-  if (error) {
-    console.error('Error fetching designations:', error.message);
+  if (readError) {
+    console.error('Error fetching designations:', readError.message);
+    alert('Designations load nahi huin. Supabase mein designations.is_active column check karein: ' + readError.message);
     return;
   }
 
-  if (data) {
-    const savedNames = data.map(item => item.name);
+  const existingNames = (allRows || []).map(item => String(item.name || '').trim().toLowerCase());
+  const missingDefaults = defaultNames
+    .filter(name => !existingNames.includes(name.toLowerCase()))
+    .map(name => ({ name, is_active: true }));
 
-    setDesignationsList(prev => [
-      ...new Set([...prev, ...savedNames])
-    ]);
+  if (missingDefaults.length) {
+    const { error: seedError } = await supabase.from('designations').insert(missingDefaults);
+    if (seedError) {
+      console.error('Could not initialize default designations:', seedError.message);
+    }
+  }
+
+  const { data: activeRows, error: activeError } = await supabase
+    .from('designations')
+    .select('name,is_active')
+    .eq('is_active', true)
+    .order('name', { ascending: true });
+
+  if (activeError) {
+    console.error('Error loading active designations:', activeError.message);
+    alert('Designations load nahi huin: ' + activeError.message);
+    return;
+  }
+
+  const names = [...new Set((activeRows || [])
+    .map(item => String(item.name || '').trim())
+    .filter(Boolean))];
+  setDesignationsList(names);
+  if (names.length && !names.some(name => name.toLowerCase() === String(designation || '').trim().toLowerCase())) {
+    setDesignation(names[0]);
   }
 }
 
@@ -3158,7 +3191,7 @@ await handleSingleAttendanceChange(
 
     const { error } = await supabase
       .from('designations')
-      .insert([{ name: value }]);
+      .insert([{ name: value, is_active: true }]);
 
     if (error) {
       alert('Designation save nahi hui: ' + error.message);
@@ -3188,19 +3221,34 @@ await handleSingleAttendanceChange(
     if (!selected) return alert('Pehle delete karne ke liye designation select karein.');
     if (!window.confirm(`Kya aap designation "${selected}" ko list se delete karna chahte hain? Existing workers ka record delete nahi hoga.`)) return;
 
-    const { error } = await supabase
+    // Soft-delete every capitalization variant. Keeping the row inactive
+    // prevents built-in/default designations from being added back on refresh.
+    const { data: changedRows, error } = await supabase
       .from('designations')
-      .delete()
-      .ilike('name', selected);
+      .update({ is_active: false })
+      .ilike('name', selected)
+      .select('id,name,is_active');
 
     if (error) {
-      alert('Designation delete nahi hui: ' + error.message);
+      alert('Designation delete nahi hui: ' + error.message + '\nSupabase SQL Editor mein is_active column add karna zaroori hai.');
       return;
+    }
+
+    if (!changedRows || changedRows.length === 0) {
+      // If it was a built-in name not yet stored in the DB, write an inactive
+      // tombstone so the name stays deleted after reload on all devices.
+      const { error: tombstoneError } = await supabase
+        .from('designations')
+        .insert([{ name: selected, is_active: false }]);
+      if (tombstoneError) {
+        alert('Designation database se delete nahi hui: ' + tombstoneError.message);
+        return;
+      }
     }
 
     setDesignationsList(prev => prev.filter(d => d.trim().toLowerCase() !== selected.toLowerCase()));
     setDesignation('');
-    alert('Designation list se delete ho gayi. Existing workers ke records safe hain.');
+    alert('Designation delete ho gayi. Worker records aur attendance delete nahi hue.');
   }}
   style={{
     padding: '8px 12px',
