@@ -1287,7 +1287,13 @@ async function handleToggleHolidayDate() {
     setName(worker.name);
     setDepartment(worker.department || departmentsList[0]);
     setWorkSite(worker.work_site || sitesList[0]);
-    setDesignation(worker.designation || 'Worker');
+    const workerDesignation = String(worker.designation || 'Worker').trim() || 'Worker';
+    setDesignation(workerDesignation);
+    // Keep the worker's current designation selectable even if it was removed
+    // from the active designation list or differs only by capitalization.
+    setDesignationsList(prev => prev.some(d => String(d).trim().toLowerCase() === workerDesignation.toLowerCase())
+      ? prev
+      : [...prev, workerDesignation]);
     setMonthlySalary(worker.monthly_salary || (worker.daily_rate * totalDaysInCurrentMonth) || '');
     setReligion(worker.religion || 'Muslim');
     setLastReturnDate(worker.last_return_date || '');
@@ -1358,12 +1364,29 @@ async function handleToggleHolidayDate() {
     };
 
     if (editingWorkerId) {
-      const { error } = await supabase.from('workers').update(workerData).eq('id', editingWorkerId);
-      if (error) alert('Error: ' + error.message);
-      else {
-        alert('Worker updated successfully!');
-        resetWorkerForm();
-        fetchWorkers();
+      const targetWorkerId = editingWorkerId;
+      const { data: updatedRows, error } = await supabase
+        .from('workers')
+        .update(workerData)
+        .eq('id', targetWorkerId)
+        .select('id, name, designation');
+
+      if (error) {
+        alert('Worker update nahi hua: ' + error.message);
+      } else if (!updatedRows || updatedRows.length === 0) {
+        alert('Worker update confirm nahi hua. ID ' + targetWorkerId + ' par database row nahi mili ya update permission nahi hai. Supabase RLS/policies check karein.');
+        await fetchWorkers();
+      } else {
+        const savedWorker = updatedRows[0];
+        if (String(savedWorker.designation || '').trim().toLowerCase() !== String(workerData.designation || '').trim().toLowerCase()) {
+          alert('Designation database mein expected value se different save hui. Selected: ' + workerData.designation + ', Database: ' + (savedWorker.designation || 'blank'));
+          await fetchWorkers();
+        } else {
+          setWorkers(prev => prev.map(w => String(w.id) === String(targetWorkerId) ? { ...w, ...workerData } : w));
+          alert('Worker #' + targetWorkerId + ' updated successfully. Designation: ' + savedWorker.designation);
+          resetWorkerForm();
+          await fetchWorkers();
+        }
       }
     } else {
       const nextAutoId = workers.length > 0 ? Math.max(...workers.map(w => Number(w.id) || 0)) + 1 : 1;
