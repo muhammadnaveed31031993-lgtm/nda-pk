@@ -3491,7 +3491,7 @@ await handleSingleAttendanceChange(
        )}
 
        <div style={{
-         display: 'grid',
+         display: 'none',
          gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))',
          gap: '10px',
          marginBottom: '20px'
