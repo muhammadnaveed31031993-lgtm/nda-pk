@@ -2579,6 +2579,13 @@ const otherLeaveCount = desigWorkers.filter(
     fontSize: '12px',
     fontWeight: '600'
   }}>
+    <div style={{
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '6px',
+    marginTop: '10px',
+    marginBottom: '10px'
+  }}>
     <button onClick={() => {
     setAttendanceFilter('present');
     setLeaveFilter('all');
