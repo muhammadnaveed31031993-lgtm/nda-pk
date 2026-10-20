@@ -4983,23 +4983,24 @@ return monthlyRows.map((att, idx) => {
   </div>
 )}
       </main>
-     
-{/* Footer */}
-<div
-  style={{
-    width: '100%',
-    boxSizing: 'border-box',
-    textAlign: 'center',
-    padding: '12px',
-    marginTop: '20px',
-    backgroundColor: '#f1f5f9',
-    color: '#475569',
-    fontSize: '14px',
-    fontWeight: 'bold',
-    borderTop: '1px solid #cbd5e1'
-  }}
->
-</div>
+      </div>
+
+      {/* Footer */}
+      <div
+        style={{
+          width: '100%',
+          boxSizing: 'border-box',
+          textAlign: 'center',
+          padding: '12px',
+          marginTop: '20px',
+          backgroundColor: '#f1f5f9',
+          color: '#475569',
+          fontSize: '14px',
+          fontWeight: 'bold',
+          borderTop: '1px solid #cbd5e1'
+        }}
+      >
+      </div>
     </div>
   );
 }
