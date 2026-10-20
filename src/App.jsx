@@ -4982,8 +4982,8 @@ return monthlyRows.map((att, idx) => {
     </div>
   </div>
 )}
+        </div>
       </main>
-      </div>
 
       {/* Footer */}
       <div
@@ -5001,6 +5001,7 @@ return monthlyRows.map((att, idx) => {
         }}
       >
       </div>
+
     </div>
   );
 }
