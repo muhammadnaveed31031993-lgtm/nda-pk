@@ -10,9 +10,9 @@ const thStyle = { padding:'10px 8px', borderBottom:'1px solid #e2e8f0', color:'#
 const tdStyle = { padding:'10px 8px', borderBottom:'1px solid #f1f5f9', verticalAlign:'top' };
 
 export default function App() {
-  // Keep the login for this browser tab: refresh will restore it, while closing the tab
-  // normally clears sessionStorage. Do not use localStorage for persistent login.import React, { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient';
+  // Keep the login for this browser tab: refresh will restore it,
+  // while closing the tab normally clears sessionStorage.
+  // Do not use localStorage for persistent login.
 
 const dailyTimesheetPrintStyle = "@media print {.app-footer {\n  display: block !important;\n  visibility: visible !important;\n  position: static !important;\n  width: 100% !important;\n  text-align: center !important;\n  color: #000 !important;\n  background: #fff !important;\n  font-size: 12px !important;\n  margin-top: 20px !important;\n  padding: 10px !important;\n}\n  body * {\n    visibility: hidden !important;\n  }\n\n  .daily-timesheet-print,\n  .daily-timesheet-print * {\n    visibility: visible !important;\n  }\n\n  .daily-timesheet-print {\n    position: absolute !important;\n    left: 0 !important;\n    top: 0 !important;\n    width: 100% !important;\n    margin: 0 !important;\n    padding: 10px !important;\n    background: white !important;\n    color: black !important;\n  }\n\n  .daily-timesheet-print button {\n    display: none !important;\n  }\n\n  @page {\n    size: A4 landscape;\n    margin: 8mm;\n  }\n}";
 
