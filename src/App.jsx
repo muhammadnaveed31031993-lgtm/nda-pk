@@ -61,6 +61,7 @@ export default function App() {
   const [showMonthlyTimesheetModal, setShowMonthlyTimesheetModal] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); // 0 = Jan, 11 = Dec
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear()); // e.g. 2026
+  const [monthlyDepartmentFilter, setMonthlyDepartmentFilter] = useState('All');
   const [timesheetSearchQuery, setTimesheetSearchQuery] = useState(''); // 
   const [viewingWorkerTimesheet, setViewingWorkerTimesheet] = useState(null);
   // Annual Leave Tracking & Penalty States
@@ -104,7 +105,7 @@ export default function App() {
   const [cleanupAnnualLeaves, setCleanupAnnualLeaves] = useState(false);
   const [cleanupLoading, setCleanupLoading] = useState(false);
 
-  const [userRole, setUserRole] = useState({
+  const [userRole, setUserRole] = useState(() => session?.role || ({
     is_admin: true,
     assigned_department: 'All',
     assigned_site: 'All',
@@ -117,7 +118,7 @@ export default function App() {
     can_view_timesheet: true,
     can_edit_timesheet: true,
     can_view_payroll: true
-  });
+  }));
 
   const [selectedCurrency, setSelectedCurrency] = useState('AED');
   const [selectedDeptFilter, setSelectedDeptFilter] = useState('All');
@@ -759,16 +760,30 @@ async function fetchDesignations() {
 
   async function fetchWorkers() {
     setLoading(true);
-    const { data } = await supabase.from('workers').select('*').order('id', { ascending: true });
+    let query = supabase.from('workers').select('*').order('id', { ascending: true });
+    // Limit the staff browser's data query to its assigned scope (admin remains unrestricted).
+    if (!userRole.is_admin) {
+      const dept = String(userRole.assigned_department || 'Unassigned').trim();
+      const site = String(userRole.assigned_site || 'All').trim();
+      if (dept !== 'All') query = query.eq('department', dept);
+      if (site !== 'All') query = query.eq('work_site', site);
+    }
+    const { data, error } = await query;
+    if (error) console.error('Workers load error:', error.message);
     setWorkers(data || []);
     setLoading(false);
   }
 
 async function fetchAttendance() {
-  const { data, error } = await supabase
-    .from('attendance')
-    .select('*')
-    .order('date', { ascending: false });
+  let query = supabase.from('attendance').select('*').order('date', { ascending: false });
+  // Keep staff timesheet/dashboard data within their authorized department/site.
+  if (!userRole.is_admin) {
+    const dept = String(userRole.assigned_department || 'Unassigned').trim();
+    const site = String(userRole.assigned_site || 'All').trim();
+    if (dept !== 'All') query = query.eq('department', dept);
+    if (site !== 'All') query = query.eq('work_site', site);
+  }
+  const { data, error } = await query;
 
   if (error) {
     console.error('Attendance load error:', error.message);
@@ -1214,14 +1229,14 @@ async function handleToggleHolidayDate() {
       const staffRole = {
         is_admin: false,
         staff_id: resolvedAccount.staff_id || '',
-        assigned_department: resolvedAccount.assigned_department || 'All',
+        assigned_department: String(resolvedAccount.assigned_department || '').trim() || 'Unassigned',
         assigned_site: resolvedAccount.assigned_site || 'All',
         can_view_dashboard: resolvedAccount.can_view_dashboard ?? true,
         can_use_bulk: resolvedAccount.can_use_bulk ?? false,
         can_view_workers: resolvedAccount.can_view_workers ?? true,
         can_add_workers: resolvedAccount.can_add_workers ?? false,
-        can_edit_workers: resolvedAccount.can_edit_workers ?? false,
-        can_delete_workers: resolvedAccount.can_delete_workers ?? false,
+        can_edit_workers: false,
+        can_delete_workers: false,
         can_view_timesheet: resolvedAccount.can_view_timesheet ?? true,
         can_edit_timesheet: resolvedAccount.can_edit_timesheet ?? false,
         can_view_payroll: resolvedAccount.can_view_payroll ?? false
@@ -1675,6 +1690,10 @@ async function handleSingleAttendanceChange(
     throw new Error('Yeh worker aapki assigned department/site mein nahi hai.');
   }
   const previousRecord = attendanceData[dateStr]?.[workerId] || {};
+  const existingDbRecord = attendance.find(a => String(a.worker_id) === String(workerId) && String(a.date).slice(0,10) === String(dateStr).slice(0,10));
+  if (!userRole.is_admin && existingDbRecord) {
+    throw new Error('Staff sirf nayi entry kar sakta hai. Is worker ki is date ki entry pehle se mojood hai; edit permission admin ke paas hai.');
+  }
   const worker = workers.find(w => String(w.id) === String(workerId));
 
   const assignedSite =
@@ -1724,7 +1743,7 @@ if (error) {
   
 async function handleSaveSiteAttendance(e) {
   e.preventDefault();
-  if (!userRole.is_admin && !userRole.can_edit_timesheet && !userRole.can_use_bulk) return alert('Aapko attendance save karne ki permission nahi hai.');
+  if (!userRole.is_admin) return alert('Staff ko bulk overwrite ki permission nahi hai. Nayi entry Quick Entry se karein; existing records admin update karega.');
   if (!selectedTimesheetDate || !siteAttendanceSite) return alert('Date aur site select karein.');
   if (!siteAttendanceDepartment || siteAttendanceDepartment === 'All') return alert('Doosre department ki attendance ko affect hone se bachane ke liye ek specific department select karein.');
   const allowedWorkers = userRole.is_admin ? workers : filteredWorkers;
@@ -1797,8 +1816,8 @@ async function handleQuickAttendance(e) {
     String(w.id).trim().toLowerCase() === enteredId.toLowerCase()
   );
 
-  if (!worker) {
-    alert('Worker ID nahi mila. ID check karein.');
+  if (!worker || (!userRole.is_admin && !filteredWorkers.some(w => String(w.id) === String(worker.id)))) {
+    alert('Worker ID nahi mila ya yeh worker aapke assigned department/site mein nahi hai.');
     return;
   }
 
@@ -1841,6 +1860,8 @@ async function handleQuickAttendance(e) {
   async function handleMarkAttendance(workerId, status) {
     if (!userRole.is_admin && !userRole.can_edit_timesheet) return alert('Aapko timesheet edit karne ki permission nahi hai.');
     if (!userRole.is_admin && !filteredWorkers.some(w => String(w.id) === String(workerId))) return alert('Yeh worker aapke assigned scope mein nahi hai.');
+    const existingAttendanceRow = attendance.find(a => String(a.worker_id) === String(workerId) && String(a.date).slice(0,10) === String(selectedTimesheetDate).slice(0,10));
+    if (!userRole.is_admin && existingAttendanceRow) return alert('Staff sirf nayi entry kar sakta hai. Is date ki attendance pehle se mojood hai; edit admin karega.');
     const worker = workers.find(w => String(w.id) === String(workerId));
   const oldRecord = attendanceData[selectedTimesheetDate]?.[workerId] || {};
 
@@ -1880,7 +1901,7 @@ const otHours = Number(
       staff_id: targetStaffId.trim(),
       user_email: targetEmail.trim().toLowerCase(),
       user_password: targetPassword.trim(),
-      assigned_department: 'All',
+      assigned_department: targetDept,
       assigned_site: targetSite,
       can_view_dashboard: permDashboard,
       can_use_bulk: permBulk,
@@ -1911,6 +1932,12 @@ const otHours = Number(
     const label = String(value || '').trim();
     return [label.toLowerCase(), label];
   }).filter(([key, label]) => key && label)).values());
+
+  const visibleDepartments = userRole.is_admin
+    ? uniqueDepartments
+    : uniqueDepartments.filter(d => userRole.assigned_department === 'All' &&
+        (userRole.can_view_workers || userRole.can_view_timesheet || userRole.can_view_payroll) ||
+        String(d).trim().toLowerCase() === String(userRole.assigned_department || '').trim().toLowerCase());
 
   const filteredWorkers = workers.filter(w => {
     const userDeptScope = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
@@ -2003,12 +2030,12 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
   const payrollWorkers = (userRole.is_admin ? workers : filteredWorkers).filter(worker => {
     const workerDepartment = String(worker.department || '').trim().toLowerCase();
     const selectedPayrollDepartment = String(payrollDepartment || 'All').trim().toLowerCase();
-    const selectedGlobalDepartment = String(selectedDeptFilter || 'All').trim().toLowerCase();
-    const selectedGlobalSite = String(selectedSiteFilter || 'All').trim().toLowerCase();
+    const assignedDept = String(userRole.assigned_department || 'All').trim().toLowerCase();
+    const assignedSite = String(userRole.assigned_site || 'All').trim().toLowerCase();
     const payrollDeptMatch = selectedPayrollDepartment === 'all' || workerDepartment === selectedPayrollDepartment;
-    const globalDeptMatch = selectedGlobalDepartment === 'all' || workerDepartment === selectedGlobalDepartment;
-    const globalSiteMatch = selectedGlobalSite === 'all' || String(worker.work_site || '').trim().toLowerCase() === selectedGlobalSite;
-    return payrollDeptMatch && globalDeptMatch && globalSiteMatch;
+    const staffDeptMatch = userRole.is_admin || assignedDept === 'all' || workerDepartment === assignedDept;
+    const staffSiteMatch = userRole.is_admin || assignedSite === 'all' || String(worker.work_site || '').trim().toLowerCase() === assignedSite;
+    return payrollDeptMatch && staffDeptMatch && staffSiteMatch;
   });
 
   payrollWorkers.forEach(worker => {
@@ -2266,7 +2293,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         {(userRole.is_admin || userRole.can_view_payroll) && (
           <button onClick={() => setActiveTab('payroll')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'payroll' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>💵 Payroll</button>
         )}
-        <button onClick={() => setActiveTab('changepass')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'changepass' ? '#0284c7' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🔑 Change Password</button>
+        {userRole.is_admin && <button onClick={() => setActiveTab('changepass')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'changepass' ? '#0284c7' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🔑 Change Password</button>}
         {userRole.is_admin && (
           <button onClick={() => setActiveTab('sites')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'sites' ? '#059669' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🏗️ Working Sites</button>
         )}
@@ -2321,7 +2348,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
               <option value="PKR">PKR</option>
               <option value="USD">USD</option>
             </select>
-            <button onClick={() => window.print()} style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>Print Page</button>
+            {userRole.is_admin && <button onClick={() => window.print()} style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>Print Page</button>}
           </div>
         </div>
         
@@ -2330,7 +2357,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
   <>
     <section style={{background:'linear-gradient(120deg,#0f172a 0%,#1d4ed8 65%,#0e7490 100%)',borderRadius:18,padding:'24px clamp(16px,3vw,30px)',color:'#fff',marginBottom:20,boxShadow:'0 12px 30px #1e3a8a20',display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,flexWrap:'wrap'}}>
       <div><div style={{fontSize:11,letterSpacing:3,fontWeight:800,color:'#bae6fd'}}>NDA-PK · HR CONTROL CENTER</div><h2 style={{fontSize:'clamp(23px,3vw,32px)',margin:'8px 0'}}>Workforce Overview</h2><p style={{margin:0,color:'#dbeafe',fontSize:14}}>Attendance, site deployment and payroll at a glance.</p></div>
-      <div style={{display:'flex',gap:10,flexWrap:'wrap'}}><label style={{fontSize:12,color:'#dbeafe'}}>Dashboard Date<input type="date" value={selectedTimesheetDate} onChange={e=>setSelectedTimesheetDate(e.target.value)} style={{display:'block',marginTop:5,padding:'9px 10px',borderRadius:8,border:'1px solid #93c5fd',background:'#fff',color:'#0f172a'}}/></label><button onClick={()=>setShowMonthlyTimesheetModal(true)} style={{alignSelf:'end',padding:'10px 13px',background:'#fff',color:'#1d4ed8',border:0,borderRadius:9,fontWeight:800,cursor:'pointer'}}>📊 Monthly Report</button></div>
+      <div style={{display:'flex',gap:10,flexWrap:'wrap'}}><label style={{fontSize:12,color:'#dbeafe'}}>Dashboard Date<input type="date" value={selectedTimesheetDate} onChange={e=>setSelectedTimesheetDate(e.target.value)} style={{display:'block',marginTop:5,padding:'9px 10px',borderRadius:8,border:'1px solid #93c5fd',background:'#fff',color:'#0f172a'}}/></label> {(userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_workers) && <button onClick={()=>setShowMonthlyTimesheetModal(true)} style={{alignSelf:'end',padding:'10px 13px',background:'#fff',color:'#1d4ed8',border:0,borderRadius:9,fontWeight:800,cursor:'pointer'}}>📊 Monthly Report</button>}</div>
     </section>
     {/* Stats Grid */}
     <div style={{
@@ -2383,6 +2410,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       )}
     </div>
 
+    {(userRole.is_admin || userRole.can_view_workers || userRole.can_view_timesheet) && <>
     {/* Department & Designation Attendance Breakdown */}
     <h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#1e293b' }}>
       Workers by Trade & Site — {selectedTimesheetDate}
@@ -2626,6 +2654,8 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       })}
     </div>
 
+    </>}
+
 {attendanceListModal && (
          <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
            <div style={{ background: '#fff', borderRadius: 12, padding: 20, width: 'min(850px, 96vw)', maxHeight: '85vh', overflow: 'auto', boxShadow: '0 20px 50px rgba(0,0,0,.25)' }}>
@@ -2780,9 +2810,9 @@ style={{
 
       <div>
         <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Department</label>
-        <select value={bulkDepartment} onChange={e => setBulkDepartment(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-          <option value="All">All Departments</option>
-          {uniqueDepartments.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
+        <select value={userRole.is_admin ? bulkDepartment : userRole.assigned_department} onChange={e => setBulkDepartment(e.target.value)} disabled={!userRole.is_admin} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+          {userRole.is_admin && <option value="All">All Departments</option>}
+          {visibleDepartments.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
         </select>
       </div>
 
@@ -2848,7 +2878,7 @@ style={{
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '12px' }}>
           <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Attendance Date</label><input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }} /></div>
           <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Working Site</label><select value={siteAttendanceSite} onChange={e => setSiteAttendanceSite(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{sitesList.map(site => <option key={site} value={site}>{site}</option>)}</select></div>
-          <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Department</label><select value={siteAttendanceDepartment} onChange={e => setSiteAttendanceDepartment(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{uniqueDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}</select></div>
+          <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Department</label><select value={siteAttendanceDepartment} onChange={e => setSiteAttendanceDepartment(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{visibleDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}</select></div>
         </div>
         <label style={{ display: 'block', fontWeight: 'bold', fontSize: '12px', marginTop: 12 }}>{isHolidayDate(selectedTimesheetDate) ? 'Holiday Duty Workers — ID No.' : 'Present Workers — ID No.'}</label>
         <textarea value={siteAttendanceIds} onChange={e => setSiteAttendanceIds(e.target.value)} rows={3} placeholder={'Example: 101, 102, 108\n109\n115'} style={{ ...fieldStyle, marginTop: 5, resize: 'vertical' }} />
@@ -3167,8 +3197,8 @@ await handleSingleAttendanceChange(
             </div>
             <div>
               <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Department</label>
-              <select value={department} onChange={e => setDepartment(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                {uniqueDepartments.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
+              <select value={userRole.is_admin ? department : userRole.assigned_department} onChange={e => setDepartment(e.target.value)} disabled={!userRole.is_admin} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                {visibleDepartments.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
               </select>
             </div>
             <div>
@@ -3724,7 +3754,7 @@ await handleSingleAttendanceChange(
                 <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Department</label>
                 <select value={dailyTimesheetDepartment} onChange={e => setDailyTimesheetDepartment(e.target.value)} style={{ padding: '9px', minWidth: '200px', border: '1px solid #cbd5e1', borderRadius: '5px' }}>
                   <option value="All">All Departments</option>
-                  {uniqueDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
+                  {visibleDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
                 </select>
               </div>
             </div>
@@ -3850,7 +3880,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
             </div>
 
             <div style={{ marginTop: '15px' }}>
-              <button
+              {userRole.is_admin && <button
                 onClick={() => window.print()}
                 style={{
                   padding: '10px 18px',
@@ -3863,7 +3893,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
                 }}
               >
                 🖨️ Print / Save PDF
-              </button>
+              </button>}
             </div>
           </div>
         )}
@@ -3949,7 +3979,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
     >
       <h3 style={{ margin: 0 }}>📋 Monthly Sheet</h3>
 
-      <button
+      {userRole.is_admin && <button
         onClick={() => window.print()}
         style={{
           backgroundColor: '#2563eb',
@@ -3962,16 +3992,16 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
         }}
       >
         🖨️ Print / Save as PDF
-      </button>
+      </button>}
     </div>
 
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 15 }}>
       <div style={{ fontWeight: 'bold' }}>Monthly Salary & Overtime Sheet</div>
       <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
         Department:
-        <select value={payrollDepartment} onChange={e => setPayrollDepartment(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6 }}>
+        <select value={userRole.is_admin ? payrollDepartment : userRole.assigned_department} onChange={e => setPayrollDepartment(e.target.value)} disabled={!userRole.is_admin} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6 }}>
           <option value="All">All Departments</option>
-          {uniqueDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
+          {visibleDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
         </select>
       </label>
     </div>
@@ -4064,7 +4094,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
   </div>
 )}
         {/* TAB 6: CHANGE LOGIN DETAILS */}
-        {activeTab === 'changepass' && (
+        {activeTab === 'changepass' && userRole.is_admin && (
           <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', maxWidth: '500px', margin: '0 auto' }}>
             <h3 style={{ margin: '0 0 8px 0', color: '#0f172a' }}>🔑 Change Login Details</h3>
             <p style={{ margin: '0 0 18px 0', color: '#64748b', fontSize: '13px' }}>
@@ -4181,6 +4211,13 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Password *</label>
                   <input type="text" value={targetPassword} onChange={e => setTargetPassword(e.target.value)} placeholder="Password" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Assigned Department</label>
+                  <select value={targetDept} onChange={e => setTargetDept(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                    <option value="All">All Departments (only if authorized)</option>
+                    {uniqueDepartments.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Assigned Site</label>
@@ -4732,12 +4769,12 @@ accruedDays = balance.toFixed(1);
           <div>
             <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Filter Department</label>
             <select 
-              value={selectedDeptFilter || 'All'} 
-              onChange={e => setSelectedDeptFilter(e.target.value)}
+              value={userRole.is_admin ? monthlyDepartmentFilter : userRole.assigned_department} 
+              onChange={e => setMonthlyDepartmentFilter(e.target.value)}
               style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', minWidth: '150px' }}
             >
               <option value="All">All Departments</option>
-              {uniqueDepartments.map((d, idx) => (
+              {visibleDepartments.map((d, idx) => (
                 <option key={idx} value={d}>{d}</option>
               ))}
             </select>
@@ -4766,12 +4803,12 @@ accruedDays = balance.toFixed(1);
           </div>
         </div>
 
-        <button 
+        {userRole.is_admin && <button 
           onClick={() => window.print()} 
           style={{ padding: '8px 16px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
         >
           🖨️ Print Full Report
-        </button>
+        </button>}
       </div>
 
       {/* Filtered & Searched Workers List Table */}
@@ -4782,13 +4819,14 @@ accruedDays = balance.toFixed(1);
               <th style={{ padding: '10px' }}>Worker ID & Name</th>
               <th style={{ padding: '10px' }}>Department</th>
               <th style={{ padding: '10px' }}>Working Site</th>
-              <th className="monthly-timesheet-actions" style={{ padding: '10px', textAlign: 'center' }}>Actions (View / Print / PDF)</th>
+              {userRole.is_admin && <th className="monthly-timesheet-actions" style={{ padding: '10px', textAlign: 'center' }}>Actions (View / Print / PDF)</th>}
             </tr>
           </thead>
           <tbody>
-            {filteredWorkers
+            {(userRole.is_admin ? workers : filteredWorkers)
               .filter(w => {
-                const matchesDept = selectedDeptFilter === 'All' || !selectedDeptFilter || w.department === selectedDeptFilter;
+                const reportDepartment = userRole.is_admin ? monthlyDepartmentFilter : userRole.assigned_department;
+                const matchesDept = reportDepartment === 'All' || !reportDepartment || String(w.department || '').trim().toLowerCase() === String(reportDepartment).trim().toLowerCase();
                 const matchesSearch = !timesheetSearchQuery || 
                   String(w.id).toLowerCase().includes(timesheetSearchQuery.toLowerCase()) || 
                   w.name.toLowerCase().includes(timesheetSearchQuery.toLowerCase());
@@ -4799,7 +4837,7 @@ accruedDays = balance.toFixed(1);
                 <td style={{ padding: '10px', fontWeight: 'bold' }}>#{w.id} - {w.name}</td>
                 <td style={{ padding: '10px' }}>{w.department}</td>
                 <td style={{ padding: '10px' }}>{w.work_site || sitesList[0]}</td>
-                <td style={{ padding: '10px', textAlign: 'center', display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                {userRole.is_admin && <td style={{ padding: '10px', textAlign: 'center', display: 'flex', gap: '8px', justifyContent: 'center' }}>
                   
                   {/* View Timesheet Button */}
                   <button 
@@ -4817,7 +4855,7 @@ accruedDays = balance.toFixed(1);
                     📄 Print / PDF
                   </button>
 
-                </td>
+                </td>}
               </tr>
             ))}
           </tbody>
@@ -4872,10 +4910,10 @@ accruedDays = balance.toFixed(1);
           </thead>
           <tbody>
             {(() => {
-        const workerAttendance = attendance.filter(
-  a =>
-    String(a.worker_id) ===
-    String(viewingWorkerTimesheet.id)
+        const workerAttendance = attendance.filter(a =>
+  String(a.worker_id) === String(viewingWorkerTimesheet.id) &&
+  String(a.date || '').slice(0, 4) === String(selectedYear) &&
+  Number(String(a.date || '').slice(5, 7)) === Number(selectedMonth + 1)
 );
 
 const monthlyRows = workerAttendance.map(att => {
@@ -4887,7 +4925,9 @@ const monthlyRows = workerAttendance.map(att => {
   return {
     ...att,
     status: annualLeave ? 'Annual Leave' : att.status,
-    overtime_hours: annualLeave ? 0 : (att.overtime_hours || 0)
+    overtime_hours: annualLeave ? 0 : (Number(att.overtime_hours) || 0),
+    contract_overtime_hours: annualLeave ? 0 : (Number(att.contract_overtime_hours) || 0),
+    total_overtime_hours: annualLeave ? 0 : ((Number(att.overtime_hours) || 0) + (Number(att.contract_overtime_hours) || 0))
   };
 });
 
@@ -4964,12 +5004,12 @@ return monthlyRows.map((att, idx) => {
 
       {/* Action Buttons inside View Modal */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-        <button 
+        {userRole.is_admin && <button 
           onClick={() => handlePrintWorkerMonthlyReport(viewingWorkerTimesheet)}
           style={{ padding: '8px 16px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
         >
           🖨️ Print / Download PDF
-        </button>
+        </button>}
         <button 
           onClick={() => setViewingWorkerTimesheet(null)}
           style={{ padding: '8px 16px', backgroundColor: '#64748b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
