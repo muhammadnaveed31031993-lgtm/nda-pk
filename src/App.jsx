@@ -16,6 +16,27 @@ const initialPayrollPeriod = (() => {
   return { month: base.getMonth(), year: base.getFullYear() };
 })();
 
+function dateToInputValue(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function getInitialPayrollRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - (now.getDate() < 16 ? 1 : 0), 16, 12, 0, 0);
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, 15, 12, 0, 0);
+  return { startDate: dateToInputValue(start), endDate: dateToInputValue(end) };
+}
+
+function shiftPayrollDateOneMonth(dateText) {
+  const [year, month, day] = String(dateText || '').slice(0, 10).split('-').map(Number);
+  if (!year || !month || !day) return '';
+  const targetMonthIndex = month; // zero-based index for the following month
+  const targetYear = year + Math.floor(targetMonthIndex / 12);
+  const targetMonth = targetMonthIndex % 12;
+  const targetDay = Math.min(day, new Date(targetYear, targetMonth + 1, 0).getDate());
+  return `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
+}
+
 function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [businesses, setBusinesses] = useState([]);
   const [businessId, setBusinessId] = useState('');
@@ -269,8 +290,9 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
  // Monthly Timesheet Modal & Date Selection States
   const [showMonthlyTimesheetModal, setShowMonthlyTimesheetModal] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState(initialPayrollPeriod.month); // payroll period starts on the 16th of this month
-  const [selectedYear, setSelectedYear] = useState(initialPayrollPeriod.year);
+  const [payrollStartDate, setPayrollStartDate] = useState(() => getInitialPayrollRange().startDate);
+  const [payrollEndDate, setPayrollEndDate] = useState(() => getInitialPayrollRange().endDate);
+  const [savingPayrollPeriodSettings, setSavingPayrollPeriodSettings] = useState(false);
   const [closedPayrollPeriods, setClosedPayrollPeriods] = useState([]);
   const [closingPayrollPeriod, setClosingPayrollPeriod] = useState(false);
   const [monthlyDepartmentFilter, setMonthlyDepartmentFilter] = useState('All');
@@ -782,8 +804,59 @@ const [newDesignation, setNewDesignation] = useState('');
 }, [session]);
 
  useEffect(() => {
-   if (session) fetchClosedPayrollPeriods();
+   if (session) {
+     fetchClosedPayrollPeriods();
+     fetchPayrollPeriodSettings();
+   }
  }, [session]);
+
+  async function fetchPayrollPeriodSettings() {
+    const { data, error } = await supabase
+      .from('payroll_period_settings')
+      .select('start_date,end_date')
+      .eq('setting_key', 'global')
+      .maybeSingle();
+    if (error) {
+      console.warn('Payroll date settings table is not ready yet. Run payroll_period_setup.sql:', error.message);
+      return;
+    }
+    if (data?.start_date && data?.end_date) {
+      setPayrollStartDate(String(data.start_date).slice(0, 10));
+      setPayrollEndDate(String(data.end_date).slice(0, 10));
+    }
+  }
+
+  async function savePayrollPeriodSettings(startDate = payrollStartDate, endDate = payrollEndDate, showMessage = true) {
+    if (!startDate || !endDate || startDate > endDate) {
+      if (showMessage) alert('Start Date aur End Date sahi select karein.');
+      return false;
+    }
+    if (!userRole.is_admin) {
+      if (showMessage) alert('Sirf Admin payroll dates change kar sakta hai.');
+      return false;
+    }
+    setSavingPayrollPeriodSettings(true);
+    try {
+      const payload = {
+        setting_key: 'global',
+        start_date: startDate,
+        end_date: endDate,
+        updated_by: session?.user?.email || '',
+        updated_at: new Date().toISOString()
+      };
+      const { error } = await supabase.from('payroll_period_settings').upsert([payload], { onConflict: 'setting_key' });
+      if (error) throw error;
+      setPayrollStartDate(startDate);
+      setPayrollEndDate(endDate);
+      if (showMessage) alert(`Payroll period save ho gaya: ${startDate} se ${endDate}. HR payroll reports ab isi date range ke mutabiq hain.`);
+      return true;
+    } catch (err) {
+      if (showMessage) alert('Payroll dates save nahi huin: ' + (err?.message || String(err)) + '\nSupabase mein payroll_period_settings table ka SQL setup chalayein.');
+      return false;
+    } finally {
+      setSavingPayrollPeriodSettings(false);
+    }
+  }
 
   async function fetchClosedPayrollPeriods() {
     const { data, error } = await supabase
@@ -807,7 +880,10 @@ const [newDesignation, setNewDesignation] = useState('');
 
   async function closeSelectedPayrollPeriod() {
     if (!userRole.is_admin) return alert('Sirf Admin salary month close kar sakta hai.');
+    if (!payrollStartDate || !payrollEndDate || payrollStartDate > payrollEndDate) return alert('Pehle valid Start Date aur End Date select karein.');
     if (currentPayrollPeriodClosed) return alert('Yeh salary period pehle se close hai.');
+    const overlapsClosed = closedPayrollPeriods.some(period => period.status === 'closed' && payrollPeriodStartDate <= String(period.end_date).slice(0, 10) && payrollPeriodEndDate >= String(period.start_date).slice(0, 10));
+    if (overlapsClosed) return alert('Selected date range kisi pehle se closed payroll period se overlap kar rahi hai. Pehle us closed period ko reopen karein, phir closing karein.');
     const confirmed = window.confirm(`Salary period ${payrollPeriodStartDate} se ${payrollPeriodEndDate} tak close karna hai?\n\nIs period ki attendance / overtime entries app se edit nahi ho sakein gi. Close hone ke baad agla salary period khul jayega.`);
     if (!confirmed) return;
     setClosingPayrollPeriod(true);
@@ -826,12 +902,13 @@ const [newDesignation, setNewDesignation] = useState('');
         .single();
       if (error) throw error;
       setClosedPayrollPeriods(prev => [...prev.filter(x => !(x.start_date === payload.start_date && x.end_date === payload.end_date)), data || payload]);
-      const next = new Date(selectedYear, selectedMonth + 1, 1);
-      const nextStartDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-16`;
-      setSelectedMonth(next.getMonth());
-      setSelectedYear(next.getFullYear());
+      const nextStartDate = shiftPayrollDateOneMonth(payrollPeriodStartDate);
+      const nextEndDate = shiftPayrollDateOneMonth(payrollPeriodEndDate);
+      setPayrollStartDate(nextStartDate);
+      setPayrollEndDate(nextEndDate);
       setSelectedTimesheetDate(nextStartDate);
-      alert(`Salary period close ho gaya: ${payload.start_date} se ${payload.end_date}. Agla period ${nextStartDate} se start kar diya hai.`);
+      const settingsSaved = await savePayrollPeriodSettings(nextStartDate, nextEndDate, false);
+      alert(`Salary period close ho gaya: ${payload.start_date} se ${payload.end_date}. Agla period ${nextStartDate} se ${nextEndDate} set kar diya hai.${settingsSaved ? '' : '\nNote: dates is session mein set hain, lekin global settings save nahi huin. SQL/table permission check karein.'}`);
     } catch (err) {
       alert('Salary period close nahi hua: ' + (err?.message || String(err)) + '\nPehle business/HR SQL setup mein payroll_periods table banayein.');
     } finally {
@@ -2335,12 +2412,12 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
  
   const salaryDataMap = {};
 
-  // Payroll period: 16th of selected month through 15th of following month.
-  const payrollPeriodStart = new Date(selectedYear, selectedMonth, 16, 12, 0, 0);
-  const payrollPeriodEnd = new Date(selectedYear, selectedMonth + 1, 15, 12, 0, 0);
+  // Global HR payroll period is selected by Admin from the Dashboard.
   const formatPayrollDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const payrollPeriodStartDate = formatPayrollDate(payrollPeriodStart);
-  const payrollPeriodEndDate = formatPayrollDate(payrollPeriodEnd);
+  const payrollPeriodStartDate = String(payrollStartDate || '').slice(0, 10);
+  const payrollPeriodEndDate = String(payrollEndDate || '').slice(0, 10);
+  const payrollPeriodStart = payrollPeriodStartDate ? new Date(`${payrollPeriodStartDate}T12:00:00`) : new Date();
+  const payrollPeriodEnd = payrollPeriodEndDate ? new Date(`${payrollPeriodEndDate}T12:00:00`) : new Date();
   const payrollMonthDays = Math.round((Date.UTC(payrollPeriodEnd.getFullYear(), payrollPeriodEnd.getMonth(), payrollPeriodEnd.getDate()) - Date.UTC(payrollPeriodStart.getFullYear(), payrollPeriodStart.getMonth(), payrollPeriodStart.getDate())) / 86400000) + 1;
   const currentPayrollPeriodClosed = closedPayrollPeriods.some(period => period.status === 'closed' && String(period.start_date).slice(0, 10) === payrollPeriodStartDate && String(period.end_date).slice(0, 10) === payrollPeriodEndDate);
 
@@ -2358,7 +2435,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
   });
 
   payrollWorkers.forEach(worker => {
-    // Include only records in the selected 16th-to-15th salary period.
+    // Include only records in the Admin-selected salary period.
     const monthlyRecords = attendance.filter(a => {
       const recordDate = String(a.date || '').slice(0, 10);
       return String(a.worker_id) === String(worker.id) && recordDate >= payrollPeriodStartDate && recordDate <= payrollPeriodEndDate;
@@ -2597,7 +2674,13 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
   <>
     <section style={{background:'linear-gradient(120deg,#0f172a 0%,#1d4ed8 65%,#0e7490 100%)',borderRadius:18,padding:'24px clamp(16px,3vw,30px)',color:'#fff',marginBottom:20,boxShadow:'0 12px 30px #1e3a8a20',display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,flexWrap:'wrap'}}>
       <div><div style={{fontSize:11,letterSpacing:3,fontWeight:800,color:'#bae6fd'}}>NDA-PK · HR CONTROL CENTER</div><h2 style={{fontSize:'clamp(23px,3vw,32px)',margin:'8px 0'}}>Workforce Overview</h2><p style={{margin:0,color:'#dbeafe',fontSize:14}}>Attendance, site deployment and payroll at a glance.</p></div>
-      <div style={{display:'flex',gap:10,flexWrap:'wrap'}}><label style={{fontSize:12,color:'#dbeafe'}}>Dashboard Date<input type="date" value={selectedTimesheetDate} onChange={e=>setSelectedTimesheetDate(e.target.value)} style={{display:'block',marginTop:5,padding:'9px 10px',borderRadius:8,border:'1px solid #93c5fd',background:'#fff',color:'#0f172a'}}/></label> {(userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_workers) && <button onClick={()=>setShowMonthlyTimesheetModal(true)} style={{alignSelf:'end',padding:'10px 13px',background:'#fff',color:'#1d4ed8',border:0,borderRadius:9,fontWeight:800,cursor:'pointer'}}>📊 Monthly Report</button>}</div>
+      <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'end'}}>
+        <label style={{fontSize:12,color:'#dbeafe'}}>Dashboard Date<input type="date" value={selectedTimesheetDate} onChange={e=>setSelectedTimesheetDate(e.target.value)} style={{display:'block',marginTop:5,padding:'9px 10px',borderRadius:8,border:'1px solid #93c5fd',background:'#fff',color:'#0f172a'}}/></label>
+        <label style={{fontSize:12,color:'#dbeafe'}}>Payroll Start Date<input type="date" value={payrollStartDate} onChange={e=>setPayrollStartDate(e.target.value)} disabled={!userRole.is_admin} style={{display:'block',marginTop:5,padding:'9px 10px',borderRadius:8,border:'1px solid #93c5fd',background:'#fff',color:'#0f172a'}}/></label>
+        <label style={{fontSize:12,color:'#dbeafe'}}>Payroll Closing Date<input type="date" value={payrollEndDate} min={payrollStartDate || undefined} onChange={e=>setPayrollEndDate(e.target.value)} disabled={!userRole.is_admin} style={{display:'block',marginTop:5,padding:'9px 10px',borderRadius:8,border:'1px solid #93c5fd',background:'#fff',color:'#0f172a'}}/></label>
+        {userRole.is_admin && <button type="button" disabled={savingPayrollPeriodSettings} onClick={()=>savePayrollPeriodSettings()} style={{alignSelf:'end',padding:'10px 13px',background:'#047857',color:'#fff',border:0,borderRadius:9,fontWeight:800,cursor:savingPayrollPeriodSettings?'wait':'pointer',opacity:savingPayrollPeriodSettings?0.7:1}}>{savingPayrollPeriodSettings?'Saving…':'Save Payroll Dates'}</button>}
+        {(userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_workers) && <button onClick={()=>setShowMonthlyTimesheetModal(true)} style={{alignSelf:'end',padding:'10px 13px',background:'#fff',color:'#1d4ed8',border:0,borderRadius:9,fontWeight:800,cursor:'pointer'}}>📊 Monthly Report</button>}
+      </div>
     </section>
     {/* Stats Grid */}
     <div style={{
@@ -4236,15 +4319,14 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
     </div>
 
     <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 15, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
-      <div style={{ minWidth: 220, fontWeight: 'bold' }}>Monthly Salary & Overtime Sheet<br/><span style={{fontSize:12,color:'#475569'}}>Salary Period: {payrollPeriodStartDate} to {payrollPeriodEndDate} ({payrollMonthDays} days)</span><br/><span style={{fontSize:12,color:currentPayrollPeriodClosed?'#b91c1c':'#047857'}}>{currentPayrollPeriodClosed ? 'CLOSED — editing blocked' : 'OPEN — attendance and OT can be entered'}</span></div>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Period start month:
-        <select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6 }}>
-          {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((m, idx) => <option key={idx} value={idx}>{m}</option>)}
-        </select>
+      <div style={{ minWidth: 220, fontWeight: 'bold' }}>Monthly Salary & Overtime Sheet<br/><span style={{fontSize:12,color:'#475569'}}>Selected Salary Period: {payrollPeriodStartDate} to {payrollPeriodEndDate} ({payrollMonthDays} days)</span><br/><span style={{fontSize:12,color:currentPayrollPeriodClosed?'#b91c1c':'#047857'}}>{currentPayrollPeriodClosed ? 'CLOSED — editing blocked' : 'OPEN — attendance and OT can be entered'}</span></div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Start Date:
+        <input type="date" value={payrollStartDate} disabled={!userRole.is_admin} onChange={e => setPayrollStartDate(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6 }} />
       </label>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Year:
-        <input type="number" value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6, width: 90 }} />
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Closing Date:
+        <input type="date" value={payrollEndDate} min={payrollStartDate || undefined} disabled={!userRole.is_admin} onChange={e => setPayrollEndDate(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6 }} />
       </label>
+      {userRole.is_admin && <button type="button" disabled={savingPayrollPeriodSettings} onClick={() => savePayrollPeriodSettings()} style={{ padding: '9px 12px', background: '#1d4ed8', color: '#fff', border: 0, borderRadius: 6, fontWeight: 800, cursor: 'pointer' }}>Save Dates</button>}
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Department:
         <select value={userRole.is_admin ? payrollDepartment : userRole.assigned_department} onChange={e => setPayrollDepartment(e.target.value)} disabled={!userRole.is_admin} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6 }}>
           <option value="All">All Departments</option>
@@ -5031,26 +5113,14 @@ accruedDays = balance.toFixed(1);
           </div>
 
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Salary Period Start Month (16th)</label>
-            <select 
-              value={selectedMonth} 
-              onChange={e => setSelectedMonth(Number(e.target.value))}
-              style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-            >
-              {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((m, idx) => (
-                <option key={idx} value={idx}>{m}</option>
-              ))}
-            </select>
+            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Payroll Start Date</label>
+            <input type="date" value={payrollStartDate} disabled={!userRole.is_admin} onChange={e => setPayrollStartDate(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
           </div>
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Select Year</label>
-            <input 
-              type="number" 
-              value={selectedYear} 
-              onChange={e => setSelectedYear(Number(e.target.value))}
-              style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', width: '90px' }} 
-            />
+            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Payroll Closing Date</label>
+            <input type="date" value={payrollEndDate} min={payrollStartDate || undefined} disabled={!userRole.is_admin} onChange={e => setPayrollEndDate(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
           </div>
+          {userRole.is_admin && <button type="button" onClick={() => savePayrollPeriodSettings()} disabled={savingPayrollPeriodSettings} style={{ padding: '8px 12px', background: '#047857', color: '#fff', border: 0, borderRadius: 6, fontWeight: 700, cursor: 'pointer' }}>Save Dates</button>}
         </div>
 
         {userRole.is_admin && <button 
