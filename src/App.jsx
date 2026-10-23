@@ -9,6 +9,13 @@ const tableStyle = { width:'100%', borderCollapse:'collapse', fontSize:13, textA
 const thStyle = { padding:'10px 8px', borderBottom:'1px solid #e2e8f0', color:'#475569', whiteSpace:'nowrap' };
 const tdStyle = { padding:'10px 8px', borderBottom:'1px solid #f1f5f9', verticalAlign:'top' };
 
+// Salary period runs from the 16th of one month through the 15th of the next.
+const initialPayrollPeriod = (() => {
+  const now = new Date();
+  const base = new Date(now.getFullYear(), now.getMonth() - (now.getDate() < 16 ? 1 : 0), 1);
+  return { month: base.getMonth(), year: base.getFullYear() };
+})();
+
 function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [businesses, setBusinesses] = useState([]);
   const [businessId, setBusinessId] = useState('');
@@ -262,8 +269,10 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
  // Monthly Timesheet Modal & Date Selection States
   const [showMonthlyTimesheetModal, setShowMonthlyTimesheetModal] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); // 0 = Jan, 11 = Dec
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear()); // e.g. 2026
+  const [selectedMonth, setSelectedMonth] = useState(initialPayrollPeriod.month); // payroll period starts on the 16th of this month
+  const [selectedYear, setSelectedYear] = useState(initialPayrollPeriod.year);
+  const [closedPayrollPeriods, setClosedPayrollPeriods] = useState([]);
+  const [closingPayrollPeriod, setClosingPayrollPeriod] = useState(false);
   const [monthlyDepartmentFilter, setMonthlyDepartmentFilter] = useState('All');
   const [timesheetSearchQuery, setTimesheetSearchQuery] = useState(''); // 
   const [viewingWorkerTimesheet, setViewingWorkerTimesheet] = useState(null);
@@ -772,6 +781,81 @@ const [newDesignation, setNewDesignation] = useState('');
   }
 }, [session]);
 
+ useEffect(() => {
+   if (session) fetchClosedPayrollPeriods();
+ }, [session]);
+
+  async function fetchClosedPayrollPeriods() {
+    const { data, error } = await supabase
+      .from('payroll_periods')
+      .select('*')
+      .order('start_date', { ascending: false });
+    if (error) {
+      console.warn('Payroll closing table is not ready yet. Run the supplied SQL setup:', error.message);
+      return;
+    }
+    setClosedPayrollPeriods(data || []);
+  }
+
+  function isPayrollDateClosed(dateStr) {
+    const date = String(dateStr || '').slice(0, 10);
+    if (!date) return false;
+    return closedPayrollPeriods.some(period =>
+      period.status === 'closed' && date >= String(period.start_date).slice(0, 10) && date <= String(period.end_date).slice(0, 10)
+    );
+  }
+
+  async function closeSelectedPayrollPeriod() {
+    if (!userRole.is_admin) return alert('Sirf Admin salary month close kar sakta hai.');
+    if (currentPayrollPeriodClosed) return alert('Yeh salary period pehle se close hai.');
+    const confirmed = window.confirm(`Salary period ${payrollPeriodStartDate} se ${payrollPeriodEndDate} tak close karna hai?\n\nIs period ki attendance / overtime entries app se edit nahi ho sakein gi. Close hone ke baad agla salary period khul jayega.`);
+    if (!confirmed) return;
+    setClosingPayrollPeriod(true);
+    try {
+      const payload = {
+        start_date: payrollPeriodStartDate,
+        end_date: payrollPeriodEndDate,
+        status: 'closed',
+        closed_by: session?.user?.email || '',
+        closed_at: new Date().toISOString()
+      };
+      const { data, error } = await supabase
+        .from('payroll_periods')
+        .upsert([payload], { onConflict: 'start_date,end_date' })
+        .select()
+        .single();
+      if (error) throw error;
+      setClosedPayrollPeriods(prev => [...prev.filter(x => !(x.start_date === payload.start_date && x.end_date === payload.end_date)), data || payload]);
+      const next = new Date(selectedYear, selectedMonth + 1, 1);
+      const nextStartDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-16`;
+      setSelectedMonth(next.getMonth());
+      setSelectedYear(next.getFullYear());
+      setSelectedTimesheetDate(nextStartDate);
+      alert(`Salary period close ho gaya: ${payload.start_date} se ${payload.end_date}. Agla period ${nextStartDate} se start kar diya hai.`);
+    } catch (err) {
+      alert('Salary period close nahi hua: ' + (err?.message || String(err)) + '\nPehle business/HR SQL setup mein payroll_periods table banayein.');
+    } finally {
+      setClosingPayrollPeriod(false);
+    }
+  }
+
+  async function reopenSelectedPayrollPeriod() {
+    if (!userRole.is_admin) return alert('Sirf Admin salary period reopen kar sakta hai.');
+    if (!currentPayrollPeriodClosed) return;
+    const confirmed = window.confirm(`Kya ${payrollPeriodStartDate} se ${payrollPeriodEndDate} ka closed salary period dobara open karna hai?`);
+    if (!confirmed) return;
+    const { data, error } = await supabase
+      .from('payroll_periods')
+      .update({ status: 'open', reopened_by: session?.user?.email || '', reopened_at: new Date().toISOString() })
+      .eq('start_date', payrollPeriodStartDate)
+      .eq('end_date', payrollPeriodEndDate)
+      .select()
+      .single();
+    if (error) return alert('Period reopen nahi hua: ' + error.message);
+    setClosedPayrollPeriods(prev => prev.map(x => x.start_date === data.start_date && x.end_date === data.end_date ? data : x));
+    alert('Salary period dobara open ho gaya.');
+  }
+
   async function fetchAnnualLeaves() {
     const { data, error } = await supabase.from('annual_leaves').select('*').order('id', { ascending: false });
     if (error) {
@@ -1030,6 +1114,7 @@ async function fetchHolidayDates() {
 async function handleToggleHolidayDate() {
   if (!userRole.is_admin) return alert('Sirf Admin holiday dates manage kar sakta hai.');
   if (!selectedTimesheetDate) return alert('Pehle date select karein.');
+  if (isPayrollDateClosed(selectedTimesheetDate)) return alert('Yeh salary period close hai. Pehle period reopen karein.');
   if (new Date(`${selectedTimesheetDate}T12:00:00`).getDay() === 0) {
     return alert('Sunday pehle se automatic holiday hai.');
   }
@@ -1230,6 +1315,7 @@ async function handleToggleHolidayDate() {
     } else if (cleanupMode === 'range') {
       startDate = cleanupStartDate; endDate = cleanupEndDate;
       if (!startDate || !endDate || startDate > endDate) return alert('Date range sahi select karein.');
+    if (closedPayrollPeriods.some(period => period.status === 'closed' && startDate <= String(period.end_date).slice(0,10) && endDate >= String(period.start_date).slice(0,10))) return alert('Selected range mein closed salary period ke records hain. Pehle period reopen karein.');
     }
     const selectedTables = [];
     if (cleanupAttendance) selectedTables.push('Timesheet / attendance');
@@ -1263,6 +1349,7 @@ async function handleToggleHolidayDate() {
     if (!userRole.is_admin && !userRole.can_use_bulk) {
       return alert('Aapko Bulk/OCR ki permission nahi hai!');
     }
+    if (isPayrollDateClosed(selectedTimesheetDate)) return alert('Yeh salary period close hai. OCR se bhi is date ki entry nahi ho sakti. Admin pehle period reopen kare.');
 
     const file = event.target.files[0];
     if (!file) return;
@@ -1804,6 +1891,7 @@ async function handleToggleHolidayDate() {
   // 2. Handle Bulk Attendance & Overtime (Supports 'All' Departments & Designations)
  async function handleBulkAttendance() {
   if (!userRole.is_admin && !userRole.can_use_bulk) return alert('Aapko Bulk Attendance ki permission nahi hai.');
+  if (isPayrollDateClosed(selectedTimesheetDate)) return alert('Yeh salary period close hai. Is date ki attendance/OT edit nahi ho sakti. Admin pehle period reopen kare.');
 
   const normalizeDesignation = value => String(value || '').normalize('NFKC').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
   const steelDesignationAliases = ['steel fixer', 'steel fixer helper', 'steel labour', 'steel labor', 'steel fixer labour', 'steel fixer labor', 'steel foreman', 'steel fixer foreman', 'steel fixer forman', 'steel forman'];
@@ -1909,6 +1997,7 @@ async function handleSingleAttendanceChange(
   newSite,
   newContractOT = 0
 ) {
+  if (isPayrollDateClosed(dateStr)) throw new Error('Yeh salary period close hai. Is date ki attendance/OT edit nahi ho sakti. Admin pehle period reopen kare.');
   if (!userRole.is_admin && !userRole.can_edit_timesheet) {
     throw new Error('Aapko timesheet edit karne ki permission nahi hai.');
   }
@@ -1971,6 +2060,7 @@ async function handleSaveSiteAttendance(e) {
   e.preventDefault();
   if (!userRole.is_admin) return alert('Staff ko bulk overwrite ki permission nahi hai. Nayi entry Quick Entry se karein; existing records admin update karega.');
   if (!selectedTimesheetDate || !siteAttendanceSite) return alert('Date aur site select karein.');
+  if (isPayrollDateClosed(selectedTimesheetDate)) return alert('Yeh salary period close hai. Admin pehle period reopen kare.');
   if (!siteAttendanceDepartment || siteAttendanceDepartment === 'All') return alert('Doosre department ki attendance ko affect hone se bachane ke liye ek specific department select karein.');
   const allowedWorkers = userRole.is_admin ? workers : filteredWorkers;
   const enteredIds = [...new Set(siteAttendanceIds.split(/[\s,;]+/).map(x => x.trim()).filter(Boolean))];
@@ -2084,6 +2174,7 @@ async function handleQuickAttendance(e) {
 
   // 4. Handle Mark Single Attendance (For timesheet table)
   async function handleMarkAttendance(workerId, status) {
+    if (isPayrollDateClosed(selectedTimesheetDate)) return alert('Yeh salary period close hai. Admin pehle period reopen kare.');
     if (!userRole.is_admin && !userRole.can_edit_timesheet) return alert('Aapko timesheet edit karne ki permission nahi hai.');
     if (!userRole.is_admin && !filteredWorkers.some(w => String(w.id) === String(workerId))) return alert('Yeh worker aapke assigned scope mein nahi hai.');
     const existingAttendanceRow = attendance.find(a => String(a.worker_id) === String(workerId) && String(a.date).slice(0,10) === String(selectedTimesheetDate).slice(0,10));
@@ -2244,12 +2335,14 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
  
   const salaryDataMap = {};
 
-  // Selected month ke total days
-  const payrollMonthDays = new Date(
-    selectedYear,
-    selectedMonth + 1,
-    0
-  ).getDate();
+  // Payroll period: 16th of selected month through 15th of following month.
+  const payrollPeriodStart = new Date(selectedYear, selectedMonth, 16, 12, 0, 0);
+  const payrollPeriodEnd = new Date(selectedYear, selectedMonth + 1, 15, 12, 0, 0);
+  const formatPayrollDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const payrollPeriodStartDate = formatPayrollDate(payrollPeriodStart);
+  const payrollPeriodEndDate = formatPayrollDate(payrollPeriodEnd);
+  const payrollMonthDays = Math.round((Date.UTC(payrollPeriodEnd.getFullYear(), payrollPeriodEnd.getMonth(), payrollPeriodEnd.getDate()) - Date.UTC(payrollPeriodStart.getFullYear(), payrollPeriodStart.getMonth(), payrollPeriodStart.getDate())) / 86400000) + 1;
+  const currentPayrollPeriodClosed = closedPayrollPeriods.some(period => period.status === 'closed' && String(period.start_date).slice(0, 10) === payrollPeriodStartDate && String(period.end_date).slice(0, 10) === payrollPeriodEndDate);
 
   // Admin ko tamam sites ke workers dikhayein
   // Staff ko sirf apni permitted workers list dikhayein
@@ -2265,25 +2358,19 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
   });
 
   payrollWorkers.forEach(worker => {
-    // Sirf selected month ke attendance records
+    // Include only records in the selected 16th-to-15th salary period.
     const monthlyRecords = attendance.filter(a => {
-      const recordDate = String(a.date || '');
-
-      return (
-        String(a.worker_id) === String(worker.id) &&
-        recordDate.length >= 10 &&
-        Number(recordDate.slice(0, 4)) === Number(selectedYear) &&
-        Number(recordDate.slice(5, 7)) === Number(selectedMonth + 1)
-      );
+      const recordDate = String(a.date || '').slice(0, 10);
+      return String(a.worker_id) === String(worker.id) && recordDate >= payrollPeriodStartDate && recordDate <= payrollPeriodEndDate;
     });
 
-    // Every Sunday and admin-marked holiday counts as a paid Holiday Present day
-    // for every worker, even when no attendance row exists for that date.
-    const monthPrefix = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
+    // Sundays and admin-marked holidays count as paid days once per date.
     const monthHolidayDates = new Set();
-    for (let day = 1; day <= payrollMonthDays; day++) {
-      const d = `${monthPrefix}-${String(day).padStart(2, '0')}`;
-      if (new Date(`${d}T12:00:00`).getDay() === 0 || holidayDates.some(h => h.holiday_date === d)) monthHolidayDates.add(d);
+    const payrollAsOfDate = formatPayrollDate(new Date());
+    for (let cursor = new Date(payrollPeriodStart); cursor <= payrollPeriodEnd; cursor.setDate(cursor.getDate() + 1)) {
+      const d = formatPayrollDate(cursor);
+      // For an open/current period, don't count future Sundays or future holidays before they occur.
+      if (d <= payrollAsOfDate && (cursor.getDay() === 0 || holidayDates.some(h => String(h.holiday_date).slice(0, 10) === d))) monthHolidayDates.add(d);
     }
     const workedPresentDays = monthlyRecords.filter(a =>
       String(a.status || '').trim().toLowerCase() === 'present' && !monthHolidayDates.has(String(a.date || '').slice(0, 10))
@@ -4148,15 +4235,25 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
       </button>}
     </div>
 
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 15 }}>
-      <div style={{ fontWeight: 'bold' }}>Monthly Salary & Overtime Sheet</div>
-      <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-        Department:
+    <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 15, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+      <div style={{ minWidth: 220, fontWeight: 'bold' }}>Monthly Salary & Overtime Sheet<br/><span style={{fontSize:12,color:'#475569'}}>Salary Period: {payrollPeriodStartDate} to {payrollPeriodEndDate} ({payrollMonthDays} days)</span><br/><span style={{fontSize:12,color:currentPayrollPeriodClosed?'#b91c1c':'#047857'}}>{currentPayrollPeriodClosed ? 'CLOSED — editing blocked' : 'OPEN — attendance and OT can be entered'}</span></div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Period start month:
+        <select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6 }}>
+          {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((m, idx) => <option key={idx} value={idx}>{m}</option>)}
+        </select>
+      </label>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Year:
+        <input type="number" value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6, width: 90 }} />
+      </label>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Department:
         <select value={userRole.is_admin ? payrollDepartment : userRole.assigned_department} onChange={e => setPayrollDepartment(e.target.value)} disabled={!userRole.is_admin} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6 }}>
           <option value="All">All Departments</option>
           {visibleDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
         </select>
       </label>
+      {userRole.is_admin && (currentPayrollPeriodClosed
+        ? <button type="button" onClick={reopenSelectedPayrollPeriod} style={{ padding: '10px 13px', background: '#b45309', color: '#fff', border: 0, borderRadius: 6, fontWeight: 800, cursor: 'pointer' }}>Reopen Salary Period</button>
+        : <button type="button" disabled={closingPayrollPeriod} onClick={closeSelectedPayrollPeriod} style={{ padding: '10px 13px', background: '#047857', color: '#fff', border: 0, borderRadius: 6, fontWeight: 800, cursor: closingPayrollPeriod ? 'wait' : 'pointer', opacity: closingPayrollPeriod ? 0.7 : 1 }}>{closingPayrollPeriod ? 'Closing…' : 'Close Month & Open Next'}</button>)}
     </div>
 
     <div
@@ -4934,7 +5031,7 @@ accruedDays = balance.toFixed(1);
           </div>
 
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Select Month</label>
+            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Salary Period Start Month (16th)</label>
             <select 
               value={selectedMonth} 
               onChange={e => setSelectedMonth(Number(e.target.value))}
@@ -5028,7 +5125,7 @@ accruedDays = balance.toFixed(1);
         <div>
           <h2 style={{ margin: '0 0 5px 0', fontSize: '20px', fontWeight: 'bold' }}>📄 Monthly Timesheet Details</h2>
           <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
-            Worker: <b>#{viewingWorkerTimesheet.id} - {viewingWorkerTimesheet.name}</b> | Dept: {viewingWorkerTimesheet.department} | Month: {selectedMonth + 1} / {selectedYear}
+            Worker: <b>#{viewingWorkerTimesheet.id} - {viewingWorkerTimesheet.name}</b> | Dept: {viewingWorkerTimesheet.department} | Salary Period: {payrollPeriodStartDate} to {payrollPeriodEndDate}
           </p>
         </div>
         <button 
@@ -5063,11 +5160,10 @@ accruedDays = balance.toFixed(1);
           </thead>
           <tbody>
             {(() => {
-        const workerAttendance = attendance.filter(a =>
-  String(a.worker_id) === String(viewingWorkerTimesheet.id) &&
-  String(a.date || '').slice(0, 4) === String(selectedYear) &&
-  Number(String(a.date || '').slice(5, 7)) === Number(selectedMonth + 1)
-);
+        const workerAttendance = attendance.filter(a => {
+  const recordDate = String(a.date || '').slice(0, 10);
+  return String(a.worker_id) === String(viewingWorkerTimesheet.id) && recordDate >= payrollPeriodStartDate && recordDate <= payrollPeriodEndDate;
+});
 
 const monthlyRows = workerAttendance.map(att => {
   const annualLeave = getAnnualLeaveForWorker(
