@@ -1528,11 +1528,11 @@ async function handleToggleHolidayDate() {
 
       // First-time setup for the legacy default administrator.
       // Once the admin row exists, the hard-coded default login is no longer accepted.
-      if (!resolvedAccount && accountRows.length === 0 && cleanEmail === 'admin@nda.pk' && cleanPassword === 'naveed1@') {
+      if (!resolvedAccount && accountRows.length === 0 && cleanEmail === 'admin@nda.pk' && cleanPassword === '123456') {
         const initialAdmin = {
           staff_id: 'ADMIN',
           user_email: 'admin@nda.pk',
-          user_password: 'naveed1@',
+          user_password: '123456',
           assigned_department: 'All',
           assigned_site: 'All',
           can_view_dashboard: true,
