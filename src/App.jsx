@@ -2710,7 +2710,6 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         <label style={{fontSize:12,color:'#dbeafe'}}>Payroll Start Date<input type="date" value={payrollStartDate} onChange={e=>setPayrollStartDate(e.target.value)} disabled={!userRole.is_admin} style={{display:'block',marginTop:5,padding:'9px 10px',borderRadius:8,border:'1px solid #93c5fd',background:'#fff',color:'#0f172a'}}/></label>
         <label style={{fontSize:12,color:'#dbeafe'}}>Payroll Closing Date<input type="date" value={payrollEndDate} min={payrollStartDate || undefined} onChange={e=>setPayrollEndDate(e.target.value)} disabled={!userRole.is_admin} style={{display:'block',marginTop:5,padding:'9px 10px',borderRadius:8,border:'1px solid #93c5fd',background:'#fff',color:'#0f172a'}}/></label>
         {userRole.is_admin && <button type="button" disabled={savingPayrollPeriodSettings} onClick={()=>savePayrollPeriodSettings()} style={{alignSelf:'end',padding:'10px 13px',background:'#047857',color:'#fff',border:0,borderRadius:9,fontWeight:800,cursor:savingPayrollPeriodSettings?'wait':'pointer',opacity:savingPayrollPeriodSettings?0.7:1}}>{savingPayrollPeriodSettings?'Saving…':'Save Payroll Dates'}</button>}
-        {(userRole.is_admin || userRole.can_view_monthly_timesheet) && <button onClick={()=>setShowMonthlyTimesheetModal(true)} style={{alignSelf:'end',padding:'10px 13px',background:'#fff',color:'#1d4ed8',border:0,borderRadius:9,fontWeight:800,cursor:'pointer'}}>📊 Monthly Report</button>}
       </div>
     </section>
     {/* Stats Grid */}
@@ -2764,6 +2763,33 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
           </div>
         </div>
       )}
+    </div>
+
+    {/* Dashboard overview panels: live attendance status and permission-aware shortcuts */}
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:16,margin:'0 0 24px'}}>
+      {(userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_daily_timesheet) && <section style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:16,padding:20,boxShadow:'0 8px 24px rgba(15,23,42,.05)',minWidth:0}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom:16}}><div><div style={{fontSize:11,fontWeight:800,letterSpacing:1.4,color:'#64748b'}}>LIVE SUMMARY</div><h3 style={{margin:'5px 0 0',fontSize:18,color:'#0f172a'}}>Attendance Overview</h3></div><span style={{background:'#eff6ff',color:'#1d4ed8',padding:'7px 10px',borderRadius:9,fontSize:12,fontWeight:800}}>{selectedTimesheetDate}</span></div>
+        <div style={{display:'flex',alignItems:'center',gap:18,flexWrap:'wrap'}}>
+          <div style={{width:112,height:112,borderRadius:'50%',background:`conic-gradient(#16a34a 0 ${Math.max(0,Math.min(100,filteredWorkers.length ? presentCountForDate/filteredWorkers.length*100 : 0))}%, #fee2e2 ${Math.max(0,Math.min(100,filteredWorkers.length ? presentCountForDate/filteredWorkers.length*100 : 0))}% 100%)`,display:'grid',placeItems:'center',flexShrink:0}}><div style={{width:78,height:78,borderRadius:'50%',background:'#fff',display:'grid',placeItems:'center',textAlign:'center'}}><div><strong style={{display:'block',fontSize:23,color:'#0f172a'}}>{presentCountForDate}</strong><span style={{fontSize:10,color:'#64748b'}}>Present</span></div></div></div>
+          <div style={{display:'grid',gap:10,flex:'1 1 130px'}}>
+            <div style={{display:'flex',justifyContent:'space-between',gap:12}}><span style={{color:'#475569',fontSize:13}}><span style={{color:'#16a34a'}}>●</span> Present</span><strong>{presentCountForDate}</strong></div>
+            <div style={{display:'flex',justifyContent:'space-between',gap:12}}><span style={{color:'#475569',fontSize:13}}><span style={{color:'#dc2626'}}>●</span> Absent</span><strong>{filteredWorkers.filter(w=>['absent'].includes(String(attendanceData[selectedTimesheetDate]?.[w.id]?.status||'').toLowerCase())).length}</strong></div>
+            <div style={{display:'flex',justifyContent:'space-between',gap:12}}><span style={{color:'#475569',fontSize:13}}><span style={{color:'#d97706'}}>●</span> On Leave</span><strong>{filteredWorkers.filter(w=>/leave|sick/.test(String(attendanceData[selectedTimesheetDate]?.[w.id]?.status||'').toLowerCase())).length}</strong></div>
+            <div style={{height:6,background:'#f1f5f9',borderRadius:99,overflow:'hidden'}}><div style={{height:'100%',width:`${filteredWorkers.length ? Math.min(100,presentCountForDate/filteredWorkers.length*100) : 0}%`,background:'linear-gradient(90deg,#16a34a,#4ade80)',borderRadius:99}}/></div>
+          </div>
+        </div>
+      </section>}
+      <section style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:16,padding:20,boxShadow:'0 8px 24px rgba(15,23,42,.05)',minWidth:0}}>
+        <div style={{fontSize:11,fontWeight:800,letterSpacing:1.4,color:'#64748b'}}>SHORTCUTS</div><h3 style={{margin:'5px 0 15px',fontSize:18,color:'#0f172a'}}>Quick Actions</h3>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(125px,1fr))',gap:10}}>
+          {(userRole.is_admin || userRole.can_view_daily_timesheet) && <button onClick={()=>setActiveTab('daily-timesheet')} style={{textAlign:'left',padding:13,border:'1px solid #bfdbfe',borderRadius:11,background:'#eff6ff',color:'#1d4ed8',fontWeight:800,cursor:'pointer'}}>📄<div style={{marginTop:7,fontSize:13}}>Daily Timesheet</div></button>}
+          {(userRole.is_admin || userRole.can_view_payroll) && <button onClick={()=>setActiveTab('payroll')} style={{textAlign:'left',padding:13,border:'1px solid #ddd6fe',borderRadius:11,background:'#f5f3ff',color:'#6d28d9',fontWeight:800,cursor:'pointer'}}>💵<div style={{marginTop:7,fontSize:13}}>Payroll</div></button>}
+          {(userRole.is_admin || userRole.can_view_workers) && <button onClick={()=>setActiveTab('workers')} style={{textAlign:'left',padding:13,border:'1px solid #bbf7d0',borderRadius:11,background:'#f0fdf4',color:'#15803d',fontWeight:800,cursor:'pointer'}}>👷<div style={{marginTop:7,fontSize:13}}>Workers Directory</div></button>}
+          {userRole.is_admin && <button onClick={()=>setActiveTab('sites')} style={{textAlign:'left',padding:13,border:'1px solid #fed7aa',borderRadius:11,background:'#fff7ed',color:'#c2410c',fontWeight:800,cursor:'pointer'}}>🏗️<div style={{marginTop:7,fontSize:13}}>Working Sites</div></button>}
+          {userRole.is_admin && <button onClick={()=>setActiveTab('departments')} style={{textAlign:'left',padding:13,border:'1px solid #e9d5ff',borderRadius:11,background:'#faf5ff',color:'#7e22ce',fontWeight:800,cursor:'pointer'}}>🏢<div style={{marginTop:7,fontSize:13}}>Departments</div></button>}
+          {userRole.is_admin && <button onClick={()=>setActiveTab('permissions')} style={{textAlign:'left',padding:13,border:'1px solid #fecaca',borderRadius:11,background:'#fef2f2',color:'#b91c1c',fontWeight:800,cursor:'pointer'}}>🔐<div style={{marginTop:7,fontSize:13}}>Permissions</div></button>}
+        </div>
+      </section>
     </div>
 
     {(userRole.is_admin || userRole.can_view_workers || userRole.can_view_timesheet) && <>
