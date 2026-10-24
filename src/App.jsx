@@ -435,6 +435,7 @@ const [newDesignation, setNewDesignation] = useState('');
   const [permEditWorkers, setPermEditWorkers] = useState(false);
   const [permDeleteWorkers, setPermDeleteWorkers] = useState(false);
   const [permTimesheetView, setPermTimesheetView] = useState(true);
+  const [permDailyTimesheetView, setPermDailyTimesheetView] = useState(false);
   const [permTimesheetEdit, setPermTimesheetEdit] = useState(true);
   const [permPayroll, setPermPayroll] = useState(false);
 
@@ -708,12 +709,21 @@ const [newDesignation, setNewDesignation] = useState('');
         return;
       }
       setDailyWorkDetailsLoadError('');
-      // Load by date first, then filter in the browser. This avoids exact-match
-      // issues caused by legacy site/department labels and ensures All Workers works.
-      const { data, error } = await supabase
+      // Staff are scoped at the database query as well as in the UI. Never fetch
+      // another department's work details into a staff browser session.
+      const assignedDepartment = String(userRole.assigned_department || '').trim();
+      const assignedSite = String(userRole.assigned_site || '').trim();
+      let detailsQuery = supabase
         .from('daily_work_details')
         .select('work_date,work_site,work_department,work_details')
         .eq('work_date', selectedTimesheetDate);
+      if (!userRole.is_admin && assignedDepartment && assignedDepartment !== 'All') {
+        detailsQuery = detailsQuery.ilike('work_department', assignedDepartment);
+      }
+      if (!userRole.is_admin && assignedSite && assignedSite !== 'All') {
+        detailsQuery = detailsQuery.ilike('work_site', assignedSite);
+      }
+      const { data, error } = await detailsQuery;
       if (cancelled) return;
       if (error) {
         console.error('Daily Work Details load error:', error.message);
@@ -722,15 +732,19 @@ const [newDesignation, setNewDesignation] = useState('');
         return;
       }
       const norm = value => String(value || '').trim().toLowerCase();
+      const effectiveDepartment = !userRole.is_admin && userRole.assigned_department && userRole.assigned_department !== 'All'
+        ? userRole.assigned_department : dailyTimesheetDepartment;
+      const effectiveSite = !userRole.is_admin && userRole.assigned_site && userRole.assigned_site !== 'All'
+        ? userRole.assigned_site : dailyTimesheetSite;
       const allRows = (data || []).filter(item => {
         if (!String(item.work_details || '').trim()) return false;
-        const siteMatches = dailyTimesheetSite === 'All Workers' || dailyTimesheetSite === 'All' || norm(item.work_site) === norm(dailyTimesheetSite);
-        return siteMatches;
+        const siteMatches = effectiveSite === 'All Workers' || effectiveSite === 'All' || norm(item.work_site) === norm(effectiveSite);
+        const deptMatches = effectiveDepartment === 'All' || norm(item.work_department) === norm(effectiveDepartment);
+        return siteMatches && deptMatches;
       });
-      let rows = allRows.filter(item => dailyTimesheetDepartment === 'All' || norm(item.work_department) === norm(dailyTimesheetDepartment));
-      // Older rows created before department-wise tracking were stored as 'All'.
-      // Show these legacy remarks only if there is no newer department-specific row for that site.
-      if (dailyTimesheetDepartment !== 'All') {
+      let rows = allRows;
+      // Legacy 'All' remarks are an admin-only fallback; never expose them to staff.
+      if (userRole.is_admin && effectiveDepartment !== 'All') {
         const exactSites = new Set(rows.map(item => norm(item.work_site)));
         rows = rows.concat(allRows.filter(item => norm(item.work_department) === 'all' && !exactSites.has(norm(item.work_site))));
       }
@@ -738,14 +752,14 @@ const [newDesignation, setNewDesignation] = useState('');
       const uniqueRows = new Map();
       rows.forEach(item => uniqueRows.set(`${norm(item.work_site)}|${norm(item.work_department)}`, item));
       const visibleRows = Array.from(uniqueRows.values());
-      const combined = dailyTimesheetDepartment === 'All'
+      const combined = userRole.is_admin && effectiveDepartment === 'All'
         ? visibleRows.map(item => `${item.work_site || 'Site'} / ${item.work_department || 'Department'}: ${item.work_details}`).join('\n')
         : visibleRows.map(item => item.work_details).join('\n');
       setSavedDailyWorkDetails(combined);
     }
     loadDailyWorkDetails();
     return () => { cancelled = true; };
-  }, [selectedTimesheetDate, dailyTimesheetSite, dailyTimesheetDepartment]);
+  }, [selectedTimesheetDate, dailyTimesheetSite, dailyTimesheetDepartment, userRole.is_admin, userRole.assigned_department, userRole.assigned_site]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1627,6 +1641,7 @@ async function handleToggleHolidayDate() {
         can_edit_workers: false,
         can_delete_workers: false,
         can_view_timesheet: resolvedAccount.can_view_timesheet ?? true,
+        can_view_daily_timesheet: resolvedAccount.can_view_daily_timesheet ?? resolvedAccount.can_view_timesheet ?? false,
         can_edit_timesheet: resolvedAccount.can_edit_timesheet ?? false,
         can_view_payroll: resolvedAccount.can_view_payroll ?? false
       };
@@ -1638,8 +1653,12 @@ async function handleToggleHolidayDate() {
       if (staffRole.assigned_department !== 'All') {
         setSelectedDeptFilter(staffRole.assigned_department);
         setBulkDepartment(staffRole.assigned_department);
+        setDailyTimesheetDepartment(staffRole.assigned_department);
+      } else {
+        setDailyTimesheetDepartment('All');
       }
       if (staffRole.assigned_site !== 'All') {
+        setDailyTimesheetSite(staffRole.assigned_site);
         setSelectedSiteFilter(staffRole.assigned_site);
         setBulkSite(staffRole.assigned_site);
         setQuickSite(staffRole.assigned_site);
@@ -1648,8 +1667,9 @@ async function handleToggleHolidayDate() {
 
       if (staffRole.can_view_dashboard) setActiveTab('dashboard');
       else if (staffRole.can_view_timesheet) setActiveTab('attendance');
+      else if (staffRole.can_view_daily_timesheet) setActiveTab('daily-timesheet');
       else if (staffRole.can_view_workers) setActiveTab('workers');
-      else setActiveTab('changepass');
+      else setActiveTab('dashboard');
     } catch (err) {
       alert('Login error: ' + (err?.message || String(err)));
     } finally {
@@ -2304,6 +2324,7 @@ const otHours = Number(
       can_edit_workers: permEditWorkers,
       can_delete_workers: permDeleteWorkers,
       can_view_timesheet: permTimesheetView,
+      can_view_daily_timesheet: permDailyTimesheetView,
       can_edit_timesheet: permTimesheetEdit,
       can_view_payroll: permPayroll,
       is_admin: false
@@ -2592,7 +2613,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         {(userRole.is_admin || userRole.can_view_timesheet) && (
           <button onClick={() => setActiveTab('attendance')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'attendance' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📅 Timesheet Entry</button>
         )}
-      {(userRole.is_admin || userRole.can_view_timesheet) && <button
+      {(userRole.is_admin || userRole.can_view_daily_timesheet) && <button
   onClick={() => setActiveTab('daily-timesheet')}
   style={{
     padding: '10px 15px',
@@ -2626,7 +2647,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         {userRole.is_admin && (
           <button onClick={() => setActiveTab('data-cleanup')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'data-cleanup' ? '#dc2626' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🗑️ Data Cleanup</button>
         )}
-        {(userRole.is_admin || userRole.can_view_timesheet) && <button 
+        {(userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_payroll) && <button 
           onClick={() => setShowMonthlyTimesheetModal(true)} 
           style={{ padding: '10px 15px', backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap', fontWeight: 'bold' }}
         >
@@ -2679,7 +2700,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         <label style={{fontSize:12,color:'#dbeafe'}}>Payroll Start Date<input type="date" value={payrollStartDate} onChange={e=>setPayrollStartDate(e.target.value)} disabled={!userRole.is_admin} style={{display:'block',marginTop:5,padding:'9px 10px',borderRadius:8,border:'1px solid #93c5fd',background:'#fff',color:'#0f172a'}}/></label>
         <label style={{fontSize:12,color:'#dbeafe'}}>Payroll Closing Date<input type="date" value={payrollEndDate} min={payrollStartDate || undefined} onChange={e=>setPayrollEndDate(e.target.value)} disabled={!userRole.is_admin} style={{display:'block',marginTop:5,padding:'9px 10px',borderRadius:8,border:'1px solid #93c5fd',background:'#fff',color:'#0f172a'}}/></label>
         {userRole.is_admin && <button type="button" disabled={savingPayrollPeriodSettings} onClick={()=>savePayrollPeriodSettings()} style={{alignSelf:'end',padding:'10px 13px',background:'#047857',color:'#fff',border:0,borderRadius:9,fontWeight:800,cursor:savingPayrollPeriodSettings?'wait':'pointer',opacity:savingPayrollPeriodSettings?0.7:1}}>{savingPayrollPeriodSettings?'Saving…':'Save Payroll Dates'}</button>}
-        {(userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_workers) && <button onClick={()=>setShowMonthlyTimesheetModal(true)} style={{alignSelf:'end',padding:'10px 13px',background:'#fff',color:'#1d4ed8',border:0,borderRadius:9,fontWeight:800,cursor:'pointer'}}>📊 Monthly Report</button>}
+        {(userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_payroll) && <button onClick={()=>setShowMonthlyTimesheetModal(true)} style={{alignSelf:'end',padding:'10px 13px',background:'#fff',color:'#1d4ed8',border:0,borderRadius:9,fontWeight:800,cursor:'pointer'}}>📊 Monthly Report</button>}
       </div>
     </section>
     {/* Stats Grid */}
@@ -4033,7 +4054,7 @@ await handleSingleAttendanceChange(
  })()}
               
         {/* TAB 5A: DAILY TIMESHEET */}
-        {activeTab === 'daily-timesheet' && (userRole.is_admin || userRole.can_view_timesheet) && (
+        {activeTab === 'daily-timesheet' && (userRole.is_admin || userRole.can_view_daily_timesheet) && (
          <div
   className="daily-timesheet-print"
   style={{ padding: '20px', background: '#fff', borderRadius: '8px' }}
@@ -4069,15 +4090,15 @@ await handleSingleAttendanceChange(
                   onChange={e => setDailyTimesheetSite(e.target.value)}
                   style={{ padding: '9px', minWidth: '200px', border: '1px solid #cbd5e1', borderRadius: '5px' }}
                 >
-<option value="All Workers">All Workers</option>
-{sitesList.map((site, idx) => (<option key={idx} value={site}>{site}</option>))}
+{userRole.is_admin ? <option value="All Workers">All Workers</option> : null}
+{(userRole.is_admin ? sitesList : (userRole.assigned_site && userRole.assigned_site !== 'All' ? [userRole.assigned_site] : sitesList)).map((site, idx) => (<option key={idx} value={site}>{site}</option>))}
                 </select>
               </div>
               <div>
                 <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Department</label>
-                <select value={dailyTimesheetDepartment} onChange={e => setDailyTimesheetDepartment(e.target.value)} style={{ padding: '9px', minWidth: '200px', border: '1px solid #cbd5e1', borderRadius: '5px' }}>
-                  <option value="All">All Departments</option>
-                  {visibleDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
+                <select value={userRole.is_admin || userRole.assigned_department === 'All' ? dailyTimesheetDepartment : userRole.assigned_department} onChange={e => setDailyTimesheetDepartment(e.target.value)} disabled={!userRole.is_admin && userRole.assigned_department !== 'All'} style={{ padding: '9px', minWidth: '200px', border: '1px solid #cbd5e1', borderRadius: '5px' }}>
+                  {userRole.is_admin || userRole.assigned_department === 'All' ? <option value="All">All Departments</option> : null}
+                  {(userRole.is_admin ? visibleDepartments : (userRole.assigned_department && userRole.assigned_department !== 'All' ? [userRole.assigned_department] : visibleDepartments)).map(dept => <option key={dept} value={dept}>{dept}</option>)}
                 </select>
               </div>
             </div>
@@ -4524,8 +4545,9 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
                     setPermAddWorkers(false);
                     setPermEditWorkers(false);
                     setPermDeleteWorkers(false);
-                    setPermTimesheetView(true);
-                    setPermTimesheetEdit(true);
+                    setPermTimesheetView(false);
+                    setPermDailyTimesheetView(false);
+                    setPermTimesheetEdit(false);
                     setPermPayroll(false);
                   }} style={{ padding: '4px 10px', backgroundColor: '#64748b', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Cancel Edit</button>
                 )}
@@ -4582,7 +4604,10 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
                   <input type="checkbox" checked={permDeleteWorkers} onChange={e => setPermDeleteWorkers(e.target.checked)} /> Can Delete Workers
                 </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={permTimesheetView} onChange={e => setPermTimesheetView(e.target.checked)} /> Can View Timesheet
+                  <input type="checkbox" checked={permTimesheetView} onChange={e => setPermTimesheetView(e.target.checked)} /> Can View Timesheet Entry / Monthly Timesheet
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={permDailyTimesheetView} onChange={e => setPermDailyTimesheetView(e.target.checked)} /> Can View Daily Timesheet Only
                 </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={permTimesheetEdit} onChange={e => setPermTimesheetEdit(e.target.checked)} /> Can Edit Timesheet
@@ -4615,7 +4640,8 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
                     if (p.can_add_workers) activePerms.push('Add Worker');
                     if (p.can_edit_workers) activePerms.push('Edit Worker');
                     if (p.can_delete_workers) activePerms.push('Delete Worker');
-                    if (p.can_view_timesheet) activePerms.push('View Timesheet');
+                    if (p.can_view_timesheet) activePerms.push('Timesheet Entry / Monthly Timesheet');
+                    if (p.can_view_daily_timesheet) activePerms.push('Daily Timesheet');
                     if (p.can_edit_timesheet) activePerms.push('Edit Timesheet');
                     if (p.can_view_payroll) activePerms.push('Payroll');
 
@@ -4651,6 +4677,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
                               setPermEditWorkers(p.can_edit_workers ?? false);
                               setPermDeleteWorkers(p.can_delete_workers ?? false);
                               setPermTimesheetView(p.can_view_timesheet ?? true);
+                              setPermDailyTimesheetView(p.can_view_daily_timesheet ?? false);
                               setPermTimesheetEdit(p.can_edit_timesheet ?? true);
                               setPermPayroll(p.can_view_payroll ?? false);
                               window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -5055,7 +5082,7 @@ accruedDays = balance.toFixed(1);
           </div>
         )}
         {/* 📊 MONTHLY TIMESHEET MODAL WITH SEARCH, DEPT FILTER & VIEW/PRINT OPTIONS */}
-{showMonthlyTimesheetModal && (
+{showMonthlyTimesheetModal && (userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_payroll) && (
   <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
     <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '10px', width: '90%', maxWidth: '1050px', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
       
