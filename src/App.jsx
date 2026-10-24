@@ -2585,7 +2585,24 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: '#f8fafc', fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
+    <div className="nda-shell" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: '#f5f8ff', fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
+      <style>{`
+        .nda-shell header{background:#fff!important;color:#0b2c61!important;border-bottom:1px solid #dbeafe;min-height:78px;padding:12px 24px!important;box-shadow:0 3px 14px rgba(15,50,100,.06)}
+        .nda-shell header h2{color:#092f67!important;font-size:21px!important}
+        .nda-shell header span{color:#64748b!important}
+        .nda-shell header button{box-shadow:0 3px 10px rgba(15,50,100,.10)}
+        .nda-nav{position:fixed;left:0;top:78px;bottom:0;width:242px;z-index:30;display:flex!important;flex-direction:column!important;align-items:stretch;overflow-y:auto!important;overflow-x:hidden!important;background:linear-gradient(180deg,#102f50,#0b2542)!important;padding:14px 9px!important;gap:5px!important;box-shadow:4px 0 20px rgba(10,35,65,.10)}
+        .nda-nav button{text-align:left!important;padding:12px 14px!important;border-radius:8px!important;font-size:13px!important;min-height:42px}
+        .nda-nav button:hover{background:#1d4ed8!important}
+        .nda-main{margin-left:242px;padding:16px 18px!important;min-width:0}
+        .nda-filterbar{border:1px solid #e1eafe;box-shadow:0 5px 20px rgba(15,50,100,.04)!important}
+        .nda-dashboard-hero{background:linear-gradient(105deg,rgba(5,36,76,.97),rgba(20,83,150,.85),rgba(14,116,144,.55)),linear-gradient(0deg,#0b3263,#4c86b8)!important;border-radius:12px!important;min-height:170px!important}
+        .nda-stat-card{position:relative;overflow:hidden;min-height:100px;display:flex;flex-direction:column;justify-content:center}
+        .nda-stat-card:after{content:;position:absolute;right:-24px;top:-28px;width:95px;height:95px;border-radius:50%;background:rgba(59,130,246,.07)}
+        .nda-panel{background:#fff;border:1px solid #dfebff;border-radius:11px;box-shadow:0 4px 16px rgba(15,50,100,.045);padding:16px;min-width:0}
+        @media(max-width:850px){.nda-nav{position:relative;top:auto;bottom:auto;width:100%;height:auto;flex-direction:row!important;flex-wrap:nowrap;overflow-x:auto!important}.nda-nav button{flex:0 0 auto}.nda-main{margin-left:0;padding:12px!important}.nda-shell header{padding:12px!important}}
+        @media(max-width:520px){.nda-shell header{gap:8px!important}.nda-dashboard-hero{padding:18px!important}.nda-stat-card{padding:14px!important}}
+      `}</style>
       
      {/* Header */}
       <header style={{ backgroundColor: '#0f172a', color: '#fff', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
@@ -2608,7 +2625,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       </header>
 
       {/* Tabs Menu Bar */}
-      <div style={{ backgroundColor: '#1e293b', padding: '5px 15px', display: 'flex', overflowX: 'auto', gap: '5px' }}>
+      <div className="nda-nav" style={{ backgroundColor: '#1e293b', padding: '5px 15px', display: 'flex', overflowX: 'auto', gap: '5px' }}>
         {(userRole.is_admin || userRole.can_view_dashboard) && (
           <button onClick={() => setActiveTab('dashboard')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'dashboard' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>📊 Dashboard</button>
         )}
@@ -2663,10 +2680,10 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         </button>}
       </div>
 
-      <main style={{ flex: 1, padding: '20px' }}>
+      <main className="nda-main" style={{ flex: 1, padding: '20px' }}>
         
         {/* Filters Bar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#fff', padding: '12px 18px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', flexWrap: 'wrap', gap: '10px' }}>
+        <div className="nda-filterbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#fff', padding: '12px 18px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', flexWrap: 'wrap', gap: '10px' }}>
           {!['changepass', 'sites', 'departments', 'permissions'].includes(activeTab) && (userRole.is_admin ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <div>
@@ -2701,9 +2718,9 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
 {/* TAB 1: DASHBOARD */}
 {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
   <>
-    <section style={{position:'relative',overflow:'hidden',background:'linear-gradient(112deg,#082f61 0%,#1457a6 52%,#0e7490 100%)',borderRadius:18,padding:'24px clamp(16px,3vw,30px)',color:'#fff',marginBottom:20,boxShadow:'0 14px 34px rgba(15,53,110,.22)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,flexWrap:'wrap',minHeight:178}}>
+    <section className="nda-dashboard-hero" style={{position:'relative',overflow:'hidden',background:'linear-gradient(112deg,#082f61 0%,#1457a6 52%,#0e7490 100%)',borderRadius:18,padding:'24px clamp(16px,3vw,30px)',color:'#fff',marginBottom:20,boxShadow:'0 14px 34px rgba(15,53,110,.22)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,flexWrap:'wrap',minHeight:178}}>
       <div style={{position:'absolute',inset:0,background:'radial-gradient(circle at 70% 25%,rgba(255,255,255,.18),transparent 34%),linear-gradient(90deg,rgba(5,30,68,.18),transparent)',pointerEvents:'none'}} />
-      <div style={{position:'relative',zIndex:1,flex:'1 1 250px',minWidth:220}}><div style={{fontSize:11,letterSpacing:3,fontWeight:800,color:'#bae6fd'}}>NDA-PK · HR CONTROL CENTER</div><h2 style={{fontSize:'clamp(23px,3vw,32px)',margin:'8px 0'}}>Workforce Overview</h2><p style={{margin:'0 0 12px',color:'#dbeafe',fontSize:14}}>Attendance, site deployment and payroll at a glance.</p><div style={{fontSize:12,color:'#dbeafe',letterSpacing:'.5px'}}>TRACK&nbsp; · &nbsp;MANAGE&nbsp; · &nbsp;GROW</div></div>
+      <div style={{position:'relative',zIndex:1,flex:'1 1 250px',minWidth:220}}><div style={{display:'flex',alignItems:'center',gap:12,marginBottom:8}}><span style={{fontSize:38,filter:'drop-shadow(0 2px 3px rgba(0,0,0,.2))'}}>🏢</span><div><div style={{fontSize:11,letterSpacing:2,fontWeight:800,color:'#bae6fd'}}>NDA-PK · HR CONTROL CENTER</div><div style={{fontSize:20,fontWeight:900}}>NDA-PK SYSTEM</div></div></div><h2 style={{fontSize:'clamp(23px,3vw,32px)',margin:'8px 0'}}>Workforce Overview</h2><p style={{margin:'0 0 12px',color:'#dbeafe',fontSize:14}}>Attendance, site deployment and payroll at a glance.</p><div style={{fontSize:12,color:'#dbeafe',letterSpacing:'.5px'}}>TRACK&nbsp; · &nbsp;MANAGE&nbsp; · &nbsp;GROW</div></div>
       <div style={{position:'absolute',zIndex:0,right:'clamp(190px,27%,340px)',bottom:0,height:'100%',width:150,opacity:.97,display:'flex',alignItems:'end',justifyContent:'center',pointerEvents:'none'}}><img src={dashboardPortraitData} alt="Muhammad Naveed" style={{height:'100%',maxHeight:190,width:'100%',objectFit:'cover',objectPosition:'center 22%',borderRadius:'70px 70px 0 0',maskImage:'linear-gradient(to bottom, black 82%, transparent 100%)',filter:'drop-shadow(0 5px 14px rgba(0,0,0,.25))'}} /></div>
       <div style={{position:'relative',zIndex:1,display:'flex',gap:10,flexWrap:'wrap',alignItems:'end',background:'rgba(7,30,63,.82)',padding:13,border:'1px solid rgba(191,219,254,.28)',borderRadius:13,boxShadow:'0 8px 24px rgba(0,0,0,.12)'}}>
         <label style={{fontSize:12,color:'#dbeafe'}}>Dashboard Date<input type="date" value={selectedTimesheetDate} onChange={e=>setSelectedTimesheetDate(e.target.value)} style={{display:'block',marginTop:5,padding:'9px 10px',borderRadius:8,border:'1px solid #93c5fd',background:'#fff',color:'#0f172a'}}/></label>
@@ -2719,7 +2736,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       gap: '15px',
       marginBottom: '20px'
     }}>
-      <div style={{
+      <div className="nda-stat-card" style={{
         background: 'linear-gradient(145deg,#ffffff,#eff6ff)',
         padding: '20px',
         borderRadius: '14px',
@@ -2733,7 +2750,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         </div>
       </div>
 
-      <div style={{
+      <div className="nda-stat-card" style={{
         background: 'linear-gradient(145deg,#ffffff,#ecfdf5)',
         padding: '20px',
         borderRadius: '14px',
@@ -2763,11 +2780,13 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
           </div>
         </div>
       )}
+
+      <div className="nda-stat-card" style={{background:'linear-gradient(145deg,#fff7ed,#fff)',padding:'18px',borderRadius:14,boxShadow:'0 5px 18px rgba(15,23,42,.05)',border:'1px solid #fed7aa',borderLeft:'5px solid #f59e0b'}}><span style={{color:'#64748b',fontSize:13}}>Active Sites</span><div style={{fontSize:24,fontWeight:800,color:'#7c2d12',marginTop:4}}>{(sitesList||[]).length}</div><span style={{fontSize:11,color:'#b45309',marginTop:3}}>Configured work sites</span></div>
     </div>
 
     {/* Dashboard overview panels: live attendance status and permission-aware shortcuts */}
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:16,margin:'0 0 24px'}}>
-      {(userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_daily_timesheet) && <section style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:16,padding:20,boxShadow:'0 8px 24px rgba(15,23,42,.05)',minWidth:0}}>
+      {(userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_daily_timesheet) && <section className="nda-panel" style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:16,padding:20,boxShadow:'0 8px 24px rgba(15,23,42,.05)',minWidth:0}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,marginBottom:16}}><div><div style={{fontSize:11,fontWeight:800,letterSpacing:1.4,color:'#64748b'}}>LIVE SUMMARY</div><h3 style={{margin:'5px 0 0',fontSize:18,color:'#0f172a'}}>Attendance Overview</h3></div><span style={{background:'#eff6ff',color:'#1d4ed8',padding:'7px 10px',borderRadius:9,fontSize:12,fontWeight:800}}>{selectedTimesheetDate}</span></div>
         <div style={{display:'flex',alignItems:'center',gap:18,flexWrap:'wrap'}}>
           <div style={{width:112,height:112,borderRadius:'50%',background:`conic-gradient(#16a34a 0 ${Math.max(0,Math.min(100,filteredWorkers.length ? presentCountForDate/filteredWorkers.length*100 : 0))}%, #fee2e2 ${Math.max(0,Math.min(100,filteredWorkers.length ? presentCountForDate/filteredWorkers.length*100 : 0))}% 100%)`,display:'grid',placeItems:'center',flexShrink:0}}><div style={{width:78,height:78,borderRadius:'50%',background:'#fff',display:'grid',placeItems:'center',textAlign:'center'}}><div><strong style={{display:'block',fontSize:23,color:'#0f172a'}}>{presentCountForDate}</strong><span style={{fontSize:10,color:'#64748b'}}>Present</span></div></div></div>
@@ -2779,7 +2798,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
           </div>
         </div>
       </section>}
-      <section style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:16,padding:20,boxShadow:'0 8px 24px rgba(15,23,42,.05)',minWidth:0}}>
+      <section className="nda-panel" style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:16,padding:20,boxShadow:'0 8px 24px rgba(15,23,42,.05)',minWidth:0}}>
         <div style={{fontSize:11,fontWeight:800,letterSpacing:1.4,color:'#64748b'}}>SHORTCUTS</div><h3 style={{margin:'5px 0 15px',fontSize:18,color:'#0f172a'}}>Quick Actions</h3>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(125px,1fr))',gap:10}}>
           {(userRole.is_admin || userRole.can_view_daily_timesheet) && <button onClick={()=>setActiveTab('daily-timesheet')} style={{textAlign:'left',padding:13,border:'1px solid #bfdbfe',borderRadius:11,background:'#eff6ff',color:'#1d4ed8',fontWeight:800,cursor:'pointer'}}>📄<div style={{marginTop:7,fontSize:13}}>Daily Timesheet</div></button>}
@@ -2790,6 +2809,11 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
           {userRole.is_admin && <button onClick={()=>setActiveTab('permissions')} style={{textAlign:'left',padding:13,border:'1px solid #fecaca',borderRadius:11,background:'#fef2f2',color:'#b91c1c',fontWeight:800,cursor:'pointer'}}>🔐<div style={{marginTop:7,fontSize:13}}>Permissions</div></button>}
         </div>
       </section>
+    </div>
+
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(270px,1fr))',gap:16,marginBottom:22}}>
+      {(userRole.is_admin || userRole.can_view_workers) && <section className="nda-panel"><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}><h3 style={{margin:'0 0 12px',color:'#0b2c61',fontSize:16}}>Workers by Department</h3><span style={{fontSize:11,color:'#2563eb'}}>Live data</span></div><div style={{display:'grid',gap:10}}>{uniqueDepartments.slice(0,8).map((dept,i)=>{const count=filteredWorkers.filter(w=>String(w.department||'').toLowerCase()===String(dept).toLowerCase()).length;const pct=filteredWorkers.length?Math.round(count/filteredWorkers.length*100):0;return <div key={dept} style={{display:'grid',gridTemplateColumns:'minmax(80px,1fr) 2fr auto',alignItems:'center',gap:10,fontSize:12}}><span style={{color:'#334155',overflow:'hidden',textOverflow:'ellipsis'}}>{dept}</span><div style={{height:7,background:'#eaf0fb',borderRadius:99,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:['#2878ee','#22a56a','#f59e0b','#8b5cf6'][i%4],borderRadius:99}}/></div><strong style={{color:'#123467'}}>{count}</strong></div>})}</div></section>}
+      {(userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_daily_timesheet) && <section className="nda-panel"><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}><h3 style={{margin:'0 0 12px',color:'#0b2c61',fontSize:16}}>Top Sites by Attendance</h3><span style={{fontSize:11,color:'#2563eb'}}>{selectedTimesheetDate}</span></div><div style={{display:'grid',gap:11}}>{(sitesList||[]).slice(0,6).map((site,i)=>{const total=filteredWorkers.filter(w=>String(w.work_site||w.site||'').toLowerCase()===String(site).toLowerCase()).length;const present=filteredWorkers.filter(w=>String(w.work_site||w.site||'').toLowerCase()===String(site).toLowerCase()&&String(attendanceData[selectedTimesheetDate]?.[w.id]?.status||'').toLowerCase()==='present').length;const pct=total?Math.round(present/total*100):0;return <div key={site} style={{display:'grid',gridTemplateColumns:'minmax(90px,1fr) auto',gap:8,alignItems:'center',fontSize:12}}><span style={{color:'#334155'}}>📍 {site}</span><strong style={{color:pct>=90?'#15803d':'#1d4ed8'}}>{present}/{total} · {pct}%</strong><div style={{gridColumn:'1 / -1',height:6,background:'#eaf0fb',borderRadius:99,overflow:'hidden'}}><div style={{height:'100%',width:pct+'%',background:pct>=90?'#22a56a':'#3b82f6',borderRadius:99}}/></div></div>})}</div></section>}
     </div>
 
     {(userRole.is_admin || userRole.can_view_workers || userRole.can_view_timesheet) && <>
