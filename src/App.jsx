@@ -818,6 +818,7 @@ const [newDesignation, setNewDesignation] = useState('');
     fetchEmploymentRecords();
     fetchLeaveSalaryRecords();
     fetchDesignations();
+    fetchSystemLists();
   }
 }, [session]);
 
@@ -1031,53 +1032,124 @@ async function fetchDesignations() {
     'Plumber', 'Mason', 'Electrician', 'Painter', 'Helper', 'Foreman',
     'Driver', 'Office Boy', 'Timekeeper'
   ];
-
-  // Keep the database as the source of truth. Inactive rows are retained as
-  // tombstones so a deleted default designation does not return after refresh.
   const { data: allRows, error: readError } = await supabase
-    .from('designations')
-    .select('id,name,is_active')
-    .order('name', { ascending: true });
-
+    .from('designations').select('id,name,is_active').order('name', { ascending: true });
   if (readError) {
     console.error('Error fetching designations:', readError.message);
-    alert('Designations load nahi huin. Supabase mein designations.is_active column check karein: ' + readError.message);
+    alert('Designations database setup check karein: ' + readError.message);
     return;
   }
-
-  const existingNames = (allRows || []).map(item => String(item.name || '').trim().toLowerCase());
-  const missingDefaults = defaultNames
-    .filter(name => !existingNames.includes(name.toLowerCase()))
-    .map(name => ({ name, is_active: true }));
-
-  if (missingDefaults.length) {
-    const { error: seedError } = await supabase.from('designations').insert(missingDefaults);
-    if (seedError) {
-      console.error('Could not initialize default designations:', seedError.message);
-    }
+  const existingNames = new Set((allRows || []).map(x => String(x.name || '').trim().toLowerCase()));
+  const missing = defaultNames.filter(name => !existingNames.has(name.toLowerCase())).map(name => ({ name, is_active: true }));
+  if (missing.length) {
+    const { error } = await supabase.from('designations').insert(missing);
+    if (error) console.error('Default designation seed failed:', error.message);
   }
-
-  const { data: activeRows, error: activeError } = await supabase
-    .from('designations')
-    .select('name,is_active')
-    .eq('is_active', true)
-    .order('name', { ascending: true });
-
-  if (activeError) {
-    console.error('Error loading active designations:', activeError.message);
-    alert('Designations load nahi huin: ' + activeError.message);
+  const { data, error } = await supabase.from('designations').select('name,is_active').eq('is_active', true).order('name', { ascending: true });
+  if (error) {
+    alert('Designations load nahi huin: ' + error.message);
     return;
   }
-
-  const names = [...new Set((activeRows || [])
-    .map(item => String(item.name || '').trim())
-    .filter(Boolean))];
+  const names = [...new Set((data || []).map(x => String(x.name || '').trim()).filter(Boolean))];
   setDesignationsList(names);
-  if (names.length && !names.some(name => name.toLowerCase() === String(designation || '').trim().toLowerCase())) {
-    setDesignation(names[0]);
-  }
+  if (names.length && !names.some(x => x.toLowerCase() === String(designation || '').trim().toLowerCase())) setDesignation(names[0]);
 }
 
+async function fetchSystemLists() {
+  const defaults = {
+    site: ['Sharjah Mamzar', 'Ajman Aaliya', 'Dubai Downtown'],
+    department: ['Plumbing', 'Electrical', 'Civil', 'Mustafa', 'Drivers']
+  };
+  const { data: rows, error } = await supabase.from('system_lists').select('id,list_type,name,is_active').order('name', { ascending: true });
+  if (error) {
+    console.error('System lists load failed:', error.message);
+    alert('Department/Site database setup required: ' + error.message);
+    return;
+  }
+  const existing = new Set((rows || []).map(r => `${r.list_type}|${String(r.name || '').trim().toLowerCase()}`));
+  const missing = Object.entries(defaults).flatMap(([type, names]) => names
+    .filter(name => !existing.has(`${type}|${name.toLowerCase()}`))
+    .map(name => ({ list_type: type, name, is_active: true })));
+  if (missing.length) {
+    const { error: seedError } = await supabase.from('system_lists').insert(missing);
+    if (seedError) console.error('System list seed failed:', seedError.message);
+  }
+  const { data: active, error: activeError } = await supabase.from('system_lists').select('list_type,name,is_active').eq('is_active', true).order('name', { ascending: true });
+  if (activeError) {
+    alert('Department/Site list load nahi hui: ' + activeError.message);
+    return;
+  }
+  const sites = (active || []).filter(r => r.list_type === 'site').map(r => r.name);
+  const depts = (active || []).filter(r => r.list_type === 'department').map(r => r.name);
+  if (sites.length) setSitesList([...new Set(sites)]);
+  if (depts.length) setDepartmentsList([...new Set(depts)]);
+}
+
+async function addSystemListItem(type, value) {
+  const name = String(value || '').trim();
+  if (!name) return { error: { message: 'Name enter karein.' } };
+  const { data: existing, error: findError } = await supabase.from('system_lists')
+    .select('id,name,is_active').eq('list_type', type).ilike('name', name).limit(1);
+  if (findError) return { error: findError };
+  if (existing && existing.length) {
+    if (existing[0].is_active) return { error: { message: 'Yeh naam pehle se mojood hai.' } };
+    const { error } = await supabase.from('system_lists').update({ is_active: true }).eq('id', existing[0].id);
+    return { error };
+  }
+  const { error } = await supabase.from('system_lists').insert([{ list_type: type, name, is_active: true }]);
+  return { error };
+}
+
+async function deleteSystemListItem(type, name) {
+  const { data: rows, error } = await supabase.from('system_lists')
+    .update({ is_active: false }).eq('list_type', type).ilike('name', name).select('id');
+  if (error) return { error };
+  if (!rows || !rows.length) {
+    const { error: insertError } = await supabase.from('system_lists').insert([{ list_type: type, name, is_active: false }]);
+    if (insertError) return { error: insertError };
+  }
+  return { error: null };
+}
+
+async function handleAddDesignation() {
+  if (!userRole.is_admin) return alert('Sirf admin designation manage kar sakta hai.');
+  const value = newDesignation.trim();
+  if (!value) return alert('Designation ka naam enter karein.');
+  const existing = designationsList.find(d => d.toLowerCase() === value.toLowerCase());
+  if (existing) return alert('Designation already exists!');
+  const { data: oldRows, error: lookupError } = await supabase.from('designations').select('id,name,is_active').ilike('name', value).limit(1);
+  if (lookupError) return alert('Designation check nahi hui: ' + lookupError.message);
+  let error = null;
+  if (oldRows && oldRows.length) {
+    if (oldRows[0].is_active) return alert('Designation already exists!');
+    ({ error } = await supabase.from('designations').update({ is_active: true, name: value }).eq('id', oldRows[0].id));
+  } else {
+    ({ error } = await supabase.from('designations').insert([{ name: value, is_active: true }]));
+  }
+  if (error) return alert('Designation save nahi hui: ' + error.message);
+  await fetchDesignations();
+  setDesignation(value);
+  setNewDesignation('');
+  void logActivity('Designation added', value);
+  alert('Designation successfully saved!');
+}
+
+async function handleDeleteDesignation() {
+  if (!userRole.is_admin) return alert('Sirf admin designation delete kar sakta hai.');
+  const selected = String(designation || '').trim();
+  if (!selected) return alert('Pehle designation select karein.');
+  if (!window.confirm(`Designation "${selected}" ko active list se permanently hatana hai? Purane workers ke records nahi mitaye jayenge.`)) return;
+  const { data: rows, error } = await supabase.from('designations')
+    .update({ is_active: false }).ilike('name', selected).select('id');
+  if (error) return alert('Delete fail hui; database ne error diya: ' + error.message);
+  if (!rows || !rows.length) {
+    const { error: tombstoneError } = await supabase.from('designations').insert([{ name: selected, is_active: false }]);
+    if (tombstoneError) return alert('Delete save nahi hui: ' + tombstoneError.message);
+  }
+  await fetchDesignations();
+  void logActivity('Designation deleted', selected);
+  alert(`Designation "${selected}" active list se delete ho gayi. Refresh ke baad wapas nahi aani chahiye.`);
+}
 
  async function handleSaveAnnualLeave(e) {
     e.preventDefault();
@@ -1351,57 +1423,58 @@ async function handleToggleHolidayDate() {
     }
   }
   
-  function handleDeleteSite(siteToDelete) {
+  async function handleDeleteSite(siteToDelete) {
     if (!userRole.is_admin) return alert('Access Denied!');
-    if (sitesList.length <= 1) {
-      return alert('Kam az kam ek working site honi lazmi hai!');
-    }
-    if (window.confirm(`Kya aap waqai '${siteToDelete}' site delete karna chahte hain?`)) {
-      const updatedSites = sitesList.filter(site => site !== siteToDelete);
-      setSitesList(updatedSites);
-      
-      if (selectedSiteFilter === siteToDelete) setSelectedSiteFilter('All');
-      if (workSite === siteToDelete) setWorkSite(updatedSites[0]);
-      
-      alert(`Site '${siteToDelete}' successfully delete ho gayi!`);
-    }
+    if (sitesList.length <= 1) return alert('Kam az kam ek working site rehni chahiye.');
+    if (!window.confirm(`Kya aap '${siteToDelete}' site ko permanently active list se hatana chahte hain?`)) return;
+    const { error } = await deleteSystemListItem('site', siteToDelete);
+    if (error) return alert('Site delete nahi hui: ' + error.message);
+    const updated = sitesList.filter(x => x.toLowerCase() !== siteToDelete.toLowerCase());
+    setSitesList(updated);
+    if (selectedSiteFilter === siteToDelete) setSelectedSiteFilter('All');
+    if (workSite === siteToDelete) setWorkSite(updated[0] || '');
+    void logActivity('Working site deleted', siteToDelete);
+    alert(`Site '${siteToDelete}' delete ho gayi aur database mein save kar di gayi.`);
   }
 
   async function handleAddNewSite(e) {
     e.preventDefault();
     if (!userRole.is_admin) return alert('Access Denied!');
-    if (!newSiteInput.trim()) return alert('Site name enter karein!');
-    if (sitesList.includes(newSiteInput.trim())) return alert('Yeh site pehle se mojood hai!');
-
-    setSitesList([...sitesList, newSiteInput.trim()]);
-    alert(`New working site '${newSiteInput.trim()}' added successfully!`);
+    const value = newSiteInput.trim();
+    if (!value) return alert('Site name enter karein!');
+    const result = await addSystemListItem('site', value);
+    if (result.error) return alert('Site save nahi hui: ' + result.error.message);
+    await fetchSystemLists();
     setNewSiteInput('');
+    void logActivity('Working site added', value);
+    alert(`Working site '${value}' saved successfully!`);
   }
 
   async function handleAddNewDepartment(e) {
     e.preventDefault();
     if (!userRole.is_admin) return alert('Access Denied!');
-    if (!newDeptInput.trim()) return alert('Department name enter karein!');
-    if (departmentsList.some(d => String(d).trim().toLowerCase() === newDeptInput.trim().toLowerCase())) return alert('Yeh department pehle se mojood hai!');
-
-    setDepartmentsList([...uniqueDepartments, newDeptInput.trim()]);
-    alert(`New department '${newDeptInput.trim()}' added successfully!`);
+    const value = newDeptInput.trim();
+    if (!value) return alert('Department name enter karein!');
+    const result = await addSystemListItem('department', value);
+    if (result.error) return alert('Department save nahi hua: ' + result.error.message);
+    await fetchSystemLists();
     setNewDeptInput('');
+    void logActivity('Department added', value);
+    alert(`Department '${value}' saved successfully!`);
   }
-  function handleDeleteDepartment(deptToDelete) {
+
+  async function handleDeleteDepartment(deptToDelete) {
     if (!userRole.is_admin) return alert('Access Denied!');
-    if (departmentsList.length <= 1) {
-      return alert('Kam az kam ek department hona lazmi hai!');
-    }
-    if (window.confirm(`Kya aap waqai '${deptToDelete}' department delete karna chahte hain?`)) {
-      const updatedDepts = uniqueDepartments.filter(dept => String(dept).trim().toLowerCase() !== String(deptToDelete).trim().toLowerCase());
-      setDepartmentsList(updatedDepts);
-      
-      if (selectedDeptFilter === deptToDelete) setSelectedDeptFilter('All');
-      if (department === deptToDelete) setDepartment(updatedDepts[0]);
-      
-      alert(`Department '${deptToDelete}' successfully delete ho gaya!`);
-    }
+    if (uniqueDepartments.length <= 1) return alert('Kam az kam ek department rehna chahiye.');
+    if (!window.confirm(`Kya aap '${deptToDelete}' department ko permanently active list se hatana chahte hain?`)) return;
+    const { error } = await deleteSystemListItem('department', deptToDelete);
+    if (error) return alert('Department delete nahi hua: ' + error.message);
+    const updated = uniqueDepartments.filter(x => x.toLowerCase() !== deptToDelete.toLowerCase());
+    setDepartmentsList(updated);
+    if (selectedDeptFilter === deptToDelete) setSelectedDeptFilter('All');
+    if (department === deptToDelete) setDepartment(updated[0] || '');
+    void logActivity('Department deleted', deptToDelete);
+    alert(`Department '${deptToDelete}' delete ho gaya aur database mein save kar diya gaya.`);
   }
 
   async function handleChangePasswordSubmit(e) {
@@ -1797,11 +1870,8 @@ async function handleToggleHolidayDate() {
     setWorkSite(worker.work_site || sitesList[0]);
     const workerDesignation = String(worker.designation || 'Worker').trim() || 'Worker';
     setDesignation(workerDesignation);
-    // Keep the worker's current designation selectable even if it was removed
-    // from the active designation list or differs only by capitalization.
-    setDesignationsList(prev => prev.some(d => String(d).trim().toLowerCase() === workerDesignation.toLowerCase())
-      ? prev
-      : [...prev, workerDesignation]);
+    // Do not re-add deleted designations to the global active list. The worker's
+    // legacy designation is shown as a one-off option in the edit form below.
     setMonthlySalary(worker.monthly_salary || (worker.daily_rate * totalDaysInCurrentMonth) || '');
     setReligion(worker.religion || 'Muslim');
     setLastReturnDate(worker.last_return_date || '');
@@ -2740,15 +2810,18 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
 >
   📄 Daily Timesheet
 </button>}
-        {(userRole.is_admin || userRole.can_view_payroll) && (
-          <button onClick={() => setActiveTab('payroll')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'payroll' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>💵 Payroll</button>
-        )}
         {userRole.is_admin && <button onClick={() => setActiveTab('changepass')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'changepass' ? '#0284c7' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🔑 Change Password</button>}
         {userRole.is_admin && (
           <button onClick={() => setActiveTab('sites')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'sites' ? '#059669' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🏗️ Working Sites</button>
         )}
         {userRole.is_admin && (
           <button onClick={() => setActiveTab('departments')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'departments' ? '#7c3aed' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🏢 Departments</button>
+        )}
+        {userRole.is_admin && (
+          <button onClick={() => setActiveTab('designations')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'designations' ? '#0f766e' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🛠️ Designations</button>
+        )}
+        {(userRole.is_admin || userRole.can_view_payroll) && (
+          <button onClick={() => setActiveTab('payroll')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'payroll' ? '#2563eb' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>💵 Payroll</button>
         )}
         {userRole.is_admin && (
           <button onClick={() => setActiveTab('permissions')} style={{ padding: '10px 15px', backgroundColor: activeTab === 'permissions' ? '#d97706' : 'transparent', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', whiteSpace: 'nowrap' }}>🔐 Permissions</button>
@@ -2771,7 +2844,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         
         {/* Filters Bar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#fff', padding: '12px 18px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', flexWrap: 'wrap', gap: '10px' }}>
-          {!['changepass', 'sites', 'departments', 'permissions'].includes(activeTab) && (userRole.is_admin ? (
+          {!['changepass', 'sites', 'departments', 'designations', 'permissions'].includes(activeTab) && (userRole.is_admin ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <div>
                 <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#2563eb', marginRight: '5px' }}>Dept:</label>
@@ -2789,7 +2862,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
               </div>
             </div>
           ) : (
-            !['changepass', 'sites', 'departments', 'permissions'].includes(activeTab) && <span style={{ fontWeight: 'bold', color: '#0369a1' }}>Site: {userRole.assigned_site} | Dept: {userRole.assigned_department}</span>
+            !['changepass', 'sites', 'departments', 'designations', 'permissions'].includes(activeTab) && <span style={{ fontWeight: 'bold', color: '#0369a1' }}>Site: {userRole.assigned_site} | Dept: {userRole.assigned_department}</span>
           ))}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -3285,6 +3358,9 @@ style={{
   }}
 >
   <option value="All">All Designations</option>
+  {editingWorkerId && designation && !designationsList.some(d => String(d).trim().toLowerCase() === String(designation).trim().toLowerCase()) && (
+    <option value={designation}>{designation} (existing worker record)</option>
+  )}
   {designationsList.map((d, idx) => (
     <option key={idx} value={d}>{d}</option>
   ))}
@@ -3669,110 +3745,7 @@ await handleSingleAttendanceChange(
     <option key={idx} value={d}>{d}</option>
   ))}
 </select>
-              <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-  <input
-    type="text"
-    value={newDesignation}
-    onChange={e => setNewDesignation(e.target.value)}
-    placeholder="Add new designation"
-    style={{
-      flex: 1,
-      padding: '8px',
-      borderRadius: '6px',
-      border: '1px solid #cbd5e1'
-    }}
-  />
-<button
-  type="button"
-  onClick={async () => {
-    const value = newDesignation.trim();
 
-    if (!value) return;
-
-    if (
-      designationsList.some(
-        d => d.toLowerCase() === value.toLowerCase()
-      )
-    ) {
-      alert('Designation already exists!');
-      return;
-    }
-
-    const { error } = await supabase
-      .from('designations')
-      .insert([{ name: value, is_active: true }]);
-
-    if (error) {
-      alert('Designation save nahi hui: ' + error.message);
-      return;
-    }
-
-    setDesignationsList(prev => [...prev, value]);
-    void logActivity('Designation added', value);
-    setDesignation(value);
-    setNewDesignation('');
-    alert('Designation successfully saved!');
-  }}
-  style={{
-    padding: '8px 12px',
-    borderRadius: '6px',
-    border: 'none',
-    backgroundColor: '#2563eb',
-    color: 'white',
-    cursor: 'pointer'
-  }}
->
-  + Add
-</button>
-<button
-  type="button"
-  onClick={async () => {
-    const selected = String(designation || '').trim();
-    if (!selected) return alert('Pehle delete karne ke liye designation select karein.');
-    if (!window.confirm(`Kya aap designation "${selected}" ko list se delete karna chahte hain? Existing workers ka record delete nahi hoga.`)) return;
-
-    // Soft-delete every capitalization variant. Keeping the row inactive
-    // prevents built-in/default designations from being added back on refresh.
-    const { data: changedRows, error } = await supabase
-      .from('designations')
-      .update({ is_active: false })
-      .ilike('name', selected)
-      .select('id,name,is_active');
-
-    if (error) {
-      alert('Designation delete nahi hui: ' + error.message + '\nSupabase SQL Editor mein is_active column add karna zaroori hai.');
-      return;
-    }
-
-    if (!changedRows || changedRows.length === 0) {
-      // If it was a built-in name not yet stored in the DB, write an inactive
-      // tombstone so the name stays deleted after reload on all devices.
-      const { error: tombstoneError } = await supabase
-        .from('designations')
-        .insert([{ name: selected, is_active: false }]);
-      if (tombstoneError) {
-        alert('Designation database se delete nahi hui: ' + tombstoneError.message);
-        return;
-      }
-    }
-
-    setDesignationsList(prev => prev.filter(d => d.trim().toLowerCase() !== selected.toLowerCase()));
-    void logActivity('Designation deleted', selected);
-    setDesignation('');
-    alert('Designation delete ho gayi. Worker records aur attendance delete nahi hue.');
-  }}
-  style={{
-    padding: '8px 12px',
-    borderRadius: '6px',
-    border: 'none',
-    backgroundColor: '#dc2626',
-    color: 'white',
-    cursor: 'pointer'
-  }}
->
-  Delete
-</button>
-</div>
             </div>
             <div>
               <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Working Site</label>
@@ -4636,6 +4609,33 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {/* DESIGNATION MANAGEMENT — moved out of Workers Directory */}
+        {activeTab === 'designations' && userRole.is_admin && (
+          <div style={{ background: '#fff', padding: 22, borderRadius: 12, boxShadow: '0 2px 8px rgba(15,23,42,.08)', maxWidth: 760 }}>
+            <h3 style={{ margin: '0 0 8px', color: '#0f172a' }}>🛠️ Designation Management</h3>
+            <p style={{ margin: '0 0 18px', color: '#64748b', fontSize: 13 }}>Yahan se designation add ya delete karein. Delete hone wali designation refresh ke baad active list mein wapas nahi aayegi. Purane worker records safe rahenge.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px,1fr) minmax(180px,1fr) auto', gap: 10, alignItems: 'end', marginBottom: 20 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 800, marginBottom: 5 }}>Select Designation to Delete</label>
+                <select value={designation} onChange={e => setDesignation(e.target.value)} style={{ ...fieldStyle }}>
+                  <option value="">Select designation</option>
+                  {designationsList.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 800, marginBottom: 5 }}>New Designation</label>
+                <input value={newDesignation} onChange={e => setNewDesignation(e.target.value)} placeholder="Enter designation name" style={{ ...fieldStyle }} />
+              </div>
+              <button type="button" onClick={handleAddDesignation} style={{ padding: '11px 15px', border: 0, borderRadius: 8, background: '#2563eb', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>+ Add</button>
+            </div>
+            <button type="button" onClick={handleDeleteDesignation} disabled={!designation} style={{ padding: '10px 16px', border: 0, borderRadius: 8, background: designation ? '#dc2626' : '#94a3b8', color: '#fff', fontWeight: 800, cursor: designation ? 'pointer' : 'not-allowed', marginBottom: 18 }}>🗑️ Delete Selected Designation</button>
+            <h4 style={{ margin: '0 0 8px' }}>Active Designations ({designationsList.length})</h4>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 8 }}>
+              {designationsList.map(d => <button type="button" key={d} onClick={() => setDesignation(d)} style={{ textAlign: 'left', padding: '10px 12px', border: `1px solid ${designation === d ? '#0f766e' : '#e2e8f0'}`, borderRadius: 8, background: designation === d ? '#ccfbf1' : '#f8fafc', color: '#0f172a', cursor: 'pointer', fontWeight: 700 }}>{d}</button>)}
+            </div>
           </div>
         )}
 
