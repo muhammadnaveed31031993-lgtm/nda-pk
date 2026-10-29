@@ -1153,43 +1153,70 @@ async function fetchDesignations() {
   }
 
 async function fetchAttendance() {
-  let query = supabase.from('attendance').select('*').order('date', { ascending: false });
-  // Keep staff timesheet/dashboard data within their authorized department/site.
-  if (!userRole.is_admin) {
-    const dept = String(userRole.assigned_department || 'Unassigned').trim();
-    const site = String(userRole.assigned_site || 'All').trim();
-    if (dept !== 'All') query = query.eq('department', dept);
-    if (site !== 'All') query = query.eq('work_site', site);
-  }
-  const { data, error } = await query;
+  // Supabase/PostgREST commonly returns at most 1,000 rows per request.
+  // Attendance grows every day (workers x dates); a single select silently
+  // omitted older rows, making dates such as the 16th appear to disappear.
+  // Fetch every page so the full attendance history remains visible.
+  const pageSize = 1000;
+  let offset = 0;
+  let allRows = [];
 
-  if (error) {
-    console.error('Attendance load error:', error.message);
-    alert('Attendance load nahi hui: ' + error.message);
-    return;
-  }
+  try {
+    while (true) {
+      let query = supabase
+        .from('attendance')
+        .select('*')
+        // Stable ordering is important when paging through rows.
+        .order('date', { ascending: false })
+        .order('worker_id', { ascending: true })
+        .range(offset, offset + pageSize - 1);
 
-  setAttendance(data || []);
+      // Keep staff timesheet/dashboard data within their authorized department/site.
+      if (!userRole.is_admin) {
+        const dept = String(userRole.assigned_department || 'Unassigned').trim();
+        const site = String(userRole.assigned_site || 'All').trim();
+        if (dept !== 'All') query = query.eq('department', dept);
+        if (site !== 'All') query = query.eq('work_site', site);
+      }
 
-  // Dashboard aur Timesheet ke liye date-wise attendance state
-  const dateMap = {};
+      const { data, error } = await query;
+      if (error) throw error;
 
-  (data || []).forEach(record => {
-    if (!dateMap[record.date]) {
-      dateMap[record.date] = {};
+      const pageRows = data || [];
+      allRows = allRows.concat(pageRows);
+      if (pageRows.length < pageSize) break;
+      offset += pageSize;
     }
 
-    dateMap[record.date][record.worker_id] = {
-      status: record.status,
-      ot: Number(record.overtime_hours) || 0,
-      contract_ot: Number(record.contract_overtime_hours) || 0,
-      contract_overtime_hours: Number(record.contract_overtime_hours) || 0,
-      site: record.work_site || '',
-      work_site: record.work_site || ''
-    };
-  });
+    // Normalize date values so a timestamp-shaped value cannot create a
+    // separate date-map key from the YYYY-MM-DD value used by date inputs.
+    allRows = allRows.map(record => ({
+      ...record,
+      date: String(record.date || '').slice(0, 10)
+    }));
 
-  setAttendanceData(dateMap);
+    setAttendance(allRows);
+
+    // Dashboard and Timesheet state is rebuilt from the complete DB history.
+    const dateMap = {};
+    allRows.forEach(record => {
+      if (!record.date) return;
+      if (!dateMap[record.date]) dateMap[record.date] = {};
+      dateMap[record.date][record.worker_id] = {
+        status: record.status,
+        ot: Number(record.overtime_hours) || 0,
+        contract_ot: Number(record.contract_overtime_hours) || 0,
+        contract_overtime_hours: Number(record.contract_overtime_hours) || 0,
+        site: record.work_site || '',
+        work_site: record.work_site || ''
+      };
+    });
+
+    setAttendanceData(dateMap);
+  } catch (err) {
+    console.error('Attendance load error:', err);
+    alert('Attendance load nahi hui: ' + (err?.message || String(err)));
+  }
 }
 
 async function fetchHolidayDates() {
