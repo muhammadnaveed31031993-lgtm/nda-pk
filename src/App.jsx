@@ -1057,6 +1057,12 @@ function getAnnualLeaveForWorker(workerId, date) {
     return leaveRecord || null;
   }
 
+// Overtime is counted on normal Present days and on workers who actually worked on a holiday.
+function isPresentAttendanceStatus(status) {
+  const value = String(status || '').trim().toLowerCase();
+  return value === 'present' || value === 'holiday present';
+}
+
 async function fetchDesignations() {
   const defaultNames = [
     'Carpenter', 'Carpenter Helper', 'Steel Fixer', 'Steel Fixer Helper',
@@ -2029,9 +2035,12 @@ async function handleToggleHolidayDate() {
         cursor.setDate(cursor.getDate() + 1);
       }
     }
-    const workerAttendance = reportDates.filter(d => attendanceByDate.has(d) || isHolidayDate(d)).map(d => {
+    const workerAttendance = reportDates.filter(d => attendanceByDate.has(d) || isHolidayDate(d) || getAnnualLeaveForWorker(worker.id, d)).map(d => {
       const row = attendanceByDate.get(d) || { worker_id: worker.id, date: d, overtime_hours: 0, contract_overtime_hours: 0, work_site: worker.work_site || '' };
-      return { ...row, date: d, status: isHolidayDate(d) ? 'Holiday' : (row.status || '—') };
+      const annualLeave = getAnnualLeaveForWorker(worker.id, d);
+      const status = annualLeave ? 'Annual Leave' : (isHolidayDate(d) ? (String(row.status || '').toLowerCase() === 'holiday present' ? 'Holiday Present' : 'Holiday') : (row.status || '—'));
+      const canCountOT = isPresentAttendanceStatus(status);
+      return { ...row, date: d, status, overtime_hours: canCountOT ? (Number(row.overtime_hours) || 0) : 0, contract_overtime_hours: canCountOT ? (Number(row.contract_overtime_hours) || 0) : 0 };
     });
 
     const printWindow = window.open('', '_blank');
@@ -2160,7 +2169,7 @@ async function handleToggleHolidayDate() {
                 workerAttendance.length === 0
                   ? '<tr><td colspan="4">No attendance records found.</td></tr>'
                   : workerAttendance.map(att => `
-                      <tr style="${String(att.status || '').toLowerCase() === 'holiday' ? 'background:#fef08a;font-weight:bold;' : ''}">
+                      <tr style="${['annual leave','sick leave','leave','other leave'].includes(String(att.status || '').trim().toLowerCase()) ? 'background:#ffedd5;color:#9a3412;font-weight:bold;' : String(att.status || '').trim().toLowerCase() === 'absent' ? 'background:#fee2e2;color:#991b1b;font-weight:bold;' : ['holiday','holiday present'].includes(String(att.status || '').trim().toLowerCase()) ? 'background:#fef08a;font-weight:bold;' : String(att.status || '').trim().toLowerCase() === 'present' ? 'background:#dcfce7;' : ''}">
                         <td>${att.date || ''}</td>
                         <td>${att.status || ''}</td>                       
 <td>${Number(att.overtime_hours) || 0} Hours</td>
@@ -2236,14 +2245,15 @@ async function handleToggleHolidayDate() {
   const selectedDateIsHoliday = isHolidayDate(selectedTimesheetDate);
   const records = deptWorkers.map(w => {
     const existing = attendanceData[selectedTimesheetDate]?.[w.id] || attendance.find(a => String(a.worker_id) === String(w.id) && a.date === selectedTimesheetDate) || {};
+    const activeAnnualLeave = getAnnualLeaveForWorker(w.id, selectedTimesheetDate);
+    const currentStatus = activeAnnualLeave ? 'Annual Leave' : (selectedDateIsHoliday ? 'Holiday Present' : (existing.status || 'Present'));
+    const canCountOT = isPresentAttendanceStatus(currentStatus);
     return {
       worker_id: w.id,
       date: selectedTimesheetDate,
-      // Overtime-only bulk must never turn an unrecorded worker into an Absent worker.
-      // Holiday overtime is recorded with a neutral Holiday status, not Present/Absent.
-      status: selectedDateIsHoliday ? 'Holiday' : (existing.status || 'Present'),
-      overtime_hours: Number(bulkOT) || 0,
-      contract_overtime_hours: Number(bulkContractOT) || 0,
+      status: currentStatus,
+      overtime_hours: canCountOT ? (Number(bulkOT) || 0) : 0,
+      contract_overtime_hours: canCountOT ? (Number(bulkContractOT) || 0) : 0,
       department: w.department,
       work_site: effectiveBulkSite
     };
@@ -2266,11 +2276,14 @@ async function handleToggleHolidayDate() {
     }
     
 deptWorkers.forEach(w => {
+  const existing = attendanceData[selectedTimesheetDate]?.[w.id] || attendance.find(a => String(a.worker_id) === String(w.id) && a.date === selectedTimesheetDate) || {};
+  const currentStatus = getAnnualLeaveForWorker(w.id, selectedTimesheetDate) ? 'Annual Leave' : (selectedDateIsHoliday ? 'Holiday Present' : (existing.status || 'Present'));
+  const canCountOT = isPresentAttendanceStatus(currentStatus);
   updated[selectedTimesheetDate][w.id] = {
-    status: selectedDateIsHoliday ? 'Holiday' : (attendanceData[selectedTimesheetDate]?.[w.id]?.status || attendance.find(a => String(a.worker_id) === String(w.id) && a.date === selectedTimesheetDate)?.status || 'Present'),
-    ot: Number(bulkOT) || 0,
-    contract_ot: Number(bulkContractOT) || 0,
-    contract_overtime_hours: Number(bulkContractOT) || 0,
+    status: currentStatus,
+    ot: canCountOT ? (Number(bulkOT) || 0) : 0,
+    contract_ot: canCountOT ? (Number(bulkContractOT) || 0) : 0,
+    contract_overtime_hours: canCountOT ? (Number(bulkContractOT) || 0) : 0,
     site: effectiveBulkSite
   };
 });
@@ -2318,12 +2331,16 @@ async function handleSingleAttendanceChange(
       ? userRole.assigned_site
       : (newSite || previousRecord.site || worker?.work_site || sitesList[0] || 'Sharjah Mamzar');
 
+  const savedStatus = isHolidayDate(dateStr) ? (String(newStatus).toLowerCase() === 'present' ? 'Holiday Present' : (String(newStatus).toLowerCase() === 'absent' ? 'Holiday' : newStatus)) : newStatus;
+  const canCountOT = isPresentAttendanceStatus(savedStatus) && !getAnnualLeaveForWorker(workerId, dateStr);
+  const savedNormalOT = canCountOT ? (Number(newOt) || 0) : 0;
+  const savedContractOT = canCountOT ? (Number(newContractOT) || 0) : 0;
   const updatedRecord = {
     ...previousRecord,
-    status: newStatus,
-    ot: Number(newOt) || 0,
-    contract_ot: Number(newContractOT) || 0,
-    contract_overtime_hours: Number(newContractOT) || 0,
+    status: savedStatus,
+    ot: savedNormalOT,
+    contract_ot: savedContractOT,
+    contract_overtime_hours: savedContractOT,
     site: assignedSite
   };
 
@@ -2341,9 +2358,9 @@ async function handleSingleAttendanceChange(
       .upsert([{
         worker_id: workerId,
         date: dateStr,
-        status: newStatus,
-        overtime_hours: Number(newOt) || 0,
-        contract_overtime_hours: Number(newContractOT) || 0,
+        status: savedStatus,
+        overtime_hours: savedNormalOT,
+        contract_overtime_hours: savedContractOT,
         department: worker?.department,
         work_site: assignedSite
       }], { onConflict: 'worker_id,date' });
@@ -2403,13 +2420,14 @@ async function handleSaveSiteAttendance(e) {
     const records = selectedWorkers.map(w => {
       const old = attendance.find(a => String(a.worker_id) === String(w.id) && a.date === selectedTimesheetDate);
       const isPresent = presentWorkers.some(p => p && String(p.id) === String(w.id));
+      const activeAnnualLeave = getAnnualLeaveForWorker(w.id, selectedTimesheetDate);
+      const status = activeAnnualLeave ? 'Annual Leave' : (siteDateIsHoliday ? (isPresent ? 'Holiday Present' : 'Holiday') : (isPresent ? 'Present' : 'Absent'));
+      const canCountOT = isPresentAttendanceStatus(status);
       return {
         worker_id: w.id, date: selectedTimesheetDate,
-        // Sunday/holiday must not create Present or Absent records. Use Holiday status;
-        // overtime hours can be entered through the Bulk Overtime Only controls.
-        status: siteDateIsHoliday ? 'Holiday' : (isPresent ? 'Present' : 'Absent'),
-        overtime_hours: siteDateIsHoliday ? (isPresent ? (Number(siteHolidayNormalOT) || 0) : 0) : (Number(old?.overtime_hours) || 0),
-        contract_overtime_hours: siteDateIsHoliday ? (isPresent ? (Number(siteHolidayContractOT) || 0) : 0) : (Number(old?.contract_overtime_hours) || 0),
+        status,
+        overtime_hours: canCountOT ? (siteDateIsHoliday ? (Number(siteHolidayNormalOT) || 0) : (Number(old?.overtime_hours) || 0)) : 0,
+        contract_overtime_hours: canCountOT ? (siteDateIsHoliday ? (Number(siteHolidayContractOT) || 0) : (Number(old?.contract_overtime_hours) || 0)) : 0,
         department: w.department || '', work_site: siteAttendanceSite
       };
     });
@@ -2418,7 +2436,7 @@ async function handleSaveSiteAttendance(e) {
     setSiteAttendanceIds('');
     void logActivity('Site attendance entry', `${selectedTimesheetDate}: ${records.length} workers at ${siteAttendanceSite}; holiday ${siteDateIsHoliday ? 'yes' : 'no'}`);
     await fetchAttendance();
-    alert(siteDateIsHoliday ? `Holiday status save ho gaya (${siteAttendanceSite}). Sunday/holiday ke OT hours Bulk Overtime Only mein enter karein.` : `Attendance save ho gayi: ${records.filter(r => r.status === 'Present').length} Present, ${records.filter(r => r.status === 'Absent').length} Absent (${siteAttendanceSite}).`);
+    alert(siteDateIsHoliday ? `Holiday save ho gayi (${siteAttendanceSite}): ${records.filter(r => r.status === 'Holiday Present').length} duty par, ${records.filter(r => r.status === 'Holiday').length} duty par nahi. Sirf duty walon ka OT save hua.` : `Attendance save ho gayi: ${records.filter(r => r.status === 'Present').length} Present, ${records.filter(r => r.status === 'Absent').length} Absent (${siteAttendanceSite}).`);
   } catch (err) {
     alert('Attendance save nahi hui: ' + (err?.message || String(err)));
   } finally { setSiteAttendanceSaving(false); }
@@ -2503,8 +2521,10 @@ const otHours = Number(
 );
     
     const contractOtHours = Number(oldRecord.contract_ot ?? oldRecord.contract_overtime_hours ?? attendance.find(a => String(a.worker_id) === String(workerId) && a.date === selectedTimesheetDate)?.contract_overtime_hours ?? 0) || 0;
+    const savedStatus = isHolidayDate(selectedTimesheetDate) ? (String(status).toLowerCase() === 'present' ? 'Holiday Present' : (String(status).toLowerCase() === 'absent' ? 'Holiday' : status)) : status;
+    const canCountOT = isPresentAttendanceStatus(savedStatus) && !getAnnualLeaveForWorker(workerId, selectedTimesheetDate);
     const { error } = await supabase.from('attendance').upsert([
-      { worker_id: workerId, date: selectedTimesheetDate, status, overtime_hours: otHours, contract_overtime_hours: contractOtHours, department: worker?.department, work_site: assignedSiteForToday }
+      { worker_id: workerId, date: selectedTimesheetDate, status: savedStatus, overtime_hours: canCountOT ? otHours : 0, contract_overtime_hours: canCountOT ? contractOtHours : 0, department: worker?.department, work_site: assignedSiteForToday }
     ], { onConflict: 'worker_id,date' });
 
     if (error) alert('Error: ' + error.message);
@@ -2685,9 +2705,9 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
 
     // Normal OT + Contract OT
     const totalOT = monthlyRecords.reduce((total, record) => {
+      if (!isPresentAttendanceStatus(record.status) || getAnnualLeaveForWorker(worker.id, record.date)) return total;
       const normalOT = Number(record.overtime_hours) || 0;
       const contractOT = Number(record.contract_overtime_hours) || 0;
-
       return total + normalOT + contractOT;
     }, 0);
 
@@ -3914,7 +3934,7 @@ await handleSingleAttendanceChange(
      ) || {};
 
    const getStatus = worker =>
-     String(getRecord(worker).status || 'Absent').toLowerCase().replace(/_/g, ' ').trim();
+     String(getRecord(worker).status || (isHolidayDate(selectedTimesheetDate) ? 'Holiday' : 'Absent')).toLowerCase().replace(/_/g, ' ').trim();
 
    const getSite = worker =>
      getRecord(worker).site ||
@@ -3923,7 +3943,7 @@ await handleSingleAttendanceChange(
      'Unassigned';
 
   const reportIsHoliday = isHolidayDate(selectedTimesheetDate);
-   const presentCount = reportIsHoliday ? 0 : reportWorkers.filter(w => {
+   const presentCount = reportWorkers.filter(w => {
   const status = getStatus(w);
 
   const isOnAnnualLeave = annualLeaveList.some(leave => {
@@ -3942,7 +3962,7 @@ await handleSingleAttendanceChange(
     );
   });
 
-  return status === 'present' && !isOnAnnualLeave;
+  return (status === 'present' || status === 'holiday present') && !isOnAnnualLeave;
 }).length;
    const absentWorkers = reportIsHoliday ? [] : reportWorkers.filter(w => getStatus(w) === 'absent');
 
@@ -4054,15 +4074,15 @@ await handleSingleAttendanceChange(
            <tbody>
              {reportWorkers.map(worker => {
                const record = getRecord(worker);
-               const savedStatus = record.status || 'Absent';
+               const savedStatus = record.status || (reportIsHoliday ? 'Holiday' : 'Absent');
                const savedSite = getSite(worker);
                const savedOT = record.ot ?? record.overtime_hours ?? 0;
 
                return (
                  <tr key={worker.id} style={{
                    borderBottom: '1px solid #e2e8f0',
-                   backgroundColor: savedStatus.toLowerCase() === 'absent' ? '#fee2e2' : 'transparent',
-                   color: savedStatus.toLowerCase() === 'absent' ? '#991b1b' : 'inherit'
+                   backgroundColor: ['annual leave','sick leave','leave','other leave'].includes(savedStatus.toLowerCase()) ? '#ffedd5' : savedStatus.toLowerCase() === 'absent' ? '#fee2e2' : ['holiday','holiday present'].includes(savedStatus.toLowerCase()) ? '#fef08a' : 'transparent',
+                   color: ['annual leave','sick leave','leave','other leave'].includes(savedStatus.toLowerCase()) ? '#9a3412' : savedStatus.toLowerCase() === 'absent' ? '#991b1b' : 'inherit'
                  }}>
                    <td style={{ padding: '10px', fontWeight: 'bold' }}>
                      #{worker.id} - {worker.name}
@@ -4114,10 +4134,10 @@ await handleSingleAttendanceChange(
                      <select
                        id={`status-${worker.id}`}
                        key={`${worker.id}-${selectedTimesheetDate}-${savedStatus}`}
-                       defaultValue={savedStatus}
+                       defaultValue={reportIsHoliday ? (String(savedStatus).toLowerCase() === 'holiday present' ? 'Present' : 'Absent') : savedStatus}
                        style={{ padding: '6px', borderRadius: '4px' }}
                      >
-                       <option value="Present">Present</option>
+                       <option value="Present">{reportIsHoliday ? 'Holiday Duty (OT Only)' : 'Present'}</option>
                        <option value="Absent">Absent</option>
                        <option value="Annual Leave">Annual Leave</option>
                        <option value="Sick Leave">Sick Leave</option>
@@ -4265,38 +4285,37 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
                       );
 
                       const rowIsHoliday = isHolidayDate(selectedTimesheetDate);
-                      const status = rowIsHoliday ? 'Holiday Present' : (annualLeave ? 'Annual Leave' : (record.status || 'Absent'));
+                      const status = annualLeave ? 'Annual Leave' : (rowIsHoliday ? (String(record.status || '').toLowerCase() === 'holiday present' ? 'Holiday Present' : 'Holiday') : (record.status || 'Absent'));
 
-                      const ot = annualLeave && !rowIsHoliday
-                        ? 0
-                        : (Number(record.ot ?? record.overtime_hours ?? 0) || 0);
+                      const canCountOT = isPresentAttendanceStatus(status) && !annualLeave;
+                      const ot = canCountOT ? (Number(record.ot ?? record.overtime_hours ?? 0) || 0) : 0;
 
-                      const contractOT = annualLeave && !rowIsHoliday
-                        ? 0
-                        : (Number(record.contract_ot ?? record.contract_overtime_hours ?? 0) || 0);
+                      const contractOT = canCountOT ? (Number(record.contract_ot ?? record.contract_overtime_hours ?? 0) || 0) : 0;
 
                       const totalOT = ot + contractOT;
 
-                      const normalHours = rowIsHoliday ? 8 : (!annualLeave && String(status).toLowerCase() === 'present' ? 8 : 0);
+                      const normalHours = !rowIsHoliday && !annualLeave && String(status).toLowerCase() === 'present' ? 8 : 0;
 
                       return (                       
 <tr
   key={worker.id}
   style={{
     backgroundColor:
-      String(status).trim().toLowerCase() === 'annual leave'
-        ? '#fef3c7'
+      ['annual leave', 'sick leave', 'leave', 'other leave'].includes(String(status).trim().toLowerCase())
+        ? '#ffedd5'
         : String(status).trim().toLowerCase() === 'absent'
           ? '#fee2e2'
-          : '#ffffff',
+          : String(status).trim().toLowerCase() === 'present'
+            ? '#dcfce7'
+            : rowIsHoliday ? '#fef08a' : '#ffffff',
     color:
-      String(status).trim().toLowerCase() === 'annual leave'
-        ? '#92400e'
+      ['annual leave', 'sick leave', 'leave', 'other leave'].includes(String(status).trim().toLowerCase())
+        ? '#9a3412'
         : String(status).trim().toLowerCase() === 'absent'
           ? '#991b1b'
           : '#111827',
     fontWeight:
-      ['annual leave', 'absent'].includes(String(status).trim().toLowerCase())
+      ['annual leave', 'sick leave', 'leave', 'other leave', 'absent'].includes(String(status).trim().toLowerCase())
         ? 'bold'
         : 'normal'
   }}
@@ -5396,7 +5415,7 @@ if (payrollPeriodStartDate && payrollPeriodEndDate && payrollPeriodStartDate <= 
   }
 }
 const monthlyRows = allPeriodDates
-  .filter(date => attendanceByDate.has(date) || isHolidayDate(date))
+  .filter(date => attendanceByDate.has(date) || isHolidayDate(date) || getAnnualLeaveForWorker(viewingWorkerTimesheet.id, date))
   .map(date => {
     const att = attendanceByDate.get(date) || {
       worker_id: viewingWorkerTimesheet.id,
@@ -5408,13 +5427,15 @@ const monthlyRows = allPeriodDates
     };
     const annualLeave = getAnnualLeaveForWorker(viewingWorkerTimesheet.id, date);
     const holiday = isHolidayDate(date);
+    const status = annualLeave ? 'Annual Leave' : (holiday ? (String(att.status || '').toLowerCase() === 'holiday present' ? 'Holiday Present' : 'Holiday') : (att.status || '—'));
+    const canCountOT = isPresentAttendanceStatus(status);
     return {
       ...att,
       date,
-      status: annualLeave ? 'Annual Leave' : (holiday ? 'Holiday' : (att.status || '—')),
-      overtime_hours: annualLeave ? 0 : (Number(att.overtime_hours) || 0),
-      contract_overtime_hours: annualLeave ? 0 : (Number(att.contract_overtime_hours) || 0),
-      total_overtime_hours: annualLeave ? 0 : ((Number(att.overtime_hours) || 0) + (Number(att.contract_overtime_hours) || 0))
+      status,
+      overtime_hours: canCountOT ? (Number(att.overtime_hours) || 0) : 0,
+      contract_overtime_hours: canCountOT ? (Number(att.contract_overtime_hours) || 0) : 0,
+      total_overtime_hours: canCountOT ? ((Number(att.overtime_hours) || 0) + (Number(att.contract_overtime_hours) || 0)) : 0
     };
   });
 
@@ -5425,7 +5446,7 @@ return monthlyRows.map((att, idx) => {
   let statusBg = '#dcfce7';
   let statusColor = '#166534';
 
-  if (rowStatus === 'holiday') {
+  if (rowStatus === 'holiday' || rowStatus === 'holiday present') {
     rowBg = '#fef08a';
     statusBg = '#facc15';
     statusColor = '#713f12';
@@ -5437,7 +5458,7 @@ return monthlyRows.map((att, idx) => {
     rowBg = '#fee2e2';
     statusBg = '#fee2e2';
     statusColor = '#991b1b';
-  } else if (rowStatus === 'sick leave' || rowStatus === 'other leave') {
+  } else if (rowStatus === 'sick leave' || rowStatus === 'leave' || rowStatus === 'other leave') {
     rowBg = '#ffedd5';
     statusBg = '#ffedd5';
     statusColor = '#9a3412';
