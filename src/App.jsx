@@ -2793,12 +2793,8 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
 
       {/* NDA-PK CORPORATE SIDEBAR — existing tabs and handlers are retained */}
       <aside className="nda-sidebar" style={{background:'linear-gradient(180deg,#071d3d 0%,#0b2b55 100%)',color:'#fff',padding:'18px 14px',display:'flex',flexDirection:'column',gap:7,position:'fixed',left:0,top:86,bottom:0,width:278,overflowY:'auto',zIndex:30,boxSizing:'border-box',boxShadow:'5px 0 20px #071d3d18'}}>
-        <div style={{display:'flex',alignItems:'center',gap:10,padding:'4px 7px 18px',borderBottom:'1px solid #ffffff35',marginBottom:8}}><img src="/nda-naveed-logo.png" alt="NDA-PK" style={{width:62,height:52,objectFit:'contain',background:'#fff',borderRadius:8}}/><div><b style={{fontSize:20,letterSpacing:1}}>NDA-PK</b><div style={{fontSize:11,color:'#dbeafe'}}>HR &amp; Business System</div></div></div>
-        {[["dashboard","⌂","Dashboard",true],["bulk","⚡","Bulk & OCR",userRole.is_admin||userRole.can_use_bulk],["workers","♙","Workers Dictionary",userRole.is_admin||userRole.can_view_workers],["attendance","▣","Attendance / Timesheet",userRole.is_admin||userRole.can_view_timesheet],["daily-timesheet","▤","Daily Timesheet",userRole.is_admin||userRole.can_view_daily_timesheet],["payroll","＄","Salary + OT / Payroll",userRole.is_admin||userRole.can_view_payroll],["annualLeave","▦","Annual Leave",userRole.is_admin],["sites","⌖","Working Sites",userRole.is_admin],["departments","▥","Departments",userRole.is_admin],["designations","⚒","Designations",userRole.is_admin],["permissions","♙","Access & Permissions",userRole.is_admin],["changepass","⚿","Change Password",userRole.is_admin],["data-cleanup","▧","Data Cleanup",userRole.is_admin]].filter(x=>x[3]).map(([id,ico,label])=><button key={id} onClick={()=>setActiveTab(id)} style={{display:'flex',alignItems:'center',gap:13,textAlign:'left',padding:'12px 14px',border:0,borderRadius:10,background:activeTab===id?'linear-gradient(90deg,#0878f9,#1762d6)':'transparent',color:'#fff',fontWeight:activeTab===id?800:600,fontSize:14,cursor:'pointer',boxShadow:activeTab===id?'0 5px 14px #001b4b55':'none'}}><span style={{fontSize:21,width:25,textAlign:'center'}}>{ico}</span>{label}</button>)}
-        <div style={{height:1,background:'#ffffff35',margin:'10px 5px'}}/>
-        <div style={{fontSize:12,fontWeight:800,color:'#cbd5e1',padding:'3px 8px'}}>BUSINESS MODULES</div>
-        <button onClick={()=>{setSelectedSystem('business');setBusinessType('transport')}} style={{display:'flex',gap:12,alignItems:'center',padding:'11px 14px',border:0,borderRadius:9,background:'transparent',color:'#fff',fontSize:14,textAlign:'left',cursor:'pointer'}}>🚘 Transport</button>
-        <button onClick={()=>{setSelectedSystem('business');setBusinessType('other')}} style={{display:'flex',gap:12,alignItems:'center',padding:'11px 14px',border:0,borderRadius:9,background:'transparent',color:'#fff',fontSize:14,textAlign:'left',cursor:'pointer'}}>▣ Other Business</button>
+        <div style={{display:'flex',alignItems:'center',gap:10,padding:'4px 7px 18px',borderBottom:'1px solid #ffffff35',marginBottom:8}}><img src="/nda-naveed-logo.png" alt="NDA-PK" style={{width:62,height:52,objectFit:'contain',background:'#fff',borderRadius:8}}/><div><b style={{fontSize:20,letterSpacing:1}}>NDA-PK</b><div style={{fontSize:11,color:'#dbeafe'}}>HR Management System</div></div></div>
+        {[["dashboard","⌂","Dashboard",true],["bulk","⚡","Bulk & OCR",userRole.is_admin||userRole.can_use_bulk],["workers","♙","Workers Directory",userRole.is_admin||userRole.can_view_workers],["attendance","▣","Timesheet Entry",userRole.is_admin||userRole.can_view_timesheet],["daily-timesheet","▤","Daily Timesheet",userRole.is_admin||userRole.can_view_daily_timesheet],["monthly-timesheet","▦","Monthly Timesheet",userRole.is_admin||userRole.can_view_timesheet||userRole.can_view_payroll],["changepass","⚿","Change Password",userRole.is_admin],["sites","⌖","Working Sites",userRole.is_admin],["departments","▥","Departments",userRole.is_admin],["designations","⚒","Designations",userRole.is_admin],["payroll","＄","Payroll",userRole.is_admin||userRole.can_view_payroll],["permissions","♙","Permissions",userRole.is_admin],["annualLeave","🌴","Annual Leave",userRole.is_admin],["data-cleanup","▧","Data Cleanup",userRole.is_admin]].filter(x=>x[3]).map(([id,ico,label])=><button key={id} onClick={()=>{setActiveTab(id);if(id==='monthly-timesheet')setShowMonthlyTimesheetModal(true);}} style={{display:'flex',alignItems:'center',gap:13,textAlign:'left',padding:'12px 14px',border:0,borderRadius:10,background:activeTab===id?'linear-gradient(90deg,#0878f9,#1762d6)':'transparent',color:'#fff',fontWeight:activeTab===id?800:600,fontSize:14,cursor:'pointer',boxShadow:activeTab===id?'0 5px 14px #001b4b55':'none'}}><span style={{fontSize:21,width:25,textAlign:'center'}}>{ico}</span>{label}</button>)}
         <div style={{flex:1,minHeight:12}}/>
         <button onClick={handleLogout} style={{padding:'13px',background:'#dc2626',color:'#fff',border:0,borderRadius:10,fontWeight:800,fontSize:14,cursor:'pointer'}}>⇥ Logout</button>
       </aside>
@@ -2842,7 +2838,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
               <option value="PKR">PKR</option>
               <option value="USD">USD</option>
             </select>
-            {userRole.is_admin && <button onClick={() => window.print()} style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>Print Page</button>}
+
           </div>
         </div>
         
@@ -5172,18 +5168,17 @@ accruedDays = balance.toFixed(1);
           </div>
         )}
         {/* 📊 MONTHLY TIMESHEET MODAL WITH SEARCH, DEPT FILTER & VIEW/PRINT OPTIONS */}
-{showMonthlyTimesheetModal && (userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_payroll) && (
-  <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
-    <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '10px', width: '90%', maxWidth: '1050px', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+{activeTab === 'monthly-timesheet' && (userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_payroll) && (
+  <section className="monthly-timesheet-page" style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', width: '100%', maxWidth: 'none', minHeight: '70vh', boxSizing: 'border-box', boxShadow: '0 2px 8px rgba(15,23,42,.06)' }}>
       
       {/* Modal Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
         <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>📊 Monthly Timesheet & Worker Report</h2>
         <button 
-          onClick={() => setShowMonthlyTimesheetModal(false)}
-          style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+          onClick={() => { setShowMonthlyTimesheetModal(false); setActiveTab('dashboard'); }}
+          style={{ background: '#64748b', color: '#fff', border: 'none', padding: '8px 13px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
         >
-          ✕ Close
+          ← Dashboard
         </button>
       </div>     
 <style>{`
@@ -5240,12 +5235,7 @@ accruedDays = balance.toFixed(1);
           {userRole.is_admin && <button type="button" onClick={() => savePayrollPeriodSettings()} disabled={savingPayrollPeriodSettings} style={{ padding: '8px 12px', background: '#047857', color: '#fff', border: 0, borderRadius: 6, fontWeight: 700, cursor: 'pointer' }}>Save Dates</button>}
         </div>
 
-        {userRole.is_admin && <button 
-          onClick={() => window.print()} 
-          style={{ padding: '8px 16px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
-        >
-          🖨️ Print Full Report
-        </button>}
+
       </div>
 
       {/* Filtered & Searched Workers List Table */}
@@ -5299,8 +5289,10 @@ accruedDays = balance.toFixed(1);
         </table>
       </div>
 
+    <div className="no-print" style={{display:'flex',justifyContent:'flex-end',marginTop:18,paddingTop:14,borderTop:'1px solid #e2e8f0'}}>
+      {userRole.is_admin && <button type="button" onClick={() => window.print()} style={{padding:'10px 18px',background:'#2563eb',color:'#fff',border:0,borderRadius:7,fontWeight:800,cursor:'pointer'}}>🖨️ Print Full Report / Save PDF</button>}
     </div>
-  </div>
+  </section>
 )}
       {/* 👁 SINGLE WORKER TIMESHEET PREVIEW MODAL */}
 {viewingWorkerTimesheet && (
