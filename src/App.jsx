@@ -217,7 +217,10 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const panelTitle=currentBusiness?.name||'Business';
   return <div style={{minHeight:'100vh',background:'#f1f5f9',fontFamily:"'Segoe UI',sans-serif",color:'#0f172a'}}>
     <header style={{padding:'18px clamp(14px,3vw,30px)',background:'linear-gradient(115deg,#064e3b,#047857)',color:'#fff',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-      <div><div style={{fontSize:12,letterSpacing:2,fontWeight:800,color:'#a7f3d0'}}>NDA-PK BUSINESS</div><h1 style={{margin:'5px 0',fontSize:26}}>{panelTitle}</h1><div style={{fontSize:13,color:'#d1fae5'}}>Signed in: {session?.user?.email}</div></div>
+      <div style={{display:'flex',alignItems:'center',gap:14}}>
+        <div style={{width:88,height:64,background:'#fff',borderRadius:9,padding:3,overflow:'hidden',display:'flex',alignItems:'center'}}><img src="/nda-naveed-logo.png" alt="NDA Naveed logo" style={{width:'100%',height:'100%',objectFit:'contain'}} /></div>
+        <div><div style={{fontSize:12,letterSpacing:2,fontWeight:800,color:'#a7f3d0'}}>BUSINESS MANAGEMENT</div><h1 style={{margin:'5px 0',fontSize:26}}>{panelTitle}</h1><div style={{fontSize:13,color:'#d1fae5'}}>Signed in: {session?.user?.email}</div></div>
+      </div>
       <div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button onClick={onSwitchSystem} style={{...btn,background:'#fff',color:'#065f46'}}>← System Selection</button><button onClick={onLogout} style={{...btn,background:'#b91c1c'}}>Logout</button></div>
     </header>
     <main style={{padding:'18px clamp(12px,2vw,26px)',maxWidth:1500,margin:'0 auto'}}>
@@ -2702,8 +2705,10 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       <div style={{ minHeight: '100vh', background: 'radial-gradient(circle at top left, #164e63 0, #0f172a 48%, #020617 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 22, fontFamily: "'Segoe UI', sans-serif" }}>
         <div style={{ width: '100%', maxWidth: 900 }}>
           <div style={{ textAlign: 'center', color: '#fff', marginBottom: 28 }}>
-            <div style={{ fontSize: 13, letterSpacing: 4, color: '#67e8f9', fontWeight: 800 }}>NDA-PK DIGITAL WORKSPACE</div>
-            <h1 style={{ fontSize: 'clamp(30px,5vw,46px)', margin: '10px 0' }}>Choose Your System</h1>
+            <div style={{display:'inline-flex',justifyContent:'center',background:'#fff',borderRadius:18,padding:'8px 18px',marginBottom:12,boxShadow:'0 12px 35px rgba(0,0,0,.22)'}}>
+              <img src="/nda-naveed-logo.png" alt="NDA Naveed logo" style={{display:'block',width:'min(100%,340px)',height:'auto',maxHeight:235,objectFit:'contain'}} />
+            </div>
+            <h1 style={{ fontSize: 'clamp(25px,4vw,38px)', margin: '8px 0' }}>Choose Your System</h1>
             <p style={{ color: '#cbd5e1', margin: 0 }}>Apna system select karein jahan aap kaam karna chahte hain.</p>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 20 }}>
@@ -2724,7 +2729,9 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
         <div style={{ backgroundColor: '#1e293b', padding: '30px', borderRadius: '12px', width: '100%', maxWidth: '380px', border: '1px solid #334155' }}>
           <div style={{ textAlign: 'center', marginBottom: '25px' }}>
-            <h1 style={{ color: '#f8fafc', fontSize: '22px', margin: 0 }}>NDA-PK SYSTEM</h1>
+            <div style={{background:'#fff',borderRadius:12,padding:8,margin:'0 auto 12px',maxWidth:245}}>
+              <img src="/nda-naveed-logo.png" alt="NDA Naveed logo" style={{display:'block',width:'100%',height:'auto'}} />
+            </div>
             <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '5px' }}>{selectedSystem === 'hr' ? 'HR SYSTEM · Sites & Staff Login' : 'BUSINESS MANAGEMENT LOGIN'}</p>
             <button type="button" onClick={() => setSelectedSystem(null)} style={{ marginTop: 8, background: 'transparent', border: '1px solid #475569', color: '#cbd5e1', borderRadius: 6, padding: '6px 10px', cursor: 'pointer' }}>← Change System</button>
           </div>
@@ -2756,10 +2763,12 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
      {/* Compact top bar: system identity lives here; dashboard banner below is the only dashboard hero */}
       <header style={{ background: 'linear-gradient(115deg,#0b1f46 0%,#123d78 58%,#087e8b 100%)', color: '#ffffff', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid #0b355f', boxShadow: '0 5px 18px rgba(15,47,99,.22)' }}>
         <div style={{display:'flex',alignItems:'center',gap:12,minWidth:230}}>
-          <div style={{width:44,height:44,borderRadius:10,background:'linear-gradient(145deg,#0f2f63,#2563eb)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:25}}>🏢</div>
+          <div style={{width:74,height:56,borderRadius:8,background:'#fff',padding:3,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+            <img src="/nda-naveed-logo.png" alt="NDA Naveed logo" style={{width:'100%',height:'100%',objectFit:'contain'}} />
+          </div>
           <div>
-            <h2 style={{ fontSize: '20px', margin: 0, color: '#ffffff', fontWeight:900 }}>NDA-PK SYSTEM</h2>
-            <span style={{ fontSize: '11px', color: '#dbeafe' }}>Multi-Site Workforce Management</span>
+            <h2 style={{ fontSize: '18px', margin: 0, color: '#ffffff', fontWeight:900 }}>Workforce Management</h2>
+            <span style={{ fontSize: '11px', color: '#dbeafe' }}>Attendance · Timesheet · Payroll</span>
           </div>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',justifyContent:'flex-end'}}>
