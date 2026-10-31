@@ -3821,7 +3821,7 @@ await handleSingleAttendanceChange(
         </thead>
         <tbody>
           {(userRole.is_admin&&workerDirectoryFilter==='departments'?workers:filteredWorkers).filter(w=>{const d=(String(w.department||'')+' '+String(w.designation||'')).toLowerCase();return workerDirectoryFilter==='all'||workerDirectoryFilter==='departments'||(workerDirectoryFilter==='steel'&&d.includes('steel'))||(workerDirectoryFilter==='carpenter'&&d.includes('carpenter'));}).map(w => (
-            <tr key={w.id style={{ borderBottom: '1px solid #e2e8f0' }}>
+            <tr key={w.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
               <td style={{ padding: '10px', fontWeight: 'bold' }}>#{w.id} - {w.name}</td>
               <td style={{ padding: '10px' }}>{w.department} <br/><span style={{fontSize: '11px', color: '#64748b'}}>{w.designation || 'Worker'}</span></td>
               <td style={{ padding: '10px' }}>{w.monthly_salary} {w.currency || selectedCurrency}</td>
