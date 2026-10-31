@@ -9,6 +9,9 @@ const tableStyle = { width:'100%', borderCollapse:'collapse', fontSize:13, textA
 const thStyle = { padding:'10px 8px', borderBottom:'1px solid #e2e8f0', color:'#475569', whiteSpace:'nowrap' };
 const tdStyle = { padding:'10px 8px', borderBottom:'1px solid #f1f5f9', verticalAlign:'top' };
 
+const DEFAULT_PRINT_SETTINGS = { showLogo:true, showTitle:true, showFooter:true, paper:'A4', orientation:'landscape', margin:'8mm', fontSize:10, showSerial:true };
+function readPrintSettings(){ try { return {...DEFAULT_PRINT_SETTINGS,...JSON.parse(localStorage.getItem('nda_pk_print_settings')||'{}')}; } catch { return DEFAULT_PRINT_SETTINGS; } }
+
 // Salary period runs from the 16th of one month through the 15th of the next.
 const initialPayrollPeriod = (() => {
   const now = new Date();
@@ -47,6 +50,9 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [access, setAccess] = useState(null);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState('daily');
+  const [showPrintSettings, setShowPrintSettings] = useState(false);
+  const [printSettings, setPrintSettings] = useState(readPrintSettings);
+  const updatePrintSetting = (key,value) => setPrintSettings(old=>{ const next={...old,[key]:value}; localStorage.setItem('nda_pk_print_settings',JSON.stringify(next)); return next; });
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0,10));
   const [month, setMonth] = useState(new Date().toISOString().slice(0,7));
   const [newBusinessName, setNewBusinessName] = useState('');
@@ -216,6 +222,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const profitShare=people.map(p=>({...p,share:p.pay_type==='profit_percent'?Math.max(0,mIncome-mExpense)*Number(p.profit_percent||0)/100:0}));
   const panelTitle=currentBusiness?.name||'Business';
   return <div style={{minHeight:'100vh',background:'#f1f5f9',fontFamily:"'Segoe UI',sans-serif",color:'#0f172a'}}>
+    <style>{`table{counter-reset:nda-business-row}table tbody tr{counter-increment:nda-business-row}table tbody tr td:first-child:before{${printSettings.showSerial ? "content:counter(nda-business-row) ' . ';display:inline-block;min-width:24px;color:#64748b;font-weight:700" : "content:none;display:none"}}@media print{@page{size:${printSettings.paper} ${printSettings.orientation};margin:${printSettings.margin}}table{font-size:${printSettings.fontSize}px!important}.no-print{display:none!important}}`}</style>
     <header style={{padding:'18px clamp(14px,3vw,30px)',background:'linear-gradient(115deg,#064e3b,#047857)',color:'#fff',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
       <div style={{display:'flex',alignItems:'center',gap:14}}>
         <div style={{width:88,height:64,background:'#fff',borderRadius:9,padding:3,overflow:'hidden',display:'flex',alignItems:'center'}}><img src="/nda-naveed-logo.png" alt="NDA Naveed logo" style={{width:'100%',height:'100%',objectFit:'contain'}} /></div>
@@ -225,6 +232,8 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     </header>
     <main style={{padding:'18px clamp(12px,2vw,26px)',maxWidth:1500,margin:'0 auto'}}>
       {admin&&<section style={{...card,marginBottom:16}}><h3 style={{marginTop:0}}>＋ Add New Business</h3><form onSubmit={addBusiness} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:10}}><input style={inputStyle} value={newBusinessName} onChange={e=>setNewBusinessName(e.target.value)} placeholder="Business name (e.g. Shop, Trading)" required/><select style={inputStyle} value={newBusinessKind} onChange={e=>setNewBusinessKind(e.target.value)}><option value="transport">Transport</option><option value="other">Other Business</option></select><button style={btn}>Create Business</button></form></section>}
+      {admin&&<div style={{marginBottom:12,textAlign:'right'}}><button style={{...btn,background:'#0b2853'}} onClick={()=>setShowPrintSettings(v=>!v)}>🖨️ Print Settings (Admin)</button></div>}
+      {admin&&showPrintSettings&&<section style={{...card,marginBottom:16}}><h3 style={{marginTop:0}}>Common Print Settings</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12}}>{[['showLogo','Show NDA Logo'],['showTitle','Show Report Heading'],['showFooter','Show Footer'],['showSerial','Show Serial Number']].map(([k,l])=><label key={k}><input type="checkbox" checked={!!printSettings[k]} onChange={e=>updatePrintSetting(k,e.target.checked)}/> {l}</label>)}<label>Paper<select style={inputStyle} value={printSettings.paper} onChange={e=>updatePrintSetting('paper',e.target.value)}><option>A4</option><option>Letter</option></select></label><label>Orientation<select style={inputStyle} value={printSettings.orientation} onChange={e=>updatePrintSetting('orientation',e.target.value)}><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label><label>Margins<select style={inputStyle} value={printSettings.margin} onChange={e=>updatePrintSetting('margin',e.target.value)}><option>5mm</option><option>8mm</option><option>10mm</option><option>15mm</option></select></label><label>Table font size (px)<input style={inputStyle} type="number" min="8" max="16" value={printSettings.fontSize} onChange={e=>updatePrintSetting('fontSize',Math.max(8,Math.min(16,Number(e.target.value)||10)))}/></label></div></section>}
       <section style={{...card,marginBottom:16,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:10}}><label style={{fontSize:13,fontWeight:700}}>Open Business<select style={{...inputStyle,marginTop:6}} value={businessId} onChange={e=>setBusinessId(e.target.value)}><option value="">Select business</option>{businesses.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label><label style={{fontSize:13,fontWeight:700}}>Date<input type="date" style={{...inputStyle,marginTop:6}} value={entryDate} onChange={e=>setEntryDate(e.target.value)}/></label><label style={{fontSize:13,fontWeight:700}}>Month Sheet<input type="month" style={{...inputStyle,marginTop:6}} value={month} onChange={e=>setMonth(e.target.value)}/></label><label style={{fontSize:13,fontWeight:700}}>Currency<select style={{...inputStyle,marginTop:6}} value={currency} onChange={e=>setCurrency(e.target.value)}><option>AED</option><option>PKR</option><option>INR</option><option>USD</option></select></label></section>
       {!businessId?<section style={card}><h3>No business selected</h3><p>Admin pehle “Add New Business” se business banaye. Staff ko admin se access milne ke baad business nazar aayega.</p></section>:<>
       <nav style={{display:'flex',gap:8,overflowX:'auto',padding:'2px 0 14px'}}>{[['daily','📒 Daily Roznamcha', 'can_view_daily', ['can_add','can_edit','can_delete']],['vehicles','🚚 Vehicle Files','can_view_vehicles',['can_manage_vehicles']],['workers','👥 Workers & Salary','can_view_workers',['can_manage_workers']],['monthly','📅 Monthly Sheet','can_view_monthly',[]],['access','🔐 Staff Access','can_manage_access',[]]].filter(([id,,viewKey,actionKeys])=>admin||(id==='access'?can('can_manage_access'):(!!access?.[viewKey]||actionKeys.some(k=>can(k))))).map(([id,label])=><button key={id} onClick={()=>setView(id)} style={{whiteSpace:'nowrap',padding:'10px 14px',border:0,borderRadius:9,background:view===id?'#047857':'#fff',color:view===id?'#fff':'#334155',fontWeight:800,cursor:'pointer'}}>{label}</button>)}</nav>
@@ -361,6 +370,8 @@ export default function App() {
   const [selectedDeptFilter, setSelectedDeptFilter] = useState('All');
   const [selectedSiteFilter, setSelectedSiteFilter] = useState('All');
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [printSettings, setPrintSettings] = useState(readPrintSettings);
+  const updatePrintSetting = (key,value) => setPrintSettings(old=>{ const next={...old,[key]:value}; localStorage.setItem('nda_pk_print_settings',JSON.stringify(next)); return next; });
   const [workerDirectoryFilter, setWorkerDirectoryFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [modalDepartment, setModalDepartment] = useState(null);
@@ -2793,25 +2804,32 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
 
       {/* NDA-PK CORPORATE SIDEBAR — existing tabs and handlers are retained */}
       <aside className="nda-sidebar" style={{background:'linear-gradient(180deg,#071d3d 0%,#0b2b55 100%)',color:'#fff',padding:'18px 14px',display:'flex',flexDirection:'column',gap:7,position:'fixed',left:0,top:86,bottom:0,width:278,overflowY:'auto',zIndex:30,boxSizing:'border-box',boxShadow:'5px 0 20px #071d3d18'}}>
-        <div style={{display:'flex',alignItems:'center',gap:10,padding:'4px 7px 18px',borderBottom:'1px solid #ffffff35',marginBottom:8}}><img src="/nda-naveed-logo.png" alt="NDA-PK" style={{width:62,height:52,objectFit:'contain',background:'#fff',borderRadius:8}}/><div><b style={{fontSize:20,letterSpacing:1}}>NDA-PK</b><div style={{fontSize:11,color:'#dbeafe'}}>HR Management System</div></div></div>
-        {[["dashboard","⌂","Dashboard",true],["bulk","⚡","Bulk & OCR",userRole.is_admin||userRole.can_use_bulk],["workers","♙","Workers Directory",userRole.is_admin||userRole.can_view_workers],["attendance","▣","Timesheet Entry",userRole.is_admin||userRole.can_view_timesheet],["daily-timesheet","▤","Daily Timesheet",userRole.is_admin||userRole.can_view_daily_timesheet],["monthly-timesheet","▦","Monthly Timesheet",userRole.is_admin||userRole.can_view_timesheet||userRole.can_view_payroll],["changepass","⚿","Change Password",userRole.is_admin],["sites","⌖","Working Sites",userRole.is_admin],["departments","▥","Departments",userRole.is_admin],["designations","⚒","Designations",userRole.is_admin],["payroll","＄","Payroll",userRole.is_admin||userRole.can_view_payroll],["permissions","♙","Permissions",userRole.is_admin],["annualLeave","🌴","Annual Leave",userRole.is_admin],["data-cleanup","▧","Data Cleanup",userRole.is_admin]].filter(x=>x[3]).map(([id,ico,label])=><button key={id} onClick={()=>{setActiveTab(id);if(id==='monthly-timesheet')setShowMonthlyTimesheetModal(true);}} style={{display:'flex',alignItems:'center',gap:13,textAlign:'left',padding:'12px 14px',border:0,borderRadius:10,background:activeTab===id?'linear-gradient(90deg,#0878f9,#1762d6)':'transparent',color:'#fff',fontWeight:activeTab===id?800:600,fontSize:14,cursor:'pointer',boxShadow:activeTab===id?'0 5px 14px #001b4b55':'none'}}><span style={{fontSize:21,width:25,textAlign:'center'}}>{ico}</span>{label}</button>)}
+        <div style={{display:'flex',alignItems:'center',gap:10,padding:'4px 7px 18px',borderBottom:'1px solid #ffffff35',marginBottom:8}}><img src="/nda-naveed-logo.png" alt="NDA-PK" style={{width:62,height:52,objectFit:'contain',background:'#fff',borderRadius:8}}/><div><b style={{fontSize:20,letterSpacing:1}}>NDA-PK</b><div style={{fontSize:11,color:'#dbeafe'}}>HR &amp; Business System</div></div></div>
+        {[["dashboard","⌂","Dashboard",true],["bulk","⚡","Bulk & OCR",userRole.is_admin||userRole.can_use_bulk],["workers","♙","Workers Dictionary",userRole.is_admin||userRole.can_view_workers],["attendance","▣","Attendance / Timesheet",userRole.is_admin||userRole.can_view_timesheet],["daily-timesheet","▤","Daily Timesheet",userRole.is_admin||userRole.can_view_daily_timesheet],["payroll","＄","Salary + OT / Payroll",userRole.is_admin||userRole.can_view_payroll],["annualLeave","▦","Annual Leave",userRole.is_admin],["sites","⌖","Working Sites",userRole.is_admin],["departments","▥","Departments",userRole.is_admin],["designations","⚒","Designations",userRole.is_admin],["permissions","♙","Access & Permissions",userRole.is_admin],["changepass","⚿","Change Password",userRole.is_admin],["data-cleanup","▧","Data Cleanup",userRole.is_admin],["print-settings","🖨️","Print Settings",userRole.is_admin]].filter(x=>x[3]).map(([id,ico,label])=><button key={id} onClick={()=>setActiveTab(id)} style={{display:'flex',alignItems:'center',gap:13,textAlign:'left',padding:'12px 14px',border:0,borderRadius:10,background:activeTab===id?'linear-gradient(90deg,#0878f9,#1762d6)':'transparent',color:'#fff',fontWeight:activeTab===id?800:600,fontSize:14,cursor:'pointer',boxShadow:activeTab===id?'0 5px 14px #001b4b55':'none'}}><span style={{fontSize:21,width:25,textAlign:'center'}}>{ico}</span>{label}</button>)}
+        <div style={{height:1,background:'#ffffff35',margin:'10px 5px'}}/>
+        <div style={{fontSize:12,fontWeight:800,color:'#cbd5e1',padding:'3px 8px'}}>BUSINESS MODULES</div>
+        <button onClick={()=>{setSelectedSystem('business');setBusinessType('transport')}} style={{display:'flex',gap:12,alignItems:'center',padding:'11px 14px',border:0,borderRadius:9,background:'transparent',color:'#fff',fontSize:14,textAlign:'left',cursor:'pointer'}}>🚘 Transport</button>
+        <button onClick={()=>{setSelectedSystem('business');setBusinessType('other')}} style={{display:'flex',gap:12,alignItems:'center',padding:'11px 14px',border:0,borderRadius:9,background:'transparent',color:'#fff',fontSize:14,textAlign:'left',cursor:'pointer'}}>▣ Other Business</button>
         <div style={{flex:1,minHeight:12}}/>
         <button onClick={handleLogout} style={{padding:'13px',background:'#dc2626',color:'#fff',border:0,borderRadius:10,fontWeight:800,fontSize:14,cursor:'pointer'}}>⇥ Logout</button>
       </aside>
 
-      <main className="nda-main" style={{ flex: 1, padding: '20px 24px', marginLeft: 278, minWidth: 0, boxSizing: 'border-box' }}>
+      <main className="nda-main" style={{ "--nda-print-font":`${printSettings.fontSize}px`, "--nda-print-margin":printSettings.margin, flex: 1, padding: '20px 24px', marginLeft: 278, minWidth: 0, boxSizing: 'border-box' }}>
         <style>{`
           .nda-sidebar button:hover{background:#ffffff1c!important}
           .nda-main{background:#f4f7fc}
+          .nda-main table{counter-reset:nda-row}
+          .nda-main table tbody tr{counter-increment:nda-row}
+          .nda-main table tbody tr td:first-child:before{${printSettings.showSerial ? "content:counter(nda-row) '. ';display:inline-block;min-width:24px;color:#64748b;font-weight:700" : 'content:none;display:none'}}
           .nda-print-brand{display:none}
           @media(max-width:850px){.nda-sidebar{position:relative!important;top:auto!important;bottom:auto!important;width:100%!important;max-height:250px;flex-direction:row!important;flex-wrap:wrap;overflow:visible!important}.nda-sidebar>div:first-child{width:100%}.nda-main{margin-left:0!important;padding:12px!important}}
-          @media print{.nda-sidebar,header,.no-print{display:none!important}.nda-main{margin:0!important;padding:0!important;background:#fff!important}.nda-print-brand{display:block!important;text-align:center!important;border-bottom:3px solid #c69227!important;padding:8px!important;margin-bottom:12px!important}.nda-print-brand img{height:48px!important;object-fit:contain!important}.nda-main *{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+          @media print{@page{size: ${printSettings.paper} ${printSettings.orientation};margin:var(--nda-print-margin,8mm)}.nda-main table{font-size:var(--nda-print-font,10px)!important}.nda-main table tbody tr td:first-child:before{${printSettings.showSerial ? '' : 'content:none!important;display:none!important;'}}.nda-sidebar,header,.no-print{display:none!important}.nda-main{margin:0!important;padding:0!important;background:#fff!important}.nda-print-brand{display:block!important;text-align:center!important;border-bottom:3px solid #c69227!important;padding:8px!important;margin-bottom:12px!important}.nda-print-brand img{height:48px!important;object-fit:contain!important}.nda-main *{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
         `}</style>
-        <div className="nda-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div style={{fontWeight:800,color:'#0b2853'}}>NDA-PK HR &amp; BUSINESS SYSTEM</div><div style={{fontSize:11}}>Together for a Better Workplace</div></div>
+        <div className="nda-print-brand">{printSettings.showLogo&&<img src="/nda-naveed-logo.png" alt="NDA-PK"/>}{printSettings.showTitle&&<><div style={{fontWeight:800,color:'#0b2853'}}>NDA-PK HR &amp; BUSINESS SYSTEM</div><div style={{fontSize:11}}>Together for a Better Workplace</div></>}{printSettings.showFooter&&<div style={{fontSize:10,marginTop:4}}>Printed: {new Date().toLocaleDateString()}</div>}</div>
         
         {/* Filters Bar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#fff', padding: '12px 18px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', flexWrap: 'wrap', gap: '10px' }}>
-          {!['changepass', 'sites', 'departments', 'designations', 'permissions'].includes(activeTab) && (userRole.is_admin ? (
+          {!['changepass', 'sites', 'departments', 'designations', 'permissions', 'print-settings'].includes(activeTab) && (userRole.is_admin ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <div>
                 <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#2563eb', marginRight: '5px' }}>Dept:</label>
@@ -2829,7 +2847,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
               </div>
             </div>
           ) : (
-            !['changepass', 'sites', 'departments', 'designations', 'permissions'].includes(activeTab) && <span style={{ fontWeight: 'bold', color: '#0369a1' }}>Site: {userRole.assigned_site} | Dept: {userRole.assigned_department}</span>
+            !['changepass', 'sites', 'departments', 'designations', 'permissions', 'print-settings'].includes(activeTab) && <span style={{ fontWeight: 'bold', color: '#0369a1' }}>Site: {userRole.assigned_site} | Dept: {userRole.assigned_department}</span>
           ))}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -2838,11 +2856,24 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
               <option value="PKR">PKR</option>
               <option value="USD">USD</option>
             </select>
-
+            {userRole.is_admin && <button onClick={() => window.print()} style={{ backgroundColor: '#0284c7', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>Print Page</button>}
           </div>
         </div>
         
 {/* TAB 1: DASHBOARD */}
+{activeTab === 'print-settings' && userRole.is_admin && (
+  <section style={{background:'#fff',borderRadius:16,padding:22,boxShadow:'0 5px 22px #0f172a0b',maxWidth:900}}>
+    <div style={{borderBottom:'2px solid #d4a63a',paddingBottom:12,marginBottom:18}}><h2 style={{margin:'0 0 5px',color:'#0b2853'}}>🖨️ Common Print Settings</h2><p style={{margin:0,color:'#64748b'}}>Yeh settings HR aur Business dono ke print reports par apply hongi.</p></div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:16}}>
+      {[['showLogo','NDA Logo print mein show karein'],['showTitle','Report heading show karein'],['showFooter','Footer show karein'],['showSerial','Serial Number show karein']].map(([k,l])=><label key={k} style={{display:'flex',gap:9,alignItems:'center',padding:12,background:'#f8fafc',borderRadius:9,fontWeight:600}}><input type="checkbox" checked={!!printSettings[k]} onChange={e=>updatePrintSetting(k,e.target.checked)}/>{l}</label>)}
+      <label>Paper Size<select value={printSettings.paper} onChange={e=>updatePrintSetting('paper',e.target.value)} style={{...fieldStyle,marginTop:6}}><option>A4</option><option>Letter</option></select></label>
+      <label>Orientation<select value={printSettings.orientation} onChange={e=>updatePrintSetting('orientation',e.target.value)} style={{...fieldStyle,marginTop:6}}><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label>
+      <label>Page Margins<select value={printSettings.margin} onChange={e=>updatePrintSetting('margin',e.target.value)} style={{...fieldStyle,marginTop:6}}><option>5mm</option><option>8mm</option><option>10mm</option><option>15mm</option></select></label>
+      <label>Table Font Size (px)<input type="number" min="8" max="16" value={printSettings.fontSize} onChange={e=>updatePrintSetting('fontSize',Math.max(8,Math.min(16,Number(e.target.value)||10)))} style={{...fieldStyle,marginTop:6}}/></label>
+    </div><p style={{fontSize:12,color:'#64748b',marginTop:18}}>Settings isi browser mein save hoti hain. Staff ko yeh page ya controls nazar nahi aayenge.</p>
+  </section>
+)}
+
 {activeTab === 'dashboard' && (userRole.is_admin || userRole.can_view_dashboard) && (
   <>
     <section style={{background:'linear-gradient(120deg,#0f172a 0%,#1d4ed8 65%,#0e7490 100%)',borderRadius:18,padding:'24px clamp(16px,3vw,30px)',color:'#fff',marginBottom:20,boxShadow:'0 12px 30px #1e3a8a20',display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,flexWrap:'wrap'}}>
@@ -5168,17 +5199,18 @@ accruedDays = balance.toFixed(1);
           </div>
         )}
         {/* 📊 MONTHLY TIMESHEET MODAL WITH SEARCH, DEPT FILTER & VIEW/PRINT OPTIONS */}
-{activeTab === 'monthly-timesheet' && (userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_payroll) && (
-  <section className="monthly-timesheet-page" style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', width: '100%', maxWidth: 'none', minHeight: '70vh', boxSizing: 'border-box', boxShadow: '0 2px 8px rgba(15,23,42,.06)' }}>
+{showMonthlyTimesheetModal && (userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_payroll) && (
+  <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
+    <div style={{ backgroundColor: '#fff', padding: '25px', borderRadius: '10px', width: '90%', maxWidth: '1050px', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
       
       {/* Modal Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
         <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>📊 Monthly Timesheet & Worker Report</h2>
         <button 
-          onClick={() => { setShowMonthlyTimesheetModal(false); setActiveTab('dashboard'); }}
-          style={{ background: '#64748b', color: '#fff', border: 'none', padding: '8px 13px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+          onClick={() => setShowMonthlyTimesheetModal(false)}
+          style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
         >
-          ← Dashboard
+          ✕ Close
         </button>
       </div>     
 <style>{`
@@ -5235,7 +5267,12 @@ accruedDays = balance.toFixed(1);
           {userRole.is_admin && <button type="button" onClick={() => savePayrollPeriodSettings()} disabled={savingPayrollPeriodSettings} style={{ padding: '8px 12px', background: '#047857', color: '#fff', border: 0, borderRadius: 6, fontWeight: 700, cursor: 'pointer' }}>Save Dates</button>}
         </div>
 
-
+        {userRole.is_admin && <button 
+          onClick={() => window.print()} 
+          style={{ padding: '8px 16px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
+        >
+          🖨️ Print Full Report
+        </button>}
       </div>
 
       {/* Filtered & Searched Workers List Table */}
@@ -5289,10 +5326,8 @@ accruedDays = balance.toFixed(1);
         </table>
       </div>
 
-    <div className="no-print" style={{display:'flex',justifyContent:'flex-end',marginTop:18,paddingTop:14,borderTop:'1px solid #e2e8f0'}}>
-      {userRole.is_admin && <button type="button" onClick={() => window.print()} style={{padding:'10px 18px',background:'#2563eb',color:'#fff',border:0,borderRadius:7,fontWeight:800,cursor:'pointer'}}>🖨️ Print Full Report / Save PDF</button>}
     </div>
-  </section>
+  </div>
 )}
       {/* 👁 SINGLE WORKER TIMESHEET PREVIEW MODAL */}
 {viewingWorkerTimesheet && (
