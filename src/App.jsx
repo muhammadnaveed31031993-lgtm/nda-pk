@@ -508,6 +508,12 @@ const [newDesignation, setNewDesignation] = useState('');
   const [siteAttendanceSite, setSiteAttendanceSite] = useState('Sharjah Mamzar');
   const [siteAttendanceDepartment, setSiteAttendanceDepartment] = useState('Mustafa');
   const [siteAttendanceSaving, setSiteAttendanceSaving] = useState(false);
+  // Bulk attendance by site + department + designation (separate from OT controls).
+  const [bulkMarkSite, setBulkMarkSite] = useState('Sharjah Mamzar');
+  const [bulkMarkDepartment, setBulkMarkDepartment] = useState('All');
+  const [bulkMarkDesignation, setBulkMarkDesignation] = useState('All');
+  const [bulkMarkStatus, setBulkMarkStatus] = useState('Present');
+  const [bulkMarkSaving, setBulkMarkSaving] = useState(false);
   const [siteHolidayNormalOT, setSiteHolidayNormalOT] = useState('2');
   const [siteHolidayContractOT, setSiteHolidayContractOT] = useState('0');
   
@@ -2545,6 +2551,85 @@ async function handleSaveSiteAttendance(e) {
   }
 }
 
+async function handleBulkDesignationAttendance(e) {
+  e.preventDefault();
+  if (!userRole.is_admin) return alert('Bulk Present / Absent attendance sirf Admin save kar sakta hai.');
+  if (!requireHrEditMode('Bulk designation attendance save')) return;
+  if (!selectedTimesheetDate || !bulkMarkSite) return alert('Date aur working site select karein.');
+  if (isPayrollDateClosed(selectedTimesheetDate)) return alert('Yeh salary period close hai. Admin pehle period reopen kare.');
+  if (bulkMarkSaving) return;
+
+  const normalize = value => String(value || '').normalize('NFKC').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  const chosenDesignation = normalize(bulkMarkDesignation);
+  const carpenterAliases = ['carpenter', 'carpenter helper', 'carpenter foreman', 'carpenter forman'];
+  const steelAliases = ['steel fixer', 'steel fixer helper', 'steel labour', 'steel labor', 'steel fixer labour', 'steel fixer labor', 'steel foreman', 'steel fixer foreman', 'steel fixer forman', 'steel forman'];
+  const designationMatches = w => {
+    const actual = normalize(w.designation);
+    if (!chosenDesignation || chosenDesignation === 'all') return true;
+    if (chosenDesignation === 'carpenter') return carpenterAliases.includes(actual);
+    if (chosenDesignation === 'steel fixer') return steelAliases.includes(actual);
+    return actual === chosenDesignation;
+  };
+  const departmentMatches = w => normalize(bulkMarkDepartment) === 'all' || normalize(w.department) === normalize(bulkMarkDepartment);
+  const candidates = workers.filter(w => departmentMatches(w) && designationMatches(w));
+  if (!candidates.length) return alert('Selected department/designation mein koi worker nahi mila. Workers Directory mein designation check karein.');
+
+  const dateRows = attendance.filter(a => String(a.date || '').slice(0, 10) === selectedTimesheetDate);
+  const existingByWorker = new Map(dateRows.map(a => [String(a.worker_id), a]));
+  const selectedSiteKey = normalize(bulkMarkSite);
+  const skippedOtherSite = [];
+  const skippedLeave = [];
+  const eligible = candidates.filter(w => {
+    const old = existingByWorker.get(String(w.id));
+    // Never silently move a worker who is already recorded at another site on this date.
+    if (old && normalize(old.work_site || old.site) !== selectedSiteKey) {
+      skippedOtherSite.push(w);
+      return false;
+    }
+    if (getAnnualLeaveForWorker(w.id, selectedTimesheetDate)) {
+      skippedLeave.push(w);
+      return false;
+    }
+    return true;
+  });
+  if (!eligible.length) {
+    return alert(`Is selection mein save karne ke liye worker nahi mila. ${skippedOtherSite.length} worker(s) ki isi date par doosri site attendance mojood hai aur ${skippedLeave.length} Annual Leave par hain; unka record change nahi kiya.`);
+  }
+
+  const holiday = isHolidayDate(selectedTimesheetDate);
+  const records = eligible.map(w => {
+    const old = existingByWorker.get(String(w.id));
+    let status = bulkMarkStatus;
+    if (holiday) status = bulkMarkStatus === 'Present' ? 'Holiday Present' : 'Holiday';
+    const present = isPresentAttendanceStatus(status);
+    return {
+      worker_id: w.id,
+      date: selectedTimesheetDate,
+      status,
+      overtime_hours: present ? (Number(old?.overtime_hours) || 0) : 0,
+      contract_overtime_hours: present ? (Number(old?.contract_overtime_hours) || 0) : 0,
+      department: w.department || old?.department || '',
+      work_site: bulkMarkSite
+    };
+  });
+
+  setBulkMarkSaving(true);
+  try {
+    for (let i = 0; i < records.length; i += 500) {
+      const { error } = await supabase.from('attendance').upsert(records.slice(i, i + 500), { onConflict: 'worker_id,date' });
+      if (error) throw error;
+    }
+    void logActivity('Bulk designation attendance', `${selectedTimesheetDate}: ${records.length} workers; site ${bulkMarkSite}; department ${bulkMarkDepartment}; designation ${bulkMarkDesignation}; status ${holiday ? (bulkMarkStatus === 'Present' ? 'Holiday Present' : 'Holiday') : bulkMarkStatus}`);
+    await fetchAttendance();
+    const savedStatus = holiday ? (bulkMarkStatus === 'Present' ? 'Holiday Present' : 'Holiday (absent count nahi hoga)') : bulkMarkStatus;
+    alert(`${savedStatus} attendance save ho gayi: ${records.length} workers. Site: ${bulkMarkSite}. ${skippedOtherSite.length} worker(s) doosri site par pehle se recorded thay aur ${skippedLeave.length} Annual Leave par thay; unka record change nahi kiya.`);
+  } catch (err) {
+    alert('Bulk attendance save nahi hui: ' + (err?.message || String(err)));
+  } finally {
+    setBulkMarkSaving(false);
+  }
+}
+
 async function handleQuickAttendance(e) {
   if (!requireHrEditMode('Quick attendance save')) return;
 
@@ -3558,6 +3643,23 @@ style={{
       <textarea value={bulkWorkDetails} onChange={e => setBulkWorkDetails(e.target.value)} rows={4} placeholder="Example: Carpenters formwork fixing kar rahe hain; steel fixers reinforcement tying kar rahe hain..." style={{ ...fieldStyle, resize: 'vertical', marginBottom: 10 }} />
       <button type="submit" disabled={dailyWorkDetailsSaving} style={{ ...primaryStyle, background: '#1d4ed8', opacity: dailyWorkDetailsSaving ? .7 : 1 }}>{dailyWorkDetailsSaving ? 'Saving details…' : 'Save Daily Work Details'}</button>
     </form>
+
+    <div style={{ marginTop: '20px', padding: '18px', background: '#f0f9ff', border: '1px solid #7dd3fc', borderRadius: '10px' }}>
+      <h3 style={{ margin: '0 0 8px', color: '#075985' }}>👷 Bulk Present / Absent — By Designation</h3>
+      <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#334155' }}>Date, site, department aur designation select karein. Misal: Carpenter select karne se selected group ke tamam Carpenters ki attendance ek sath save hogi. Workers Directory ki default site ko ignore karke selected daily site save hogi. Jo worker isi date par pehle se kisi doosri site par recorded hai, usay automatically move/overwrite nahi kiya jayega.</p>
+      <form onSubmit={handleBulkDesignationAttendance}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: '12px' }}>
+          <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Attendance Date</label><input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }} /></div>
+          <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Working Site</label><select value={bulkMarkSite} onChange={e => setBulkMarkSite(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }}>{sitesList.map(site => <option key={site} value={site}>{site}</option>)}</select></div>
+          <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Department</label><select value={bulkMarkDepartment} onChange={e => setBulkMarkDepartment(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}><option value="All">All Departments</option>{visibleDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}</select></div>
+          <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Designation</label><select value={bulkMarkDesignation} onChange={e => setBulkMarkDesignation(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}><option value="All">All Designations</option>{designationsList.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
+          <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Attendance Status</label><select value={bulkMarkStatus} onChange={e => setBulkMarkStatus(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}><option value="Present">Present</option><option value="Absent">Absent</option></select></div>
+        </div>
+        {isHolidayDate(selectedTimesheetDate) && <p style={{ margin: '10px 0 0', padding: 10, background: '#fffbeb', borderRadius: 7, color: '#92400e', fontSize: 12 }}>Selected date holiday/Sunday hai: Present save karne par Holiday Present hoga; Absent select karne par Holiday save hoga aur absent count nahi hoga.</p>}
+        <button type="submit" disabled={bulkMarkSaving || !userRole.is_admin || !adminEditMode} style={{ marginTop: 12, padding: '10px 16px', border: 0, borderRadius: 7, background: bulkMarkStatus === 'Present' ? '#15803d' : '#b91c1c', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: bulkMarkSaving || !userRole.is_admin || !adminEditMode ? .55 : 1 }}>{bulkMarkSaving ? 'Saving Attendance…' : `Mark All Selected Workers ${bulkMarkStatus}`}</button>
+        {userRole.is_admin && !adminEditMode && <span style={{ marginLeft: 10, fontSize: 12, color: '#92400e' }}>Save ke liye Admin Edit Mode ON karein.</span>}
+      </form>
+    </div>
 
     <div style={{ marginTop: '20px', padding: '18px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '10px' }}>
       <h3 style={{ margin: '0 0 8px', color: '#166534' }}>🟢 Site Attendance by Worker ID</h3>
