@@ -318,6 +318,8 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  // Admin starts in safe read-only mode; editing is enabled explicitly from the header.
+  const [adminEditMode, setAdminEditMode] = useState(false);
  // Monthly Timesheet Modal & Date Selection States
   const [showMonthlyTimesheetModal, setShowMonthlyTimesheetModal] = useState(false);
   const [payrollStartDate, setPayrollStartDate] = useState(() => getInitialPayrollRange().startDate);
@@ -398,6 +400,14 @@ export default function App() {
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const [notificationLoadError, setNotificationLoadError] = useState('');
   const isHolidayDate = dateStr => Boolean(dateStr && (new Date(`${String(dateStr).slice(0, 10)}T12:00:00`).getDay() === 0 || holidayDates.some(h => String(h.holiday_date || '').slice(0, 10) === String(dateStr).slice(0, 10))));
+  function requireHrEditMode(actionLabel = 'change') {
+    if (userRole.is_admin && !adminEditMode) {
+      alert(`HR system abhi View Mode mein hai. ${actionLabel} karne ke liye upar Admin Edit Mode ON karein.`);
+      return false;
+    }
+    return true;
+  }
+
 
   // Data States
   const [workers, setWorkers] = useState([]);
@@ -482,6 +492,10 @@ const [newDesignation, setNewDesignation] = useState('');
   const [bulkStatus, setBulkStatus] = useState('Present');
   const [bulkOT, setBulkOT] = useState('5');
   const [bulkContractOT, setBulkContractOT] = useState('0');
+  const [bulkContractOnlyDesignations, setBulkContractOnlyDesignations] = useState(['Steel Fixer']);
+  const [bulkContractOnlyHours, setBulkContractOnlyHours] = useState('10');
+  const [bulkContractOnlySite, setBulkContractOnlySite] = useState('Sharjah Mamzar');
+  const [bulkContractOnlySaving, setBulkContractOnlySaving] = useState(false);
   const [bulkWorkDetails, setBulkWorkDetails] = useState('');
   
   // Quick Attendance States
@@ -668,6 +682,7 @@ const [newDesignation, setNewDesignation] = useState('');
 
   async function handleSaveBulkWorkDetails(e, silent = false) {
     e?.preventDefault?.();
+    if (!requireHrEditMode('Daily Work Details save')) return;
     if (!userRole.is_admin && !userRole.can_use_bulk && !userRole.can_edit_timesheet) {
       return alert('Aapko Daily Work Details save karne ki permission nahi hai.');
     }
@@ -877,6 +892,8 @@ const [newDesignation, setNewDesignation] = useState('');
   }
 
   async function savePayrollPeriodSettings(startDate = payrollStartDate, endDate = payrollEndDate, showMessage = true) {
+  if (!requireHrEditMode('Payroll period settings')) return;
+
     if (!startDate || !endDate || startDate > endDate) {
       if (showMessage) alert('Start Date aur End Date sahi select karein.');
       return false;
@@ -930,6 +947,8 @@ const [newDesignation, setNewDesignation] = useState('');
   }
 
   async function closeSelectedPayrollPeriod() {
+    if (!requireHrEditMode('Salary period close')) return;
+
     if (!userRole.is_admin) return alert('Sirf Admin salary month close kar sakta hai.');
     if (!payrollStartDate || !payrollEndDate || payrollStartDate > payrollEndDate) return alert('Pehle valid Start Date aur End Date select karein.');
     if (currentPayrollPeriodClosed) return alert('Yeh salary period pehle se close hai.');
@@ -968,6 +987,8 @@ const [newDesignation, setNewDesignation] = useState('');
   }
 
   async function reopenSelectedPayrollPeriod() {
+    if (!requireHrEditMode('Salary period reopen')) return;
+
     if (!userRole.is_admin) return alert('Sirf Admin salary period reopen kar sakta hai.');
     if (!currentPayrollPeriodClosed) return;
     const confirmed = window.confirm(`Kya ${payrollPeriodStartDate} se ${payrollPeriodEndDate} ka closed salary period dobara open karna hai?`);
@@ -1006,6 +1027,8 @@ const [newDesignation, setNewDesignation] = useState('');
   }
 
   async function saveEmploymentRecord(workerId) {
+    if (!requireHrEditMode('Employment record save')) return;
+
     if (!userRole.is_admin) return alert('Sirf admin employment details update kar sakta hai.');
     const row = employmentEdit[String(workerId)] || {};
     if (!row.joining_date) return alert('Worker ki joining/start date enter karein.');
@@ -1018,6 +1041,8 @@ const [newDesignation, setNewDesignation] = useState('');
   }
 
   async function saveLeaveSalaryReceived(e) {
+    if (!requireHrEditMode('Leave salary save')) return;
+
     e.preventDefault();
     if (!userRole.is_admin) return alert('Sirf admin leave salary received record kar sakta hai.');
     if (!leaveSalaryWorkerId || !leaveSalaryLastDate) return alert('Worker aur leave salary ki last date select karein.');
@@ -1123,6 +1148,8 @@ async function fetchSystemLists() {
 }
 
 async function addSystemListItem(type, value) {
+  if (!requireHrEditMode('System list update')) return;
+
   const name = String(value || '').trim();
   if (!name) return { error: { message: 'Name enter karein.' } };
   const { data: existing, error: findError } = await supabase.from('system_lists')
@@ -1138,6 +1165,8 @@ async function addSystemListItem(type, value) {
 }
 
 async function deleteSystemListItem(type, name) {
+  if (!requireHrEditMode('System list delete')) return;
+
   const { data: rows, error } = await supabase.from('system_lists')
     .update({ is_active: false }).eq('list_type', type).ilike('name', name).select('id');
   if (error) return { error };
@@ -1149,6 +1178,8 @@ async function deleteSystemListItem(type, name) {
 }
 
 async function handleAddDesignation() {
+  if (!requireHrEditMode('Designation add')) return;
+
   if (!userRole.is_admin) return alert('Sirf admin designation manage kar sakta hai.');
   const value = newDesignation.trim();
   if (!value) return alert('Designation ka naam enter karein.');
@@ -1172,6 +1203,8 @@ async function handleAddDesignation() {
 }
 
 async function handleDeleteDesignation() {
+  if (!requireHrEditMode('Designation delete')) return;
+
   if (!userRole.is_admin) return alert('Sirf admin designation delete kar sakta hai.');
   const selected = String(designation || '').trim();
   if (!selected) return alert('Pehle designation select karein.');
@@ -1189,6 +1222,8 @@ async function handleDeleteDesignation() {
 }
 
  async function handleSaveAnnualLeave(e) {
+  if (!requireHrEditMode('Annual Leave save')) return;
+
     e.preventDefault();
      if (!userRole.is_admin) return alert('Sirf admin annual leave records manage kar sakta hai.');
     if (!leaveWorkerId || !leaveStartDate || !leaveExpectedReturnDate) {
@@ -1392,6 +1427,8 @@ useEffect(() => {
 }, [session, userRole.is_admin, selectedSystem]);
 
 async function handleToggleHolidayDate() {
+  if (!requireHrEditMode('Holiday calendar update')) return;
+
   if (!userRole.is_admin) return alert('Sirf Admin holiday dates manage kar sakta hai.');
   if (!selectedTimesheetDate) return alert('Pehle date select karein.');
   if (isPayrollDateClosed(selectedTimesheetDate)) return alert('Yeh salary period close hai. Pehle period reopen karein.');
@@ -1415,6 +1452,8 @@ async function handleToggleHolidayDate() {
 }
 
   async function handleUpdateExtension(workerId, newExtensionDays) {
+    if (!requireHrEditMode('Leave extension update')) return;
+
     if (!userRole.is_admin && !userRole.can_edit_workers) return alert('Permission denied!');
     if (!userRole.is_admin && !filteredWorkers.some(w => String(w.id) === String(workerId))) return alert('Worker aapke assigned scope mein nahi hai.');
     const { error } = await supabase
@@ -1430,6 +1469,8 @@ async function handleToggleHolidayDate() {
   }
 
   async function handleMarkReturned(workerId) {
+    if (!requireHrEditMode('Leave return update')) return;
+
     if (!userRole.is_admin && !userRole.can_edit_workers) return alert('Permission denied!');
     if (!userRole.is_admin && !filteredWorkers.some(w => String(w.id) === String(workerId))) return alert('Worker aapke assigned scope mein nahi hai.');
     const todayDate = new Date().toISOString().split('T')[0];
@@ -1452,6 +1493,8 @@ async function handleToggleHolidayDate() {
   }
 
   async function handleDeleteUserPermission(emailToDelete) {
+    if (!requireHrEditMode('User permission delete')) return;
+
     if (!userRole.is_admin) return;
     if (window.confirm(`Delete access for ${emailToDelete}?`)) {
       const { error } = await supabase.from('user_permissions').delete().eq('user_email', emailToDelete);
@@ -1461,6 +1504,8 @@ async function handleToggleHolidayDate() {
   }
   
   async function handleDeleteSite(siteToDelete) {
+    if (!requireHrEditMode('Working site delete')) return;
+
     if (!userRole.is_admin) return alert('Access Denied!');
     if (sitesList.length <= 1) return alert('Kam az kam ek working site rehni chahiye.');
     if (!window.confirm(`Kya aap '${siteToDelete}' site ko permanently active list se hatana chahte hain?`)) return;
@@ -1475,6 +1520,8 @@ async function handleToggleHolidayDate() {
   }
 
   async function handleAddNewSite(e) {
+    if (!requireHrEditMode('Working site add')) return;
+
     e.preventDefault();
     if (!userRole.is_admin) return alert('Access Denied!');
     const value = newSiteInput.trim();
@@ -1488,6 +1535,8 @@ async function handleToggleHolidayDate() {
   }
 
   async function handleAddNewDepartment(e) {
+    if (!requireHrEditMode('Department add')) return;
+
     e.preventDefault();
     if (!userRole.is_admin) return alert('Access Denied!');
     const value = newDeptInput.trim();
@@ -1501,6 +1550,8 @@ async function handleToggleHolidayDate() {
   }
 
   async function handleDeleteDepartment(deptToDelete) {
+    if (!requireHrEditMode('Department delete')) return;
+
     if (!userRole.is_admin) return alert('Access Denied!');
     if (uniqueDepartments.length <= 1) return alert('Kam az kam ek department rehna chahiye.');
     if (!window.confirm(`Kya aap '${deptToDelete}' department ko permanently active list se hatana chahte hain?`)) return;
@@ -1585,6 +1636,8 @@ async function handleToggleHolidayDate() {
   }
 
   async function handleDeleteOldRecords() {
+    if (!requireHrEditMode('Data cleanup')) return;
+
     if (!userRole.is_admin) return alert('Sirf admin timesheet records delete kar sakta hai.');
     let startDate = cleanupSelectedDate;
     let endDate = cleanupSelectedDate;
@@ -1627,6 +1680,7 @@ async function handleToggleHolidayDate() {
   }
 
   async function handleScanPaperSheet(event) {
+    if (!requireHrEditMode('OCR attendance import')) return;
     if (!userRole.is_admin && !userRole.can_use_bulk) {
       return alert('Aapko Bulk/OCR ki permission nahi hai!');
     }
@@ -1871,6 +1925,7 @@ async function handleToggleHolidayDate() {
   }
 
   function handleLogout() {
+    setAdminEditMode(false);
     try {
       supabase.auth.signOut().catch(() => {});
       sessionStorage.removeItem('nda_user_session');
@@ -1883,6 +1938,8 @@ async function handleToggleHolidayDate() {
   }
 
   async function handleDeleteWorker(id) {
+    if (!requireHrEditMode('Worker delete')) return;
+
     if (!userRole.is_admin && !userRole.can_delete_workers) {
       return alert('Permission denied!');
     }
@@ -1941,6 +1998,8 @@ async function handleToggleHolidayDate() {
   }
 
   async function handleSaveWorker(e) {
+    if (!requireHrEditMode('Worker save')) return;
+
     e.preventDefault();
     if (!userRole.is_admin) {
       if (editingWorkerId && !userRole.can_edit_workers) return alert('Permission denied: worker edit allowed nahi.');
@@ -2038,7 +2097,7 @@ async function handleToggleHolidayDate() {
     const workerAttendance = reportDates.filter(d => attendanceByDate.has(d) || isHolidayDate(d) || getAnnualLeaveForWorker(worker.id, d)).map(d => {
       const row = attendanceByDate.get(d) || { worker_id: worker.id, date: d, overtime_hours: 0, contract_overtime_hours: 0, work_site: worker.work_site || '' };
       const annualLeave = getAnnualLeaveForWorker(worker.id, d);
-      const status = annualLeave ? 'Annual Leave' : (isHolidayDate(d) ? (String(row.status || '').toLowerCase() === 'holiday present' ? 'Holiday Present' : 'Holiday') : (row.status || '—'));
+      const status = annualLeave ? 'Annual Leave' : (isHolidayDate(d) ? (isPresentAttendanceStatus(row.status) ? 'Holiday Present' : 'Holiday') : (row.status || '—'));
       const canCountOT = isPresentAttendanceStatus(status);
       return { ...row, date: d, status, overtime_hours: canCountOT ? (Number(row.overtime_hours) || 0) : 0, contract_overtime_hours: canCountOT ? (Number(row.contract_overtime_hours) || 0) : 0 };
     });
@@ -2200,6 +2259,8 @@ async function handleToggleHolidayDate() {
 
   // 2. Handle Bulk Attendance & Overtime (Supports 'All' Departments & Designations)
  async function handleBulkAttendance() {
+  if (!requireHrEditMode('Bulk attendance / OT save')) return;
+
   if (!userRole.is_admin && !userRole.can_use_bulk) return alert('Aapko Bulk Attendance ki permission nahi hai.');
   if (isPayrollDateClosed(selectedTimesheetDate)) return alert('Yeh salary period close hai. Is date ki attendance/OT edit nahi ho sakti. Admin pehle period reopen kare.');
 
@@ -2303,6 +2364,60 @@ deptWorkers.forEach(w => {
 }
 
   
+// Bulk Contract OT: updates only the contract OT field for existing Present / Holiday Present rows.
+async function handleBulkContractOnlyOT(e) {
+  e.preventDefault();
+  if (!userRole.is_admin) return alert('Bulk Contract OT sirf Admin save kar sakta hai.');
+  if (!requireHrEditMode('Bulk Contract OT save')) return;
+  if (!selectedTimesheetDate || !bulkContractOnlySite) return alert('Date aur working site select karein.');
+  if (isPayrollDateClosed(selectedTimesheetDate)) return alert('Yeh salary period close hai. Admin pehle period reopen kare.');
+  const hours = Number(bulkContractOnlyHours);
+  if (!Number.isFinite(hours) || hours < 0) return alert('Contract OT hours sahi enter karein.');
+  const chosen = [...new Set((bulkContractOnlyDesignations || []).map(x => String(x).trim().toLowerCase()).filter(Boolean))];
+  if (!chosen.length) return alert('Kam az kam aik designation select karein.');
+  const normalize = value => String(value || '').normalize('NFKC').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  const siteKey = normalize(bulkContractOnlySite);
+  const selectedWorkers = workers.filter(w =>
+    normalize(w.work_site || w.site) === siteKey && chosen.includes(normalize(w.designation))
+  );
+  if (!selectedWorkers.length) return alert('Selected site aur designation(s) par koi worker nahi mila.');
+  const existingByWorker = new Map(attendance
+    .filter(a => String(a.date || '').slice(0, 10) === selectedTimesheetDate)
+    .map(a => [String(a.worker_id), a]));
+  const eligible = selectedWorkers.filter(w => {
+    const row = existingByWorker.get(String(w.id));
+    return row && isPresentAttendanceStatus(row.status) && !getAnnualLeaveForWorker(w.id, selectedTimesheetDate);
+  });
+  if (!eligible.length) return alert('Is date par selected workers mein koi existing Present / Holiday Present attendance record nahi mila. Attendance create ya status change nahi kiya gaya.');
+  const records = eligible.map(w => {
+    const old = existingByWorker.get(String(w.id));
+    return {
+      worker_id: old.worker_id,
+      date: selectedTimesheetDate,
+      status: old.status,
+      overtime_hours: Number(old.overtime_hours) || 0,
+      contract_overtime_hours: hours,
+      department: old.department || w.department || '',
+      work_site: old.work_site || w.work_site || bulkContractOnlySite
+    };
+  });
+  setBulkContractOnlySaving(true);
+  try {
+    // Chunk requests to avoid request-size limits on large sites.
+    for (let i = 0; i < records.length; i += 500) {
+      const { error } = await supabase.from('attendance').upsert(records.slice(i, i + 500), { onConflict: 'worker_id,date' });
+      if (error) throw error;
+    }
+    void logActivity('Bulk Contract OT', `${selectedTimesheetDate}: ${eligible.length} workers; site ${bulkContractOnlySite}; designations ${chosen.join(', ')}; ${hours} contract OT hours`);
+    await fetchAttendance();
+    alert(`Contract OT save ho gaya: ${eligible.length} Present / Holiday Present workers ko ${hours} hours. Attendance status aur Normal OT mehfooz rakha gaya.`);
+  } catch (err) {
+    alert('Bulk Contract OT save nahi hua: ' + (err?.message || String(err)));
+  } finally {
+    setBulkContractOnlySaving(false);
+  }
+}
+
  // 3. Handle Single Attendance & OT Change (Auto-saves to DB and updates Monthly Timesheet)
 async function handleSingleAttendanceChange(
   workerId,
@@ -2312,6 +2427,7 @@ async function handleSingleAttendanceChange(
   newSite,
   newContractOT = 0
 ) {
+  if (!requireHrEditMode('Attendance / OT update')) throw new Error('Admin Edit Mode OFF hai.');
   if (isPayrollDateClosed(dateStr)) throw new Error('Yeh salary period close hai. Is date ki attendance/OT edit nahi ho sakti. Admin pehle period reopen kare.');
   if (!userRole.is_admin && !userRole.can_edit_timesheet) {
     throw new Error('Aapko timesheet edit karne ki permission nahi hai.');
@@ -2377,6 +2493,8 @@ if (error) {
 }
   
 async function handleSaveSiteAttendance(e) {
+  if (!requireHrEditMode('Site attendance save')) return;
+
   e.preventDefault();
   if (!userRole.is_admin) return alert('Staff ko bulk overwrite ki permission nahi hai. Nayi entry Quick Entry se karein; existing records admin update karega.');
   if (!selectedTimesheetDate || !siteAttendanceSite) return alert('Date aur site select karein.');
@@ -2443,6 +2561,8 @@ async function handleSaveSiteAttendance(e) {
 }
 
 async function handleQuickAttendance(e) {
+  if (!requireHrEditMode('Quick attendance save')) return;
+
   e.preventDefault();
 
   if (quickSaving) return;
@@ -2496,6 +2616,8 @@ async function handleQuickAttendance(e) {
 
   // 4. Handle Mark Single Attendance (For timesheet table)
   async function handleMarkAttendance(workerId, status) {
+    if (!requireHrEditMode('Attendance update')) return;
+
     if (isPayrollDateClosed(selectedTimesheetDate)) return alert('Yeh salary period close hai. Admin pehle period reopen kare.');
     if (!userRole.is_admin && !userRole.can_edit_timesheet) return alert('Aapko timesheet edit karne ki permission nahi hai.');
     if (!userRole.is_admin && !filteredWorkers.some(w => String(w.id) === String(workerId))) return alert('Yeh worker aapke assigned scope mein nahi hai.');
@@ -2533,6 +2655,8 @@ const otHours = Number(
 
   // 5. Handle Save Staff Permissions
   async function handleSavePermission(e) {
+    if (!requireHrEditMode('User permission save')) return;
+
     e.preventDefault();
     if (!userRole.is_admin) return alert('Sirf admin staff permissions change kar sakta hai.');
     if (!targetEmail || !targetPassword) return alert('Staff email aur password enter karein.');
@@ -2827,6 +2951,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
           <div style={{display:'flex',alignItems:'center',gap:9,padding:'5px 10px',borderRadius:10,background:'rgba(255,255,255,.13)'}}>
             <img src="/muhammad-naveed-profile.jpg" alt="Muhammad Naveed" style={{width:48,height:48,objectFit:"cover",borderRadius:"50%",border:"2px solid #2563eb",boxShadow:"0 2px 8px rgba(37,99,235,.25)"}}/><div><div style={{fontSize:13,fontWeight:800,color:"#ffffff"}}>Muhammad Naveed</div><div style={{fontSize:10,color:'#dbeafe'}}>Administrator</div></div>
           </div>
+          {userRole.is_admin && selectedSystem === 'hr' && <button type="button" onClick={() => setAdminEditMode(v => !v)} style={{ padding: '9px 12px', background: adminEditMode ? '#b91c1c' : '#facc15', color: adminEditMode ? '#fff' : '#172554', border: '1px solid rgba(255,255,255,.4)', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 900 }}>{adminEditMode ? '✏️ Admin Edit Mode: ON' : '👁️ View Mode · Click to Edit'}</button>}
           {userRole.is_admin && selectedSystem === 'hr' && <div style={{ position: 'relative' }}>
             <button type="button" onClick={() => { setNotificationPanelOpen(v => !v); if (!notificationPanelOpen) void markActivityNotificationsRead(); }} style={{ position: 'relative', padding: '8px 11px', background: notificationPanelOpen ? '#f8fafc' : 'rgba(255,255,255,.14)', color: notificationPanelOpen ? '#0f172a' : '#fff', border: '1px solid rgba(255,255,255,.35)', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 800 }} title="Staff activity notifications">🔔 Notifications {activityNotifications.filter(n => !n.is_read).length > 0 ? `(${activityNotifications.filter(n => !n.is_read).length})` : ''}</button>
             {notificationPanelOpen && <div style={{ position: 'absolute', right: 0, top: '44px', width: 'min(390px, 88vw)', maxHeight: 420, overflowY: 'auto', background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 12px 30px rgba(0,0,0,.25)', zIndex: 10001, padding: 12 }}>
@@ -3361,6 +3486,19 @@ style={{
 {/* TAB 2: BULK & OCR */}
 {activeTab === 'bulk' && (userRole.is_admin || userRole.can_use_bulk) && (
   <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+    <form onSubmit={handleBulkContractOnlyOT} style={{ marginBottom: 22, padding: 16, border: '2px solid #93c5fd', borderRadius: 10, background: '#eff6ff' }}>
+      <h3 style={{ margin: '0 0 6px', color: '#1e3a8a' }}>🧾 Bulk Contract OT — Site + Multiple Designations</h3>
+      <p style={{ margin: '0 0 12px', fontSize: 12, color: '#334155' }}>Selected date par sirf pehle se saved Present / Holiday Present workers ka Contract OT update hoga. Attendance status, Normal OT aur baqi records change nahi honge. Absent ya leave workers skip honge.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12 }}>
+        <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Attendance / OT Date</label><input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }} /></div>
+        <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Working Site</label><select value={bulkContractOnlySite} onChange={e => setBulkContractOnlySite(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{sitesList.map(site => <option key={site} value={site}>{site}</option>)}</select></div>
+        <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Contract OT Hours (per worker)</label><input type="number" min="0" step="0.25" value={bulkContractOnlyHours} onChange={e => setBulkContractOnlyHours(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }} /></div>
+        <div style={{ gridColumn: '1 / -1' }}><label style={{ display: 'block', fontSize: 12, fontWeight: 800, marginBottom: 7 }}>Select Designation(s) — multiple allowed</label><div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', padding: 10, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 7 }}>{designationsList.map(d => <label key={d} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}><input type="checkbox" checked={bulkContractOnlyDesignations.includes(d)} onChange={e => setBulkContractOnlyDesignations(old => e.target.checked ? [...old, d] : old.filter(x => x !== d))} />{d}</label>)}</div></div>
+      </div>
+      <button type="submit" disabled={bulkContractOnlySaving || !userRole.is_admin || !adminEditMode} style={{ marginTop: 12, padding: '10px 16px', border: 0, borderRadius: 7, background: '#1d4ed8', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: bulkContractOnlySaving || !userRole.is_admin || !adminEditMode ? .55 : 1 }}>{bulkContractOnlySaving ? 'Saving Contract OT…' : 'Apply Contract OT to Present Workers'}</button>
+      {userRole.is_admin && !adminEditMode && <span style={{ marginLeft: 10, fontSize: 12, color: '#92400e' }}>Save ke liye Admin Edit Mode ON karein.</span>}
+    </form>
+
     <h3 style={{ margin: '0 0 10px 0' }}>⚡ Bulk Overtime Only — Department / Designation</h3>
 
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
@@ -5427,7 +5565,7 @@ const monthlyRows = allPeriodDates
     };
     const annualLeave = getAnnualLeaveForWorker(viewingWorkerTimesheet.id, date);
     const holiday = isHolidayDate(date);
-    const status = annualLeave ? 'Annual Leave' : (holiday ? (String(att.status || '').toLowerCase() === 'holiday present' ? 'Holiday Present' : 'Holiday') : (att.status || '—'));
+    const status = annualLeave ? 'Annual Leave' : (holiday ? (isPresentAttendanceStatus(att.status) ? 'Holiday Present' : 'Holiday') : (att.status || '—'));
     const canCountOT = isPresentAttendanceStatus(status);
     return {
       ...att,
