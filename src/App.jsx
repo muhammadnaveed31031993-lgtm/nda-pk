@@ -2277,45 +2277,37 @@ async function handleToggleHolidayDate() {
         : [selectedDesignationKey];
 
   const allowedWorkers = userRole.is_admin ? workers : filteredWorkers;
-  const effectiveBulkSite =
-    userRole.is_admin || userRole.assigned_site === 'All'
-      ? bulkSite
-      : userRole.assigned_site;
+  const effectiveBulkSite = userRole.is_admin || userRole.assigned_site === 'All' ? bulkSite : userRole.assigned_site;
+  const normalizeSite = value => String(value || '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
+  const existingByWorker = new Map(attendance
+    .filter(a => String(a.date || '').slice(0, 10) === selectedTimesheetDate)
+    .map(a => [String(a.worker_id), a]));
+
+  // Site is a daily attendance value, not a permanent Workers Directory restriction.
+  // Only workers already marked Present at the selected site receive bulk OT.
   const deptWorkers = allowedWorkers.filter(w => {
-    const matchDept =
-      bulkDepartment === 'All' ||
-      (w.department &&
-        w.department.toLowerCase() === bulkDepartment.toLowerCase());
-
+    const matchDept = bulkDepartment === 'All' || (w.department && w.department.toLowerCase() === bulkDepartment.toLowerCase());
     const workerDesignation = normalizeDesignation(w.designation);
-
-    const matchDesig =
-      selectedDesignations.includes('All') ||
-      selectedDesignations.includes(workerDesignation);
-    const matchSite = !effectiveBulkSite || String(w.work_site || '').trim().toLowerCase() === String(effectiveBulkSite).trim().toLowerCase();
-
-    return matchDept && matchDesig && matchSite;
+    const matchDesig = selectedDesignations.includes('All') || selectedDesignations.includes(workerDesignation);
+    const row = existingByWorker.get(String(w.id));
+    const matchDailySite = row && normalizeSite(row.work_site || row.site) === normalizeSite(effectiveBulkSite);
+    const eligibleStatus = row && isPresentAttendanceStatus(row.status) && !getAnnualLeaveForWorker(w.id, selectedTimesheetDate);
+    return matchDept && matchDesig && matchDailySite && eligibleStatus;
   });
 
   if (deptWorkers.length === 0) {
-    return alert(
-      `No workers found matching department (${bulkDepartment}) and designation (${bulkDesignation})!`
-    );
+    return alert(`Selected date (${selectedTimesheetDate}), site (${effectiveBulkSite}) aur designation (${bulkDesignation}) par koi Present worker nahi mila. Pehle Site Attendance / individual entry mein isi site ke naam se attendance save karein.`);
   }
 
-  const selectedDateIsHoliday = isHolidayDate(selectedTimesheetDate);
   const records = deptWorkers.map(w => {
-    const existing = attendanceData[selectedTimesheetDate]?.[w.id] || attendance.find(a => String(a.worker_id) === String(w.id) && a.date === selectedTimesheetDate) || {};
-    const activeAnnualLeave = getAnnualLeaveForWorker(w.id, selectedTimesheetDate);
-    const currentStatus = activeAnnualLeave ? 'Annual Leave' : (selectedDateIsHoliday ? 'Holiday Present' : (existing.status || 'Present'));
-    const canCountOT = isPresentAttendanceStatus(currentStatus);
+    const old = existingByWorker.get(String(w.id));
     return {
-      worker_id: w.id,
+      worker_id: old.worker_id,
       date: selectedTimesheetDate,
-      status: currentStatus,
-      overtime_hours: canCountOT ? (Number(bulkOT) || 0) : 0,
-      contract_overtime_hours: canCountOT ? (Number(bulkContractOT) || 0) : 0,
-      department: w.department,
+      status: old.status,
+      overtime_hours: Number(bulkOT) || 0,
+      contract_overtime_hours: Number(bulkContractOT) || 0,
+      department: old.department || w.department || '',
       work_site: effectiveBulkSite
     };
   });
@@ -2331,26 +2323,21 @@ async function handleToggleHolidayDate() {
 
   setAttendanceData(prev => {
     const updated = { ...prev };
-
-    if (!updated[selectedTimesheetDate]) {
-      updated[selectedTimesheetDate] = {};
-    }
-    
-deptWorkers.forEach(w => {
-  const existing = attendanceData[selectedTimesheetDate]?.[w.id] || attendance.find(a => String(a.worker_id) === String(w.id) && a.date === selectedTimesheetDate) || {};
-  const currentStatus = getAnnualLeaveForWorker(w.id, selectedTimesheetDate) ? 'Annual Leave' : (selectedDateIsHoliday ? 'Holiday Present' : (existing.status || 'Present'));
-  const canCountOT = isPresentAttendanceStatus(currentStatus);
-  updated[selectedTimesheetDate][w.id] = {
-    status: currentStatus,
-    ot: canCountOT ? (Number(bulkOT) || 0) : 0,
-    contract_ot: canCountOT ? (Number(bulkContractOT) || 0) : 0,
-    contract_overtime_hours: canCountOT ? (Number(bulkContractOT) || 0) : 0,
-    site: effectiveBulkSite
-  };
-});
-
+    if (!updated[selectedTimesheetDate]) updated[selectedTimesheetDate] = {};
+    deptWorkers.forEach(w => {
+      const old = existingByWorker.get(String(w.id));
+      updated[selectedTimesheetDate][w.id] = {
+        status: old.status,
+        ot: Number(bulkOT) || 0,
+        contract_ot: Number(bulkContractOT) || 0,
+        contract_overtime_hours: Number(bulkContractOT) || 0,
+        site: effectiveBulkSite,
+        work_site: effectiveBulkSite
+      };
+    });
     return updated;
   });
+
 
   if (bulkWorkDetails.trim()) {
     await handleSaveBulkWorkDetails(null, true);
@@ -2377,18 +2364,19 @@ async function handleBulkContractOnlyOT(e) {
   if (!chosen.length) return alert('Kam az kam aik designation select karein.');
   const normalize = value => String(value || '').normalize('NFKC').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
   const siteKey = normalize(bulkContractOnlySite);
-  const selectedWorkers = workers.filter(w =>
-    normalize(w.work_site || w.site) === siteKey && chosen.includes(normalize(w.designation))
-  );
-  if (!selectedWorkers.length) return alert('Selected site aur designation(s) par koi worker nahi mila.');
   const existingByWorker = new Map(attendance
     .filter(a => String(a.date || '').slice(0, 10) === selectedTimesheetDate)
     .map(a => [String(a.worker_id), a]));
+  const selectedWorkers = workers.filter(w => {
+    const row = existingByWorker.get(String(w.id));
+    return chosen.includes(normalize(w.designation)) && row && normalize(row.work_site || row.site) === siteKey;
+  });
+  if (!selectedWorkers.length) return alert('Is date par selected site ki attendance mein koi worker nahi mila. Workers Directory ki default site nahi, attendance ki daily site check ki gayi hai.');
   const eligible = selectedWorkers.filter(w => {
     const row = existingByWorker.get(String(w.id));
     return row && isPresentAttendanceStatus(row.status) && !getAnnualLeaveForWorker(w.id, selectedTimesheetDate);
   });
-  if (!eligible.length) return alert('Is date par selected workers mein koi existing Present / Holiday Present attendance record nahi mila. Attendance create ya status change nahi kiya gaya.');
+  if (!eligible.length) return alert('Is date aur selected daily site par koi Present / Holiday Present worker nahi mila. Attendance create ya status change nahi kiya gaya.');
   const records = eligible.map(w => {
     const old = existingByWorker.get(String(w.id));
     return {
@@ -2398,7 +2386,7 @@ async function handleBulkContractOnlyOT(e) {
       overtime_hours: Number(old.overtime_hours) || 0,
       contract_overtime_hours: hours,
       department: old.department || w.department || '',
-      work_site: old.work_site || w.work_site || bulkContractOnlySite
+      work_site: bulkContractOnlySite
     };
   });
   setBulkContractOnlySaving(true);
@@ -2499,65 +2487,62 @@ async function handleSaveSiteAttendance(e) {
   if (!userRole.is_admin) return alert('Staff ko bulk overwrite ki permission nahi hai. Nayi entry Quick Entry se karein; existing records admin update karega.');
   if (!selectedTimesheetDate || !siteAttendanceSite) return alert('Date aur site select karein.');
   if (isPayrollDateClosed(selectedTimesheetDate)) return alert('Yeh salary period close hai. Admin pehle period reopen kare.');
-  if (!siteAttendanceDepartment || siteAttendanceDepartment === 'All') return alert('Doosre department ki attendance ko affect hone se bachane ke liye ek specific department select karein.');
-  const allowedWorkers = userRole.is_admin ? workers : filteredWorkers;
+  if (!siteAttendanceDepartment || siteAttendanceDepartment === 'All') return alert('Ek specific department select karein.');
+
+  const allowedWorkers = workers;
   const enteredIds = [...new Set(siteAttendanceIds.split(/[\s,;]+/).map(x => x.trim()).filter(Boolean))];
+  if (!enteredIds.length) return alert('Kam az kam aik worker ID enter karein.');
   const normalizeWorkerId = value => String(value ?? '').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim().toLowerCase();
-  const getWorkerSiteForDate = w => {
-    // Workers Directory is the canonical assignment. Old attendance rows may contain stale site names,
-    // so only use attendance site when the worker has no assigned site in the directory.
-    const directorySite = String(w.work_site || w.site || '').trim();
-    if (directorySite) return directorySite;
-    const saved = attendance.find(a => String(a.worker_id) === String(w.id) && a.date === selectedTimesheetDate);
-    return String(saved?.work_site || saved?.site || '').trim();
-  };
   const normalizeDepartment = value => normalizeWorkerId(value).replace(/\s+/g, ' ');
   const getPublicWorkerIds = w => [w.worker_id, w.id, w.employee_id, w.id_no, w.worker_no, w.employee_no]
     .filter(value => value !== null && value !== undefined && String(value).trim() !== '')
     .map(normalizeWorkerId);
-  const scopedWorkers = allowedWorkers.filter(w => {
-    const assignedSite = getWorkerSiteForDate(w);
-    const siteMatch = normalizeWorkerId(assignedSite) === normalizeWorkerId(siteAttendanceSite);
-    const deptMatch = normalizeDepartment(w.department) === normalizeDepartment(siteAttendanceDepartment);
-    return siteMatch && deptMatch;
-  });
-  const presentWorkers = enteredIds.map(id => scopedWorkers.find(w => getPublicWorkerIds(w).includes(normalizeWorkerId(id))));
+  const departmentWorkers = allowedWorkers.filter(w => normalizeDepartment(w.department) === normalizeDepartment(siteAttendanceDepartment));
+  const presentWorkers = enteredIds.map(id => departmentWorkers.find(w => getPublicWorkerIds(w).includes(normalizeWorkerId(id))));
   const missingIds = enteredIds.filter((id, i) => !presentWorkers[i]);
   if (missingIds.length) {
-    const knownElsewhere = missingIds.map(id => {
+    const details = missingIds.map(id => {
       const worker = allowedWorkers.find(w => getPublicWorkerIds(w).includes(normalizeWorkerId(id)));
-      return worker ? `${id} (${worker.name || 'Worker'} — ${worker.department || 'No department'} / ${getWorkerSiteForDate(worker) || 'No site'})` : `${id} (Workers Directory mein ID nahi mili)`;
+      return worker ? `${id} (${worker.name || 'Worker'} — ${worker.department || 'No department'})` : `${id} (Workers Directory mein ID nahi mili)`;
     });
-    return alert('Yeh IDs selected site/department mein match nahi huin: ' + knownElsewhere.join('; ') + '. Attendance change nahi ki gayi. Workers Directory mein ID, department aur working site verify karein.');
+    return alert('Yeh IDs selected department mein nahi milin: ' + details.join('; ') + '. Site matching ab Workers Directory ki default site se nahi hoti. Department aur worker ID verify karein.');
   }
-  const selectedWorkers = scopedWorkers;
-  if (!selectedWorkers.length) return alert('Is site aur department ke workers nahi mile. Workers Directory mein site/department check karein.');
+
+  // Save only the IDs entered for this site. Other workers are left untouched,
+  // because workers can move between sites on different days and their master
+  // Workers Directory site is not their daily attendance location.
+  const selectedWorkers = [...new Map(presentWorkers.filter(Boolean).map(w => [String(w.id), w])).values()];
   setSiteAttendanceSaving(true);
   try {
     const siteDateIsHoliday = isHolidayDate(selectedTimesheetDate);
     const records = selectedWorkers.map(w => {
-      const old = attendance.find(a => String(a.worker_id) === String(w.id) && a.date === selectedTimesheetDate);
-      const isPresent = presentWorkers.some(p => p && String(p.id) === String(w.id));
+      const old = attendance.find(a => String(a.worker_id) === String(w.id) && String(a.date || '').slice(0, 10) === selectedTimesheetDate);
       const activeAnnualLeave = getAnnualLeaveForWorker(w.id, selectedTimesheetDate);
-      const status = activeAnnualLeave ? 'Annual Leave' : (siteDateIsHoliday ? (isPresent ? 'Holiday Present' : 'Holiday') : (isPresent ? 'Present' : 'Absent'));
+      const status = activeAnnualLeave ? 'Annual Leave' : (siteDateIsHoliday ? 'Holiday Present' : 'Present');
       const canCountOT = isPresentAttendanceStatus(status);
       return {
-        worker_id: w.id, date: selectedTimesheetDate,
+        worker_id: w.id,
+        date: selectedTimesheetDate,
         status,
         overtime_hours: canCountOT ? (siteDateIsHoliday ? (Number(siteHolidayNormalOT) || 0) : (Number(old?.overtime_hours) || 0)) : 0,
         contract_overtime_hours: canCountOT ? (siteDateIsHoliday ? (Number(siteHolidayContractOT) || 0) : (Number(old?.contract_overtime_hours) || 0)) : 0,
-        department: w.department || '', work_site: siteAttendanceSite
+        department: w.department || '',
+        work_site: siteAttendanceSite
       };
     });
     const { error } = await supabase.from('attendance').upsert(records, { onConflict: 'worker_id,date' });
     if (error) throw error;
     setSiteAttendanceIds('');
-    void logActivity('Site attendance entry', `${selectedTimesheetDate}: ${records.length} workers at ${siteAttendanceSite}; holiday ${siteDateIsHoliday ? 'yes' : 'no'}`);
+    void logActivity('Site attendance entry', `${selectedTimesheetDate}: ${records.length} entered workers at ${siteAttendanceSite}; department ${siteAttendanceDepartment}; holiday ${siteDateIsHoliday ? 'yes' : 'no'}`);
     await fetchAttendance();
-    alert(siteDateIsHoliday ? `Holiday save ho gayi (${siteAttendanceSite}): ${records.filter(r => r.status === 'Holiday Present').length} duty par, ${records.filter(r => r.status === 'Holiday').length} duty par nahi. Sirf duty walon ka OT save hua.` : `Attendance save ho gayi: ${records.filter(r => r.status === 'Present').length} Present, ${records.filter(r => r.status === 'Absent').length} Absent (${siteAttendanceSite}).`);
+    alert(siteDateIsHoliday
+      ? `Holiday attendance save ho gayi (${siteAttendanceSite}): ${records.filter(r => r.status === 'Holiday Present').length} duty workers. Doosre workers ka record change nahi hua.`
+      : `Attendance save ho gayi (${siteAttendanceSite}): ${records.filter(r => r.status === 'Present').length} Present workers. Doosre workers ka record change nahi hua.`);
   } catch (err) {
     alert('Attendance save nahi hui: ' + (err?.message || String(err)));
-  } finally { setSiteAttendanceSaving(false); }
+  } finally {
+    setSiteAttendanceSaving(false);
+  }
 }
 
 async function handleQuickAttendance(e) {
@@ -3488,7 +3473,7 @@ style={{
   <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
     <form onSubmit={handleBulkContractOnlyOT} style={{ marginBottom: 22, padding: 16, border: '2px solid #93c5fd', borderRadius: 10, background: '#eff6ff' }}>
       <h3 style={{ margin: '0 0 6px', color: '#1e3a8a' }}>🧾 Bulk Contract OT — Site + Multiple Designations</h3>
-      <p style={{ margin: '0 0 12px', fontSize: 12, color: '#334155' }}>Selected date par sirf pehle se saved Present / Holiday Present workers ka Contract OT update hoga. Attendance status, Normal OT aur baqi records change nahi honge. Absent ya leave workers skip honge.</p>
+      <p style={{ margin: '0 0 12px', fontSize: 12, color: '#334155' }}>Site ka match Workers Directory ki default site se nahi, us date ki saved attendance site se hoga. Pehle Site Attendance by Worker ID mein worker ko selected site par save karein. Phir sirf usi site ke saved Present / Holiday Present workers ka Contract OT update hoga; status aur Normal OT mehfooz rahenge.</p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12 }}>
         <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Attendance / OT Date</label><input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }} /></div>
         <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Working Site</label><select value={bulkContractOnlySite} onChange={e => setBulkContractOnlySite(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{sitesList.map(site => <option key={site} value={site}>{site}</option>)}</select></div>
@@ -3500,6 +3485,7 @@ style={{
     </form>
 
     <h3 style={{ margin: '0 0 10px 0' }}>⚡ Bulk Overtime Only — Department / Designation</h3>
+    <p style={{ margin: '0 0 12px', fontSize: 12, color: '#475569' }}>Yeh option bhi selected date ki attendance mein saved daily site aur Present / Holiday Present status ko check karta hai. Workers Directory ki default site ko daily site nahi samjha jayega.</p>
 
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
       <div>
@@ -3575,7 +3561,7 @@ style={{
 
     <div style={{ marginTop: '20px', padding: '18px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '10px' }}>
       <h3 style={{ margin: '0 0 8px', color: '#166534' }}>🟢 Site Attendance by Worker ID</h3>
-      <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#166534' }}>Date, site aur department select karein. Normal working day par entered IDs Present aur selected scope ke baqi workers Absent honge. Sunday/holiday par koi Present/Absent nahi hoga; entered IDs ke sirf Normal OT aur Contract OT hours save honge.</p>
+      <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#166534' }}>Date, site aur department select karein. Entered worker IDs selected daily site par Present save honge. Workers Directory ki default site restriction nahi hogi. Jo IDs enter nahi ki jayengi unka purana record bilkul change nahi hoga; is tarah doosri sites ke workers ghalti se Absent nahi honge. Sunday/holiday par entered IDs Holiday Present hongi aur sirf unka OT save hoga.</p>
       <form onSubmit={handleSaveSiteAttendance}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '12px' }}>
           <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Attendance Date</label><input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }} /></div>
@@ -3590,7 +3576,7 @@ style={{
             <div><label style={{ fontWeight: 'bold', fontSize: 12 }}>Contract OT Hours (per entered ID)</label><input type="number" min="0" step="0.25" value={siteHolidayContractOT} onChange={e => setSiteHolidayContractOT(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }} /></div>
           </div>
         )}
-        <button type="submit" disabled={siteAttendanceSaving} style={{ ...primaryStyle, marginTop: 12, background: '#15803d', opacity: siteAttendanceSaving ? .7 : 1 }}>{siteAttendanceSaving ? 'Saving Attendance…' : (isHolidayDate(selectedTimesheetDate) ? 'Save Holiday OT by Worker ID' : 'Save Site Attendance (Others Absent)')}</button>
+        <button type="submit" disabled={siteAttendanceSaving} style={{ ...primaryStyle, marginTop: 12, background: '#15803d', opacity: siteAttendanceSaving ? .7 : 1 }}>{siteAttendanceSaving ? 'Saving Attendance…' : (isHolidayDate(selectedTimesheetDate) ? 'Save Holiday Duty by Worker ID' : 'Save Present Workers by ID')}</button>
       </form>
     </div>
 
@@ -4054,22 +4040,23 @@ await handleSingleAttendanceChange(
 {activeTab === 'attendance' &&
  (userRole.is_admin || userRole.can_view_timesheet) &&
  (() => {
-   const reportWorkers = (userRole.is_admin ? workers : filteredWorkers).filter(w => {
-     const deptScope = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
-     const siteScope = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
-     const deptMatch = !deptScope || deptScope === 'All' ||
-       w.department?.toLowerCase() === deptScope.toLowerCase();
-     const siteMatch = !siteScope || siteScope === 'All' ||
-       w.work_site?.toLowerCase() === siteScope.toLowerCase();
-     return deptMatch && siteMatch;
-   });
-
    const getRecord = worker =>
      attendanceData[selectedTimesheetDate]?.[worker.id] ||
      attendance.find(a =>
        String(a.worker_id) === String(worker.id) &&
        a.date === selectedTimesheetDate
      ) || {};
+
+   const reportWorkers = (userRole.is_admin ? workers : filteredWorkers).filter(w => {
+     const deptScope = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
+     const siteScope = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
+     const deptMatch = !deptScope || deptScope === 'All' ||
+       w.department?.toLowerCase() === deptScope.toLowerCase();
+     const dailySite = getRecord(w).work_site || getRecord(w).site || w.work_site || '';
+     const siteMatch = !siteScope || siteScope === 'All' ||
+       dailySite.toLowerCase() === siteScope.toLowerCase();
+     return deptMatch && siteMatch;
+   });
 
    const getStatus = worker =>
      String(getRecord(worker).status || (isHolidayDate(selectedTimesheetDate) ? 'Holiday' : 'Absent')).toLowerCase().replace(/_/g, ' ').trim();
