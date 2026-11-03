@@ -317,6 +317,8 @@ export default function App() {
   const [businessAccessFlags, setBusinessAccessFlags] = useState({ can_view: true, can_add: false, can_edit: false, can_delete: false, can_manage_workers: false, can_manage_access: false });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // Short-lived server-issued token for private HR worker documents (custom HR login).
+  const [workerDocToken, setWorkerDocToken] = useState(() => { try { return sessionStorage.getItem('nda_worker_docs_token') || ''; } catch { return ''; } });
   const [authLoading, setAuthLoading] = useState(false);
   // Admin starts in safe read-only mode; editing is enabled explicitly from the header.
   const [adminEditMode, setAdminEditMode] = useState(false);
@@ -1290,43 +1292,76 @@ async function handleDeleteDesignation() {
     setPersonalDocs(data || []);
   }
 
+  async function callWorkerDocuments(action, extra = {}) {
+    if (!workerDocToken) throw new Error('Private documents session missing. Logout karke dobara login karein.');
+    const { data, error } = await supabase.functions.invoke('worker-documents', {
+      body: { action, token: workerDocToken, ...extra }
+    });
+    if (error) throw new Error(error.message || 'Worker documents service error');
+    if (data?.error) throw new Error(data.error);
+    return data;
+  }
+
   async function fetchWorkerDocuments() {
-    const { data, error } = await supabase.from('worker_documents').select('*').order('created_at', { ascending: false });
-    if (error) {
-      console.warn('Worker documents table not configured:', error.message);
+    if (!workerDocToken) { setWorkerDocuments([]); return; }
+    try {
+      const data = await callWorkerDocuments('list');
+      setWorkerDocuments(data.documents || []);
+    } catch (error) {
+      console.warn('Private worker documents load failed:', error.message);
       setWorkerDocuments([]);
-      return;
     }
-    setWorkerDocuments(data || []);
+  }
+
+  async function fileToBase64(file) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
   }
 
   async function uploadWorkerDocument(worker, file) {
     if (!file) return;
     if (!requireHrEditMode('Worker document upload')) return;
     if (!userRole.is_admin && !userRole.can_edit_workers) return alert('Aapko worker documents upload karne ki permission nahi hai.');
+    if (file.size > 12 * 1024 * 1024) return alert('File 12 MB se chhoti honi chahiye.');
     const title = window.prompt('Document ka naam likhein (e.g. Emirates ID, Insurance, Certificate):', file.name.replace(/\.[^.]+$/, ''));
     if (title === null || !title.trim()) return;
     const category = window.prompt('Category likhein (Passport / Visa / ID Card / Medical / Other):', 'Other');
     if (category === null) return;
-    const safeFile = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storagePath = `${worker.id}/${Date.now()}-${safeFile}`;
     try {
-      const { error: uploadError } = await supabase.storage.from('worker-documents').upload(storagePath, file, { upsert: false });
-      if (uploadError) throw uploadError;
-      const { data: publicData } = supabase.storage.from('worker-documents').getPublicUrl(storagePath);
-      const { error: saveError } = await supabase.from('worker_documents').insert([{
+      const file_base64 = await fileToBase64(file);
+      await callWorkerDocuments('upload', {
         worker_id: worker.id,
         document_title: title.trim(),
         category: category.trim() || 'Other',
         file_name: file.name,
-        file_url: publicData.publicUrl,
-        storage_path: storagePath
-      }]);
-      if (saveError) throw saveError;
+        content_type: file.type || 'application/octet-stream',
+        file_base64
+      });
       await fetchWorkerDocuments();
-      alert('Worker document upload aur save ho gaya.');
+      alert('Worker document securely upload aur save ho gaya.');
     } catch (err) {
       alert('Document upload nahi hua: ' + (err?.message || err));
+    }
+  }
+
+  async function openWorkerDocument(doc, download = false) {
+    try {
+      const result = await callWorkerDocuments('open', { document_id: doc.id, download });
+      if (!result?.signed_url) throw new Error('Secure document link nahi mila.');
+      const link = document.createElement('a');
+      link.href = result.signed_url;
+      if (download) { link.download = doc.file_name || doc.document_title || 'worker-document'; }
+      else { link.target = '_blank'; link.rel = 'noopener noreferrer'; }
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      alert('Document open nahi hua: ' + error.message);
     }
   }
 
@@ -1334,19 +1369,17 @@ async function handleDeleteDesignation() {
     if (!requireHrEditMode('Worker document delete')) return;
     if (!userRole.is_admin && !userRole.can_edit_workers) return alert('Aapko document delete karne ki permission nahi hai.');
     if (!window.confirm(`"${doc.document_title}" delete karna hai?`)) return;
-    const { error } = await supabase.from('worker_documents').delete().eq('id', doc.id);
-    if (error) return alert('Document delete nahi hua: ' + error.message);
-    if (doc.storage_path) {
-      const { error: storageError } = await supabase.storage.from('worker-documents').remove([doc.storage_path]);
-      if (storageError) console.warn('Storage file delete failed:', storageError.message);
+    try {
+      await callWorkerDocuments('delete', { document_id: doc.id });
+      await fetchWorkerDocuments();
+      alert('Document delete ho gaya.');
+    } catch (error) {
+      alert('Document delete nahi hua: ' + error.message);
     }
-    await fetchWorkerDocuments();
   }
 
-  function printWorkerDocument(doc, worker) {
-    const w = window.open(doc.file_url, '_blank', 'noopener,noreferrer');
-    if (!w) return alert('Popup blocked. Browser mein popups allow karein, phir View/Print dobara karein.');
-    // Browser PDF/image viewer provides Print and Save as PDF controls.
+  function printWorkerDocument(doc) {
+    void openWorkerDocument(doc, false);
   }
 
   async function fetchPermissionsList() {
@@ -1917,6 +1950,26 @@ async function handleToggleHolidayDate() {
       const isAdminAccount =
         resolvedAccount.is_admin === true || resolvedAccount.is_admin === 'true';
 
+      // Keep the existing HR login (user_permissions). The Edge Function validates
+      // the same credentials server-side and issues a short-lived token for private files.
+      try {
+        const { data: docAuth, error: docAuthError } = await supabase.functions.invoke('worker-documents', {
+          body: { action: 'session', email: cleanEmail, password: cleanPassword }
+        });
+        if (docAuthError || !docAuth?.token) {
+          console.warn('Private document session was not issued:', docAuthError?.message || docAuth?.error || 'Unknown error');
+          setWorkerDocToken('');
+          sessionStorage.removeItem('nda_worker_docs_token');
+        } else {
+          setWorkerDocToken(docAuth.token);
+          sessionStorage.setItem('nda_worker_docs_token', docAuth.token);
+        }
+      } catch (docAuthError) {
+        console.warn('Private document service is not configured yet:', docAuthError?.message || docAuthError);
+        setWorkerDocToken('');
+        sessionStorage.removeItem('nda_worker_docs_token');
+      }
+
       if (isAdminAccount) {
         const adminRole = {
           is_admin: true,
@@ -1995,6 +2048,8 @@ async function handleToggleHolidayDate() {
     try {
       supabase.auth.signOut().catch(() => {});
       sessionStorage.removeItem('nda_user_session');
+      sessionStorage.removeItem('nda_worker_docs_token');
+      setWorkerDocToken('');
       localStorage.removeItem('nda_user_session'); // Clear any old saved session from earlier versions.
     } catch (err) {
       console.warn('Could not clear saved session:', err);
@@ -4082,73 +4137,12 @@ await handleSingleAttendanceChange(
             </div>
           </div>
       
-          {/* DOCUMENTS UPLOAD SECTION */}
+          {/* PRIVATE DOCUMENT UPLOADS: upload after saving the worker, from Workers Directory. */}
           <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-            <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#1e293b' }}>📁 Worker Documents Upload</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
-              
-              <div>
-                <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Passport Copy</label>
-                <input type="file" onChange={async (e) => {
-                  const file = e.target.files[0];
-                  if (!file) return;
-                  try {
-                    const fileName = `pass_${Date.now()}.${file.name.split('.').pop()}`;
-                    const { error: uploadError } = await supabase.storage.from('worker-documents').upload(fileName, file);
-                    if (uploadError) throw uploadError;
-                    const { data } = supabase.storage.from('worker-documents').getPublicUrl(fileName);
-                    setPassportFileUrl(data.publicUrl);
-                    alert('Passport uploaded successfully!');
-                  } catch (err) {
-                    alert('Passport upload error: ' + err.message);
-                  }
-                }} style={{ fontSize: '11px' }} />
-              </div>
-
-              <div>
-  <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>ID Card</label>
-  <input 
-    type="file" 
-    onChange={async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      try {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `idcard_${Date.now()}.${fileExt}`;
-        
-        const { error: uploadError } = await supabase.storage.from('worker-documents').upload(fileName, file);
-        if (uploadError) throw uploadError;
-
-        const { data } = supabase.storage.from('worker-documents').getPublicUrl(fileName);
-        const publicUrl = data.publicUrl;
-
-        setIdCardFileUrl(publicUrl);
-        alert('ID Card uploaded successfully!');
-      } catch (err) {
-        alert('Upload Error: ' + err.message);
-      }
-    }} 
-    style={{ fontSize: '11px' }} 
-  />
-  {idCardFileUrl && <div style={{ fontSize: '10px', color: '#16a34a', marginTop: '2px' }}>✔ Saved & Ready</div>}
-</div>
-
-              <div>
-                <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Visa Copy</label>
-                <input type="file" accept="image/*,.pdf" onChange={async (e) => {
-                  const file = e.target.files?.[0]; if (!file) return;
-                  try {
-                    const fileName = `visa_${editingWorkerId || 'new'}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
-                    const { error } = await supabase.storage.from('worker-documents').upload(fileName, file);
-                    if (error) throw error;
-                    const { data } = supabase.storage.from('worker-documents').getPublicUrl(fileName);
-                    setVisaFileUrl(data.publicUrl);
-                    alert('Visa copy uploaded. Worker save/update bhi karein.');
-                  } catch (err) { alert('Visa upload error: ' + err.message); }
-                }} style={{ fontSize: '11px' }} />
-              </div>
-
-            </div>
+            <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#1e293b' }}>📁 Worker Documents</h4>
+            <p style={{ margin: 0, fontSize: 12, color: '#475569' }}>
+              Passport, ID Card, Visa, Medical Card aur doosre documents worker ko save karne ke baad Workers Directory ke “＋ Add Photo / Document” option se upload karein. Documents private storage mein save honge.
+            </p>
           </div>
 
           <button type="submit" style={{ marginTop: '20px', padding: '10px 20px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
@@ -4192,9 +4186,9 @@ await handleSingleAttendanceChange(
                     <a key={label} href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#075985', background: '#e0f2fe', padding: '4px 7px', borderRadius: 4, textDecoration: 'none' }}>{label} · View / PDF</a>
                   ))}
                   {workerDocuments.filter(doc => String(doc.worker_id) === String(w.id)).map(doc => (
-                    <span key={doc.id} style={{display:'inline-flex',gap:4,alignItems:'center',background:'#f1f5f9',padding:'4px 6px',borderRadius:5,fontSize:11}}>
-                      <a href={doc.file_url} target="_blank" rel="noopener noreferrer" style={{color:'#075985',textDecoration:'none'}}>{doc.document_title || doc.category} · View / Print</a>
-                      <a href={doc.file_url} download={doc.file_name || doc.document_title} style={{color:'#166534',textDecoration:'none'}}>Download</a>
+                    <span key={doc.id} style={{display:'inline-flex',gap:5,alignItems:'center',background:'#f1f5f9',padding:'4px 6px',borderRadius:5,fontSize:11}}>
+                      <button type="button" onClick={()=>void openWorkerDocument(doc,false)} style={{border:0,background:'transparent',padding:0,color:'#075985',cursor:'pointer'}}>{doc.document_title || doc.category} · View / Print</button>
+                      <button type="button" onClick={()=>void openWorkerDocument(doc,true)} style={{border:0,background:'transparent',padding:0,color:'#166534',cursor:'pointer'}}>Download</button>
                       {(userRole.is_admin || userRole.can_edit_workers) && <button type="button" onClick={()=>deleteWorkerDocument(doc)} style={{border:0,background:'transparent',color:'#b91c1c',cursor:'pointer'}}>×</button>}
                     </span>
                   ))}
