@@ -3344,7 +3344,8 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
             </h3>
 
             <p style={{ margin: '6px 0 12px 0', color: '#0f172a', fontSize: '14px' }}>
-              Workers with attendance: <strong>{totalAttendanceCount}</strong>
+              Total Workers: <strong>{deptWorkers.length}</strong>
+              <span style={{ color: '#64748b', fontSize: '12px' }}> · Attendance saved: {totalAttendanceCount}</span>
             </p>
 
             <hr style={{
@@ -3378,7 +3379,15 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
             };
             const statusWorkers = {
               Present: desigWorkers.filter(w => normaliseDashboardStatus(getAttendanceStatus(w)) === 'present' && !isWorkerOnAnnualLeave(w)),
-              Absent: desigWorkers.filter(w => normaliseDashboardStatus(getAttendanceStatus(w)) === 'absent' && !isWorkerOnAnnualLeave(w)),
+              // In this system, workers entered by ID are Present; workers with no
+              // attendance row for the selected date are Absent unless they are on leave.
+              Absent: desigWorkers.filter(w => {
+                const status = normaliseDashboardStatus(getAttendanceStatus(w));
+                const onAnnualLeave = isWorkerOnAnnualLeave(w) || status === 'annual leave';
+                const onOtherLeave = ['leave', 'sick leave', 'other leave'].includes(status);
+                const noAttendanceRow = !attendanceData[selectedTimesheetDate]?.[w.id];
+                return !onAnnualLeave && !onOtherLeave && (status === 'absent' || noAttendanceRow);
+              }),
               'Annual Leave': desigWorkers.filter(w => normaliseDashboardStatus(getAttendanceStatus(w)) === 'annual leave' || isWorkerOnAnnualLeave(w)),
               'Other Leave': desigWorkers.filter(w => ['leave', 'sick leave', 'other leave'].includes(normaliseDashboardStatus(getAttendanceStatus(w))))
             };
@@ -3416,7 +3425,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
                       fontSize: '11px',
                       whiteSpace: 'nowrap'
                     }}>
-                      {desigAttendanceWorkers.length} Attended
+                      {desigWorkers.length} Workers
                     </span>
                   </div>
 
@@ -3425,8 +3434,8 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
                       const attendanceRecord =
                         attendanceData[selectedTimesheetDate]?.[w.id];
 
-                      return Boolean(attendanceRecord) &&
-                        (attendanceRecord.site || attendanceRecord.work_site) === site;
+                      const workerSite = attendanceRecord?.site || attendanceRecord?.work_site || w.work_site;
+                      return String(workerSite || '').trim().toLowerCase() === String(site || '').trim().toLowerCase();
                     }).length;
 
                     if (siteWorkersCount === 0) return null;
