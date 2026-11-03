@@ -342,21 +342,6 @@ export default function App() {
   const [leaveSalaryAmount, setLeaveSalaryAmount] = useState('');
   const [finalCalcWorkerId, setFinalCalcWorkerId] = useState('');
   const [finalCalcDate, setFinalCalcDate] = useState(new Date().toISOString().slice(0,10));
-  // Worker applications are stored separately; existing HR/attendance tables remain untouched.
-  const [workerApplications, setWorkerApplications] = useState([]);
-  const [applicationWorkerId, setApplicationWorkerId] = useState('');
-  const [applicationType, setApplicationType] = useState('Annual Leave');
-  const [applicationSubject, setApplicationSubject] = useState('Annual Leave Application');
-  const [applicationText, setApplicationText] = useState('');
-  const [applicationStatus, setApplicationStatus] = useState('Pending');
-  const [applicationFile, setApplicationFile] = useState(null);
-  const [applicationSaving, setApplicationSaving] = useState(false);
-  const [applicationLoading, setApplicationLoading] = useState(false);
-  const [applicationSearch, setApplicationSearch] = useState('');
-  const [translatorInput, setTranslatorInput] = useState('');
-  const [translatorOutput, setTranslatorOutput] = useState('');
-  const [translatorDirection, setTranslatorDirection] = useState('ur-en');
-  const [translatorBusy, setTranslatorBusy] = useState(false);
   
   // Manual & Custom Deduction States
   const [hasDeduction, setHasDeduction] = useState(true);
@@ -578,10 +563,6 @@ const [newDesignation, setNewDesignation] = useState('');
   useEffect(() => {
     if (session && selectedSystem === 'hr') fetchHolidayDates();
   }, [session, selectedSystem]);
-
-  useEffect(() => {
-    if (session && selectedSystem === 'hr' && activeTab === 'annualLeave' && annualManagementView === 'applications' && userRole.is_admin) fetchWorkerApplications();
-  }, [session, selectedSystem, activeTab, annualManagementView, userRole.is_admin]);
 
   async function handleSaveBusinessTransaction(e) {
     e.preventDefault();
@@ -1306,102 +1287,6 @@ async function handleDeleteDesignation() {
   async function fetchPersonalDocs() {
     const { data } = await supabase.from('personal_docs').select('*').order('id', { ascending: false });
     setPersonalDocs(data || []);
-  }
-
-  async function fetchWorkerApplications() {
-    setApplicationLoading(true);
-    const { data, error } = await supabase.from('worker_applications').select('*').order('created_at', { ascending: false });
-    if (error) {
-      console.error('Worker applications load error:', error.message);
-      alert('Applications table load nahi hui. Pehle provided additive SQL migration run karein. Detail: ' + error.message);
-      setWorkerApplications([]);
-    } else setWorkerApplications(data || []);
-    setApplicationLoading(false);
-  }
-
-  async function handleTranslateApplication() {
-    const source = String(translatorInput || '').trim();
-    if (!source) return alert('Translation ke liye text likhein.');
-    setTranslatorBusy(true);
-    try {
-      const [from, to] = translatorDirection.split('-');
-      const endpoint = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(source)}&langpair=${from}|${to}`;
-      const response = await fetch(endpoint);
-      if (!response.ok) throw new Error(`Translation service HTTP ${response.status}`);
-      const payload = await response.json();
-      const translated = payload?.responseData?.translatedText;
-      if (!translated) throw new Error(payload?.responseDetails || 'Translation result nahi mila.');
-      setTranslatorOutput(translated);
-    } catch (error) {
-      alert('Translation nahi ho saki: ' + (error?.message || String(error)));
-    } finally { setTranslatorBusy(false); }
-  }
-
-  function loadApplicationTemplate(type) {
-    setApplicationType(type);
-    const templates = {
-      'Annual Leave': { subject: 'Annual Leave Application', text: 'To,\nThe HR Manager,\n\nSubject: Annual Leave Application\n\nDear Sir,\nI respectfully request annual leave from [Start Date] to [End Date] due to personal reasons. Kindly approve my leave.\n\nThank you.\n\nName: [Worker Name]\nWorker ID: [Worker ID]' },
-      'Sick Leave': { subject: 'Sick Leave Application', text: 'To,\nThe HR Manager,\n\nSubject: Sick Leave Application\n\nDear Sir,\nI am unwell and request sick leave from [Start Date] to [End Date]. Medical documents can be provided if required. Kindly approve my request.\n\nName: [Worker Name]\nWorker ID: [Worker ID]' },
-      'Emergency Leave': { subject: 'Emergency Leave Application', text: 'To,\nThe HR Manager,\n\nSubject: Emergency Leave Application\n\nDear Sir,\nDue to an urgent personal matter, I request emergency leave from [Start Date] to [End Date]. Kindly consider and approve my request.\n\nName: [Worker Name]\nWorker ID: [Worker ID]' },
-      'Salary Advance': { subject: 'Salary Advance Application', text: 'To,\nThe HR Manager,\n\nSubject: Salary Advance Request\n\nDear Sir,\nI request a salary advance of [Amount] due to personal requirements. Kindly consider my request.\n\nName: [Worker Name]\nWorker ID: [Worker ID]' },
-      'Resignation': { subject: 'Resignation Application', text: 'To,\nThe HR Manager,\n\nSubject: Resignation\n\nDear Sir,\nPlease accept this letter as formal notice of my resignation. My proposed last working day is [Date]. Kindly advise regarding the handover and final settlement process.\n\nName: [Worker Name]\nWorker ID: [Worker ID]' },
-      'Other': { subject: 'Application', text: 'To,\nThe HR Manager,\n\nSubject: [Write Subject]\n\nDear Sir,\nI respectfully request your consideration of the following matter: [Write Details].\n\nThank you.\n\nName: [Worker Name]\nWorker ID: [Worker ID]' }
-    };
-    setApplicationSubject(templates[type].subject);
-    setApplicationText(templates[type].text);
-  }
-
-  async function handleSaveWorkerApplication(e) {
-    e.preventDefault();
-    if (!userRole.is_admin) return alert('Applications save karne ki permission sirf Admin ko hai.');
-    if (!requireHrEditMode('Worker application save')) return;
-    if (!applicationWorkerId || !applicationSubject.trim() || !applicationText.trim()) return alert('Worker, subject aur application text zaroori hain.');
-    setApplicationSaving(true);
-    try {
-      const worker = workers.find(w => String(w.id) === String(applicationWorkerId));
-      let attachmentUrl = null;
-      let attachmentName = null;
-      if (applicationFile) {
-        const safeName = `${String(applicationWorkerId).replace(/[^a-zA-Z0-9_-]/g, '')}/applications/${Date.now()}-${applicationFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-        const { error: uploadError } = await supabase.storage.from('worker-applications').upload(safeName, applicationFile, { upsert: false });
-        if (uploadError) throw uploadError;
-        attachmentUrl = safeName;
-        attachmentName = applicationFile.name;
-      }
-      const payload = {
-        worker_id: String(applicationWorkerId),
-        worker_code: String(worker?.worker_id || worker?.id || applicationWorkerId),
-        worker_name: worker?.name || '',
-        application_type: applicationType,
-        subject: applicationSubject.trim(),
-        application_text: applicationText,
-        status: applicationStatus,
-        attachment_url: attachmentUrl,
-        attachment_name: attachmentName,
-        created_by: session?.user?.email || ''
-      };
-      const { error } = await supabase.from('worker_applications').insert([payload]);
-      if (error) throw error;
-      alert('Application worker ki file mein save ho gayi.');
-      setApplicationFile(null);
-      await fetchWorkerApplications();
-    } catch (error) {
-      alert('Application save nahi hui: ' + (error?.message || String(error)));
-    } finally { setApplicationSaving(false); }
-  }
-
-  async function openWorkerApplicationAttachment(storagePath) {
-    if (!storagePath) return;
-    const { data, error } = await supabase.storage.from('worker-applications').createSignedUrl(storagePath, 300);
-    if (error || !data?.signedUrl) return alert('Attachment open nahi ho saka: ' + (error?.message || 'Signed URL unavailable'));
-    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
-  }
-
-  async function handleApplicationStatusChange(id, status) {
-    if (!userRole.is_admin || !requireHrEditMode('Application status update')) return;
-    const { error } = await supabase.from('worker_applications').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
-    if (error) return alert('Status update nahi hua: ' + error.message);
-    setWorkerApplications(prev => prev.map(row => row.id === id ? { ...row, status } : row));
   }
 
   async function fetchPermissionsList() {
@@ -3671,8 +3556,6 @@ style={{
 {/* TAB 2: BULK & OCR */}
 {activeTab === 'bulk' && (userRole.is_admin || userRole.can_use_bulk) && (
   <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-    <div style={{ marginBottom: 18, padding: 14, borderRadius: 10, background: '#0f172a', color: '#fff' }}><h2 style={{ margin: 0 }}>⚡ Bulk Operations Center</h2><p style={{ margin: '6px 0 0', fontSize: 13, color: '#cbd5e1' }}>Normal OT, Contract OT aur Present/Absent ek hi center mein. Har operation ka purana calculation aur save rule alag aur mehfooz hai. Annual Leave yahan include nahi hai.</p></div>
-    <h3 style={{ margin: '0 0 10px', color: '#1e3a8a' }}>Operation 1 — Contract OT by Site + Multiple Designations</h3>
     <form onSubmit={handleBulkContractOnlyOT} style={{ marginBottom: 22, padding: 16, border: '2px solid #93c5fd', borderRadius: 10, background: '#eff6ff' }}>
       <h3 style={{ margin: '0 0 6px', color: '#1e3a8a' }}>🧾 Bulk Contract OT — Site + Multiple Designations</h3>
       <p style={{ margin: '0 0 12px', fontSize: 12, color: '#334155' }}>Site ka match Workers Directory ki default site se nahi, us date ki saved attendance site se hoga. Pehle Site Attendance by Worker ID mein worker ko selected site par save karein. Phir sirf usi site ke saved Present / Holiday Present workers ka Contract OT update hoga; status aur Normal OT mehfooz rahenge.</p>
@@ -3686,7 +3569,7 @@ style={{
       {userRole.is_admin && !adminEditMode && <span style={{ marginLeft: 10, fontSize: 12, color: '#92400e' }}>Save ke liye Admin Edit Mode ON karein.</span>}
     </form>
 
-    <h3 style={{ margin: '20px 0 10px 0' }}>Operation 2 — Normal / Contract Overtime by Department & Designation</h3>
+    <h3 style={{ margin: '0 0 10px 0' }}>⚡ Bulk Overtime Only — Department / Designation</h3>
     <p style={{ margin: '0 0 12px', fontSize: 12, color: '#475569' }}>Yeh option bhi selected date ki attendance mein saved daily site aur Present / Holiday Present status ko check karta hai. Workers Directory ki default site ko daily site nahi samjha jayega.</p>
 
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
@@ -3762,7 +3645,7 @@ style={{
     </form>
 
     <div style={{ marginTop: '20px', padding: '18px', background: '#f0f9ff', border: '1px solid #7dd3fc', borderRadius: '10px' }}>
-      <h3 style={{ margin: '0 0 8px', color: '#075985' }}>Operation 3 — Bulk Present / Absent by Designation</h3>
+      <h3 style={{ margin: '0 0 8px', color: '#075985' }}>👷 Bulk Present / Absent — By Designation</h3>
       <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#334155' }}>Date, site, department aur designation select karein. Misal: Carpenter select karne se selected group ke tamam Carpenters ki attendance ek sath save hogi. Workers Directory ki default site ko ignore karke selected daily site save hogi. Jo worker isi date par pehle se kisi doosri site par recorded hai, usay automatically move/overwrite nahi kiya jayega.</p>
       <form onSubmit={handleBulkDesignationAttendance}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: '12px' }}>
@@ -3779,7 +3662,7 @@ style={{
     </div>
 
     <div style={{ marginTop: '20px', padding: '18px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '10px' }}>
-      <h3 style={{ margin: '0 0 8px', color: '#166534' }}>🟢 Smart Bulk Attendance Center — Method 1: Multiple Worker IDs</h3>
+      <h3 style={{ margin: '0 0 8px', color: '#166534' }}>🟢 Site Attendance by Worker ID</h3>
       <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#166534' }}>Date, site aur department select karein. Entered worker IDs selected daily site par Present save honge. Workers Directory ki default site restriction nahi hogi. Jo IDs enter nahi ki jayengi unka purana record bilkul change nahi hoga; is tarah doosri sites ke workers ghalti se Absent nahi honge. Sunday/holiday par entered IDs Holiday Present hongi aur sirf unka OT save hoga.</p>
       <form onSubmit={handleSaveSiteAttendance}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '12px' }}>
@@ -3815,7 +3698,7 @@ style={{
   borderRadius: '10px'
 }}>
   <h3 style={{ margin: '0 0 15px', color: '#1d4ed8' }}>
-    Method 2: Quick Entry by Single Worker ID
+    ⚡ Quick Bulk Attendance
   </h3>
 
   <form onSubmit={handleQuickAttendance}>
@@ -5224,7 +5107,6 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
               <button onClick={() => setAnnualManagementView('annual')} style={{ padding: '10px 16px', border: 0, borderRadius: 8, cursor: 'pointer', color: '#fff', background: annualManagementView === 'annual' ? '#047857' : '#64748b', fontWeight: 800 }}>1. Annual Leave</button>
               <button onClick={() => setAnnualManagementView('count')} style={{ padding: '10px 16px', border: 0, borderRadius: 8, cursor: 'pointer', color: '#fff', background: annualManagementView === 'count' ? '#047857' : '#64748b', fontWeight: 800 }}>2. Leave Count Workers</button>
               <button onClick={() => setAnnualManagementView('final')} style={{ padding: '10px 16px', border: 0, borderRadius: 8, cursor: 'pointer', color: '#fff', background: annualManagementView === 'final' ? '#047857' : '#64748b', fontWeight: 800 }}>3. Final Calculation</button>
-              <button onClick={() => setAnnualManagementView('applications')} style={{ padding: '10px 16px', border: 0, borderRadius: 8, cursor: 'pointer', color: '#fff', background: annualManagementView === 'applications' ? '#047857' : '#64748b', fontWeight: 800 }}>4. Applications & Translator</button>
             </div>
 
             {annualManagementView === 'annual' && <>
@@ -5569,40 +5451,6 @@ accruedDays = balance.toFixed(1);
                 })}
               </tbody></table>
               <p style={{ color: '#64748b', fontSize: 12, marginTop: 12 }}>Current calculation date: {finalCalcDate}. <label>Calculation date <input type="date" value={finalCalcDate} onChange={e => setFinalCalcDate(e.target.value)} style={{ ...fieldStyle, width: 180, display: 'inline-block' }} /></label></p>
-            </div>}
-
-            {annualManagementView === 'applications' && <div style={{ display: 'grid', gap: 18 }}>
-              <section style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 10, padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>📄 Worker Application Builder & Personal File</h3>
-                <p style={{ color: '#475569', fontSize: 13 }}>Annual Leave application, Sick Leave, Emergency Leave, Salary Advance, Resignation ya Other application worker ke record ke sath save hogi. Existing annual_leaves records is feature se change nahi honge.</p>
-                <form onSubmit={handleSaveWorkerApplication} style={{ display: 'grid', gap: 12 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10 }}>
-                    <label style={{ fontSize: 12, fontWeight: 800 }}>Worker<select value={applicationWorkerId} onChange={e => setApplicationWorkerId(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }}><option value="">Select worker</option>{workers.map(w => <option key={w.id} value={w.id}>#{w.worker_id || w.id} — {w.name} ({w.department})</option>)}</select></label>
-                    <label style={{ fontSize: 12, fontWeight: 800 }}>Application Type<select value={applicationType} onChange={e => loadApplicationTemplate(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{['Annual Leave','Sick Leave','Emergency Leave','Salary Advance','Resignation','Other'].map(t => <option key={t}>{t}</option>)}</select></label>
-                    <label style={{ fontSize: 12, fontWeight: 800 }}>Status<select value={applicationStatus} onChange={e => setApplicationStatus(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}><option>Pending</option><option>Approved</option><option>Rejected</option></select></label>
-                  </div>
-                  <label style={{ fontSize: 12, fontWeight: 800 }}>Subject<input value={applicationSubject} onChange={e => setApplicationSubject(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }} /></label>
-                  <label style={{ fontSize: 12, fontWeight: 800 }}>Application Text<textarea value={applicationText} onChange={e => setApplicationText(e.target.value)} rows={9} required style={{ ...fieldStyle, marginTop: 5, resize: 'vertical', whiteSpace: 'pre-wrap' }} placeholder="Application yahan likhein ya template select karein..." /></label>
-                  <label style={{ fontSize: 12, fontWeight: 800 }}>Attach scanned application / supporting document (optional)<input type="file" accept=".pdf,image/*,.doc,.docx" onChange={e => setApplicationFile(e.target.files?.[0] || null)} style={{ ...fieldStyle, marginTop: 5 }} /></label>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}><button type="submit" disabled={applicationSaving || !userRole.is_admin || !adminEditMode} style={{ ...primaryStyle, width: 'auto', opacity: applicationSaving || !userRole.is_admin || !adminEditMode ? .55 : 1 }}>{applicationSaving ? 'Saving…' : 'Save to Worker File'}</button><button type="button" onClick={() => printNdaPage('worker-application-print')} style={{ ...primaryStyle, width: 'auto', background: '#475569' }}>Print / Save PDF</button><span style={{ fontSize: 12, color: '#92400e', alignSelf: 'center' }}>Save ke liye Admin Edit Mode ON karein.</span></div>
-                </form>
-                <div id="worker-application-print" style={{ marginTop: 18, padding: 18, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, whiteSpace: 'pre-wrap' }}><h3 style={{ textAlign: 'center' }}>{applicationSubject || 'Application'}</h3><p>{applicationText}</p><p style={{ marginTop: 35 }}>Signature: ____________________</p></div>
-              </section>
-
-              <section style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 10, padding: 18 }}>
-                <h3 style={{ marginTop: 0 }}>🌐 Urdu ↔ English Translator</h3>
-                <p style={{ color: '#64748b', fontSize: 12 }}>Translation online free translation service ke zariye hoti hai; translated text ko application mein copy/paste kar sakte hain.</p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10 }}><label style={{ fontSize: 12, fontWeight: 800 }}>Direction<select value={translatorDirection} onChange={e => setTranslatorDirection(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}><option value="ur-en">Urdu → English</option><option value="en-ur">English → Urdu</option></select></label><div style={{ display: 'flex', alignItems: 'end' }}><button type="button" onClick={handleTranslateApplication} disabled={translatorBusy} style={{ ...primaryStyle, opacity: translatorBusy ? .6 : 1 }}>{translatorBusy ? 'Translating…' : 'Translate Text'}</button></div></div>
-                <textarea value={translatorInput} onChange={e => setTranslatorInput(e.target.value)} rows={4} placeholder="Urdu ya English text yahan paste karein..." style={{ ...fieldStyle, marginTop: 10, resize: 'vertical' }} />
-                <textarea value={translatorOutput} onChange={e => setTranslatorOutput(e.target.value)} rows={4} placeholder="Translation yahan nazar ayegi..." style={{ ...fieldStyle, marginTop: 10, resize: 'vertical' }} />
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}><button type="button" onClick={() => setApplicationText(translatorOutput)} disabled={!translatorOutput} style={{ ...primaryStyle, width: 'auto' }}>Use in Application</button><button type="button" onClick={() => navigator.clipboard?.writeText(translatorOutput)} disabled={!translatorOutput} style={{ ...primaryStyle, width: 'auto', background: '#475569' }}>Copy Translation</button></div>
-              </section>
-
-              <section style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 10, padding: 18 }}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}><h3 style={{ margin: 0 }}>🗂 Worker Application History</h3><button type="button" onClick={fetchWorkerApplications} style={{ ...primaryStyle, width: 'auto', background: '#475569' }}>Refresh History</button></div>
-                <input value={applicationSearch} onChange={e => setApplicationSearch(e.target.value)} placeholder="Search worker name / ID / application type" style={{ ...fieldStyle, margin: '12px 0' }} />
-                {applicationLoading ? <p>Loading applications…</p> : <div style={{ overflowX: 'auto' }}><table style={tableStyle}><thead><tr><th style={thStyle}>Date</th><th style={thStyle}>Worker</th><th style={thStyle}>Type / Subject</th><th style={thStyle}>Status</th><th style={thStyle}>Document</th></tr></thead><tbody>{workerApplications.filter(a => `${a.worker_name || ''} ${a.worker_code || ''} ${a.application_type || ''} ${a.subject || ''}`.toLowerCase().includes(applicationSearch.toLowerCase())).map(a => <tr key={a.id}><td style={tdStyle}>{a.created_at ? String(a.created_at).slice(0,10) : ''}</td><td style={tdStyle}>#{a.worker_code || a.worker_id} — {a.worker_name}</td><td style={tdStyle}><b>{a.application_type}</b><div>{a.subject}</div><details><summary>View application</summary><pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{a.application_text}</pre></details></td><td style={tdStyle}><select value={a.status || 'Pending'} onChange={e => handleApplicationStatusChange(a.id,e.target.value)} disabled={!userRole.is_admin || !adminEditMode} style={{ ...fieldStyle, minWidth: 120 }}><option>Pending</option><option>Approved</option><option>Rejected</option></select></td><td style={tdStyle}>{a.attachment_url ? <button type="button" onClick={() => openWorkerApplicationAttachment(a.attachment_url)} style={{ border: 0, background: 'none', color: '#1d4ed8', textDecoration: 'underline', cursor: 'pointer' }}>{a.attachment_name || 'Open file'}</button> : '—'}</td></tr>)}{!workerApplications.length && <tr><td colSpan="5" style={tdStyle}>No applications saved yet. New application create karein.</td></tr>}</tbody></table></div>}
-              </section>
             </div>}
           </div>
         )}
