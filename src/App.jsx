@@ -414,6 +414,7 @@ export default function App() {
   const [attendance, setAttendance] = useState([]);
   const [permissionsList, setPermissionsList] = useState([]);
   const [personalDocs, setPersonalDocs] = useState([]);
+  const [workerDocuments, setWorkerDocuments] = useState([]);
   const [sitesList, setSitesList] = useState(['Sharjah Mamzar', 'Ajman Aaliya', 'Dubai Downtown']);
   const [departmentsList, setDepartmentsList] = useState(['Plumbing', 'Electrical', 'Civil', 'Mustafa', 'Drivers']);
 
@@ -1287,6 +1288,65 @@ async function handleDeleteDesignation() {
   async function fetchPersonalDocs() {
     const { data } = await supabase.from('personal_docs').select('*').order('id', { ascending: false });
     setPersonalDocs(data || []);
+  }
+
+  async function fetchWorkerDocuments() {
+    const { data, error } = await supabase.from('worker_documents').select('*').order('created_at', { ascending: false });
+    if (error) {
+      console.warn('Worker documents table not configured:', error.message);
+      setWorkerDocuments([]);
+      return;
+    }
+    setWorkerDocuments(data || []);
+  }
+
+  async function uploadWorkerDocument(worker, file) {
+    if (!file) return;
+    if (!requireHrEditMode('Worker document upload')) return;
+    if (!userRole.is_admin && !userRole.can_edit_workers) return alert('Aapko worker documents upload karne ki permission nahi hai.');
+    const title = window.prompt('Document ka naam likhein (e.g. Emirates ID, Insurance, Certificate):', file.name.replace(/\.[^.]+$/, ''));
+    if (title === null || !title.trim()) return;
+    const category = window.prompt('Category likhein (Passport / Visa / ID Card / Medical / Other):', 'Other');
+    if (category === null) return;
+    const safeFile = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storagePath = `${worker.id}/${Date.now()}-${safeFile}`;
+    try {
+      const { error: uploadError } = await supabase.storage.from('worker-documents').upload(storagePath, file, { upsert: false });
+      if (uploadError) throw uploadError;
+      const { data: publicData } = supabase.storage.from('worker-documents').getPublicUrl(storagePath);
+      const { error: saveError } = await supabase.from('worker_documents').insert([{
+        worker_id: worker.id,
+        document_title: title.trim(),
+        category: category.trim() || 'Other',
+        file_name: file.name,
+        file_url: publicData.publicUrl,
+        storage_path: storagePath
+      }]);
+      if (saveError) throw saveError;
+      await fetchWorkerDocuments();
+      alert('Worker document upload aur save ho gaya.');
+    } catch (err) {
+      alert('Document upload nahi hua: ' + (err?.message || err));
+    }
+  }
+
+  async function deleteWorkerDocument(doc) {
+    if (!requireHrEditMode('Worker document delete')) return;
+    if (!userRole.is_admin && !userRole.can_edit_workers) return alert('Aapko document delete karne ki permission nahi hai.');
+    if (!window.confirm(`"${doc.document_title}" delete karna hai?`)) return;
+    const { error } = await supabase.from('worker_documents').delete().eq('id', doc.id);
+    if (error) return alert('Document delete nahi hua: ' + error.message);
+    if (doc.storage_path) {
+      const { error: storageError } = await supabase.storage.from('worker-documents').remove([doc.storage_path]);
+      if (storageError) console.warn('Storage file delete failed:', storageError.message);
+    }
+    await fetchWorkerDocuments();
+  }
+
+  function printWorkerDocument(doc, worker) {
+    const w = window.open(doc.file_url, '_blank', 'noopener,noreferrer');
+    if (!w) return alert('Popup blocked. Browser mein popups allow karein, phir View/Print dobara karein.');
+    // Browser PDF/image viewer provides Print and Save as PDF controls.
   }
 
   async function fetchPermissionsList() {
@@ -4075,7 +4135,17 @@ await handleSingleAttendanceChange(
 
               <div>
                 <label style={{ fontSize: '11px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Visa Copy</label>
-                <input type="file" onChange={(e) => alert('Visa selected!')} style={{ fontSize: '11px' }} />
+                <input type="file" accept="image/*,.pdf" onChange={async (e) => {
+                  const file = e.target.files?.[0]; if (!file) return;
+                  try {
+                    const fileName = `visa_${editingWorkerId || 'new'}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+                    const { error } = await supabase.storage.from('worker-documents').upload(fileName, file);
+                    if (error) throw error;
+                    const { data } = supabase.storage.from('worker-documents').getPublicUrl(fileName);
+                    setVisaFileUrl(data.publicUrl);
+                    alert('Visa copy uploaded. Worker save/update bhi karein.');
+                  } catch (err) { alert('Visa upload error: ' + err.message); }
+                }} style={{ fontSize: '11px' }} />
               </div>
 
             </div>
@@ -4113,12 +4183,27 @@ await handleSingleAttendanceChange(
               <td style={{ padding: '10px', fontWeight: 'bold' }}>#{w.id} - {w.name}</td>
               <td style={{ padding: '10px' }}>{w.department} <br/><span style={{fontSize: '11px', color: '#64748b'}}>{w.designation || 'Worker'}</span></td>
               <td style={{ padding: '10px' }}>{w.monthly_salary} {w.currency || selectedCurrency}</td>
-              <td style={{ padding: '10px' }}>
-                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                  {w.passport_file_url ? (
-                    <a href={w.passport_file_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', color: '#0284c7', background: '#e0f2fe', padding: '3px 6px', borderRadius: '4px', textDecoration: 'none' }}>Passport</a>
-                  ) : <span style={{ fontSize: '11px', color: '#94a3b8' }}>No Passport</span>}
+              <td style={{ padding: '10px', minWidth: 220 }}>
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 7 }}>
+                  {[
+                    ['Passport', w.passport_file_url], ['ID Card', w.id_card_file_url],
+                    ['Medical', w.medical_card_file_url], ['Visa', w.visa_file_url], ['Labour', w.labour_card_file_url]
+                  ].filter(([,url]) => !!url).map(([label,url]) => (
+                    <a key={label} href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#075985', background: '#e0f2fe', padding: '4px 7px', borderRadius: 4, textDecoration: 'none' }}>{label} · View / PDF</a>
+                  ))}
+                  {workerDocuments.filter(doc => String(doc.worker_id) === String(w.id)).map(doc => (
+                    <span key={doc.id} style={{display:'inline-flex',gap:4,alignItems:'center',background:'#f1f5f9',padding:'4px 6px',borderRadius:5,fontSize:11}}>
+                      <a href={doc.file_url} target="_blank" rel="noopener noreferrer" style={{color:'#075985',textDecoration:'none'}}>{doc.document_title || doc.category} · View / Print</a>
+                      <a href={doc.file_url} download={doc.file_name || doc.document_title} style={{color:'#166534',textDecoration:'none'}}>Download</a>
+                      {(userRole.is_admin || userRole.can_edit_workers) && <button type="button" onClick={()=>deleteWorkerDocument(doc)} style={{border:0,background:'transparent',color:'#b91c1c',cursor:'pointer'}}>×</button>}
+                    </span>
+                  ))}
                 </div>
+                {(userRole.is_admin || userRole.can_edit_workers) && <label className="no-print" style={{fontSize:11,color:'#475569',cursor:'pointer'}}>
+                  ＋ Add Photo / Document
+                  <input type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" style={{display:'block',fontSize:10,marginTop:4,maxWidth:190}} onChange={e=>{const file=e.target.files?.[0]; if(file) void uploadWorkerDocument(w,file); e.target.value='';}} />
+                </label>}
+                {!w.passport_file_url && !w.id_card_file_url && !w.medical_card_file_url && !w.visa_file_url && !w.labour_card_file_url && !workerDocuments.some(doc=>String(doc.worker_id)===String(w.id)) && <span style={{fontSize:11,color:'#94a3b8'}}>No documents yet</span>}
               </td>
               <td style={{ padding: '10px' }}>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -4462,7 +4547,7 @@ await handleSingleAttendanceChange(
               <table style={{
                 width: '100%',
                 borderCollapse: 'collapse',
-                minWidth: '950px'
+                minWidth: '1050px'
               }}>
                 <thead>
                   <tr style={{ background: '#e2e8f0' }}>
@@ -4470,6 +4555,7 @@ await handleSingleAttendanceChange(
                     <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>Name</th>
                     <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>Designation</th>
                     <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>ID</th>
+                    <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>Site</th>
                     <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>Status</th>
                     <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>Normal Hours</th>
                     <th style={{ padding: '10px', border: '1px solid #cbd5e1' }}>OT</th>
@@ -4551,6 +4637,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>{worker.name || '-'}</td>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>{worker.designation || '-'}</td>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{worker.id || '-'}</td>
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>{record.work_site || record.site || worker.work_site || '—'}</td>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{status}</td>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{normalHours}</td>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{ot}</td>
