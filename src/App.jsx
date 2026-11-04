@@ -3121,7 +3121,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: '#f4f7fc', fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
       
      {/* Compact top bar: system identity lives here; dashboard banner below is the only dashboard hero */}
-      <header style={{ background: 'linear-gradient(115deg,#0b1f46 0%,#123d78 58%,#087e8b 100%)', color: '#ffffff', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid #0b355f', boxShadow: '0 5px 18px rgba(15,47,99,.22)' }}>
+      <header className="nda-topbar" style={{ background: 'linear-gradient(115deg,#0b1f46 0%,#123d78 58%,#087e8b 100%)', color: '#ffffff', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid #0b355f', boxShadow: '0 5px 18px rgba(15,47,99,.22)' }}>
         <div style={{display:'flex',alignItems:'center',gap:12,minWidth:230}}>
           <div style={{width:74,height:56,borderRadius:8,background:'#fff',padding:3,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
             <img src="/nda-naveed-logo.png" alt="NDA Naveed logo" style={{width:'100%',height:'100%',objectFit:'contain'}} />
@@ -3179,7 +3179,48 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
             #hr-workers-print th:last-child, #hr-workers-print td:last-child { display:none !important; }
             .nda-print-target * { print-color-adjust:exact !important; -webkit-print-color-adjust:exact !important; }
           }
-          @media(max-width:850px){.nda-sidebar{position:relative!important;top:auto!important;bottom:auto!important;width:100%!important;max-height:250px;flex-direction:row!important;flex-wrap:wrap;overflow:visible!important}.nda-sidebar>div:first-child{width:100%}.nda-main{margin-left:0!important;padding:12px!important}}
+          /* Mobile-only layout: desktop styles above remain unchanged. */
+          @media(max-width:850px){
+            .nda-topbar{padding:9px 12px!important;gap:8px!important;align-items:flex-start!important}
+            .nda-topbar>div:first-child{min-width:0!important;gap:8px!important}
+            .nda-topbar>div:first-child>div:first-child{width:52px!important;height:42px!important;flex:0 0 52px!important}
+            .nda-topbar h2{font-size:15px!important}
+            .nda-topbar>div:last-child{width:100%;justify-content:flex-start!important;gap:7px!important}
+            .nda-topbar>div:last-child>div:first-child{font-size:10px!important;padding:5px 7px!important}
+            .nda-topbar img{width:34px!important;height:34px!important}
+            .nda-topbar button{font-size:11px!important;padding:7px 9px!important}
+            .nda-sidebar{position:relative!important;top:auto!important;bottom:auto!important;left:auto!important;width:100%!important;max-height:210px!important;min-height:0!important;display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;grid-auto-rows:minmax(48px,auto)!important;gap:5px!important;padding:9px!important;overflow-y:auto!important;overflow-x:hidden!important;flex-direction:initial!important;flex-wrap:initial!important;box-shadow:0 4px 12px #071d3d18!important}
+            .nda-sidebar>div:first-child{grid-column:1/-1!important;width:100%!important;padding:2px 5px 7px!important;margin:0 0 2px!important;justify-content:center!important}
+            .nda-sidebar>div:first-child img{width:42px!important;height:36px!important}
+            .nda-sidebar>div:first-child b{font-size:15px!important}
+            .nda-sidebar>div:first-child div{font-size:10px!important}
+            .nda-sidebar>button{min-width:0!important;min-height:46px!important;padding:6px 3px!important;display:flex!important;flex-direction:column!important;justify-content:center!important;align-items:center!important;gap:2px!important;text-align:center!important;font-size:10px!important;line-height:1.15!important;white-space:normal!important;overflow-wrap:anywhere!important}
+            .nda-sidebar>button span{width:auto!important;font-size:17px!important;line-height:18px!important}
+            .nda-sidebar>div:nth-last-child(2){display:none!important}
+            .nda-sidebar>button:last-child{grid-column:1/-1!important;min-height:36px!important;flex-direction:row!important;font-size:12px!important}
+            .nda-main{width:100%!important;margin-left:0!important;padding:10px!important;overflow-x:hidden!important}
+            .nda-main>div{max-width:100%;box-sizing:border-box}
+            .nda-main section{min-width:0}
+            .nda-main table{font-size:11px!important}
+            .nda-main th,.nda-main td{padding:7px 6px!important}
+            .nda-main input,.nda-main select,.nda-main textarea{max-width:100%;box-sizing:border-box}
+            .nda-main button{max-width:100%;overflow-wrap:anywhere}
+            .nda-main h2{line-height:1.2}
+          }
+          @media(max-width:520px){
+            .nda-main{padding:8px!important}
+            .nda-sidebar{grid-template-columns:repeat(3,minmax(0,1fr))!important;max-height:220px!important}
+            .nda-topbar>div:last-child>div:nth-child(2){padding:4px 6px!important}
+            .nda-main input[type="date"]{width:100%!important;min-width:0!important}
+            .nda-main section[style*="linear-gradient(120deg"]{padding:14px!important;gap:10px!important}
+            .nda-main section[style*="linear-gradient(120deg"] img{width:68px!important;height:68px!important;flex:0 0 68px!important}
+            .nda-main section[style*="linear-gradient(120deg"]>div:first-child{min-width:0!important;gap:10px!important}
+            .nda-main section[style*="linear-gradient(120deg"] h2{font-size:20px!important}
+            .nda-main section[style*="linear-gradient(120deg"] p{font-size:11px!important}
+            .nda-main [style*="grid-template-columns: repeat(auto-fit"]{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+            .nda-main [style*="grid-template-columns: repeat(auto-fill"]{grid-template-columns:1fr!important}
+            .nda-main [style*="padding: '20px'"]{padding:12px!important}
+          }
           @media print{.nda-sidebar,header,.no-print{display:none!important}.nda-main{margin:0!important;padding:0!important;background:#fff!important}.nda-print-brand{display:block!important;text-align:center!important;border-bottom:3px solid #c69227!important;padding:8px!important;margin-bottom:12px!important}.nda-print-brand img{height:48px!important;object-fit:contain!important}.nda-main *{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
         `}</style>
         <div className="nda-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div style={{fontWeight:800,color:'#0b2853'}}>NDA-PK HR &amp; BUSINESS SYSTEM</div><div style={{fontSize:11}}>Together for a Better Workplace</div></div>
