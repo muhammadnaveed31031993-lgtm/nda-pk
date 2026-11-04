@@ -423,6 +423,7 @@ export default function App() {
   // Edit / Add Worker Form States
   const [editingWorkerId, setEditingWorkerId] = useState(null);
   const [workerIdInput, setWorkerIdInput] = useState('');
+  const [joiningDate, setJoiningDate] = useState('');
   const [name, setName] = useState('');
   const [department, setDepartment] = useState('Plumbing');
   const [workSite, setWorkSite] = useState('Sharjah Mamzar');
@@ -2081,6 +2082,7 @@ async function handleToggleHolidayDate() {
     }
     setEditingWorkerId(worker.id);
     setWorkerIdInput(worker.id);
+    setJoiningDate(worker.joining_date || '');
     setName(worker.name);
     setDepartment(worker.department || departmentsList[0]);
     setWorkSite(worker.work_site || sitesList[0]);
@@ -2103,6 +2105,7 @@ async function handleToggleHolidayDate() {
   function resetWorkerForm() {
     setEditingWorkerId(null);
     setWorkerIdInput('');
+    setJoiningDate('');
     setName('');
     setDepartment(departmentsList[0]);
     setWorkSite(sitesList[0]);
@@ -2148,6 +2151,7 @@ async function handleToggleHolidayDate() {
       monthly_salary: monthlyNum,
       daily_rate: dailyRateCalc,
       religion,
+      joining_date: joiningDate || null,
       last_return_date: lastReturnDate || null,
       annual_leave_rate: Number(annualLeaveRate || 30),
       annual_leave_balance: Number(annualLeaveBalance || 0),
@@ -2202,21 +2206,24 @@ async function handleToggleHolidayDate() {
 
    // Print Individual Worker Monthly Report
   function handlePrintWorkerMonthlyReport(worker) {
+    const workerJoinDate = String(worker.joining_date || '').slice(0, 10);
+    const reportAsOfDate = formatPayrollDate(new Date());
+    const reportEndDate = payrollPeriodEndDate < reportAsOfDate ? payrollPeriodEndDate : reportAsOfDate;
     const existingRows = attendance.filter(a => {
       const d = String(a.date || '').slice(0, 10);
-      return String(a.worker_id) === String(worker.id) && d >= payrollPeriodStartDate && d <= payrollPeriodEndDate;
+      return String(a.worker_id) === String(worker.id) && d >= payrollPeriodStartDate && d <= reportEndDate && (!workerJoinDate || d >= workerJoinDate);
     });
     const attendanceByDate = new Map(existingRows.map(a => [String(a.date || '').slice(0, 10), a]));
     const reportDates = [];
-    if (payrollPeriodStartDate && payrollPeriodEndDate && payrollPeriodStartDate <= payrollPeriodEndDate) {
+    if (payrollPeriodStartDate && reportEndDate && payrollPeriodStartDate <= reportEndDate) {
       const cursor = new Date(`${payrollPeriodStartDate}T12:00:00`);
-      const end = new Date(`${payrollPeriodEndDate}T12:00:00`);
+      const end = new Date(`${reportEndDate}T12:00:00`);
       while (cursor <= end && reportDates.length < 400) {
         reportDates.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`);
         cursor.setDate(cursor.getDate() + 1);
       }
     }
-    const workerAttendance = reportDates.filter(d => attendanceByDate.has(d) || isHolidayDate(d) || getAnnualLeaveForWorker(worker.id, d)).map(d => {
+    const workerAttendance = reportDates.filter(d => (!workerJoinDate || d >= workerJoinDate) && (attendanceByDate.has(d) || isHolidayDate(d) || getAnnualLeaveForWorker(worker.id, d))).map(d => {
       const row = attendanceByDate.get(d) || { worker_id: worker.id, date: d, overtime_hours: 0, contract_overtime_hours: 0, work_site: worker.work_site || '' };
       const annualLeave = getAnnualLeaveForWorker(worker.id, d);
       const status = annualLeave ? 'Annual Leave' : (isHolidayDate(d) ? (isPresentAttendanceStatus(row.status) ? 'Holiday Present' : 'Holiday') : (row.status || '—'));
@@ -2906,7 +2913,8 @@ const otHours = Number(
   const annualLeaveScopedWorkerIds = new Set(filteredWorkers.map(w => String(w.id)));
   const annualLeaveScopedList = annualLeaveList.filter(leave => annualLeaveScopedWorkerIds.has(String(leave.worker_id)));
 
-  const activeWorkerIds = new Set(filteredWorkers.map(w => w.id));
+  const attendanceEligibleWorkers = filteredWorkers.filter(w => !w.joining_date || String(selectedTimesheetDate || '').slice(0, 10) >= String(w.joining_date).slice(0, 10));
+  const activeWorkerIds = new Set(attendanceEligibleWorkers.map(w => w.id));
   const selectedDateAttendance = attendance.filter(a => a.date === selectedTimesheetDate && activeWorkerIds.has(a.worker_id));
   
   const latestAttendanceMap = {};
@@ -2914,7 +2922,7 @@ const otHours = Number(
 
  
 
-const presentCountForDate = filteredWorkers.filter(worker => {
+const presentCountForDate = attendanceEligibleWorkers.filter(worker => {
   const attendanceRecord = latestAttendanceMap[worker.id];
   const status = (attendanceRecord?.status || '').trim().toLowerCase();
 
@@ -2995,18 +3003,24 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
 
   payrollWorkers.forEach(worker => {
     // Include only records in the Admin-selected salary period.
-    const monthlyRecords = attendance.filter(a => {
+    const workerJoinDate = String(worker.joining_date || '').slice(0, 10);
+    const payrollAsOfDate = formatPayrollDate(new Date());
+    const effectivePayrollEndDate = payrollPeriodEndDate < payrollAsOfDate ? payrollPeriodEndDate : payrollAsOfDate;
+    const monthlyRecordsByDate = new Map();
+    attendance.forEach(a => {
       const recordDate = String(a.date || '').slice(0, 10);
-      return String(a.worker_id) === String(worker.id) && recordDate >= payrollPeriodStartDate && recordDate <= payrollPeriodEndDate;
+      if (String(a.worker_id) === String(worker.id) && recordDate >= payrollPeriodStartDate && recordDate <= effectivePayrollEndDate && (!workerJoinDate || recordDate >= workerJoinDate)) {
+        monthlyRecordsByDate.set(recordDate, a);
+      }
     });
+    const monthlyRecords = Array.from(monthlyRecordsByDate.values());
 
     // Sundays and admin-marked holidays count as paid days once per date.
     const monthHolidayDates = new Set();
-    const payrollAsOfDate = formatPayrollDate(new Date());
-    for (let cursor = new Date(payrollPeriodStart); cursor <= payrollPeriodEnd; cursor.setDate(cursor.getDate() + 1)) {
+    for (let cursor = new Date(payrollPeriodStart); cursor <= payrollPeriodEnd && formatPayrollDate(cursor) <= payrollAsOfDate; cursor.setDate(cursor.getDate() + 1)) {
       const d = formatPayrollDate(cursor);
       // For an open/current period, don't count future Sundays or future holidays before they occur.
-      if (d <= payrollAsOfDate && (cursor.getDay() === 0 || holidayDates.some(h => String(h.holiday_date).slice(0, 10) === d))) monthHolidayDates.add(d);
+      if ((!workerJoinDate || d >= workerJoinDate) && (cursor.getDay() === 0 || holidayDates.some(h => String(h.holiday_date).slice(0, 10) === d))) monthHolidayDates.add(d);
     }
     const workedPresentDays = monthlyRecords.filter(a =>
       String(a.status || '').trim().toLowerCase() === 'present' && !monthHolidayDates.has(String(a.date || '').slice(0, 10))
@@ -4105,6 +4119,10 @@ await handleSingleAttendanceChange(
             <div>
               <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Worker ID</label>
               <input type="number" value={workerIdInput} onChange={e => setWorkerIdInput(e.target.value)} placeholder="e.g. 101" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Joining Date (Optional)</label>
+              <input type="date" value={joiningDate} onChange={e => setJoiningDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
             </div>
             <div>
               <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Full Name *</label>
@@ -5717,23 +5735,28 @@ accruedDays = balance.toFixed(1);
           </thead>
           <tbody>
             {(() => {
-        const workerAttendance = attendance.filter(a => {
+        const timesheetJoinDate = String(viewingWorkerTimesheet.joining_date || '').slice(0, 10);
+const timesheetAsOfDate = formatPayrollDate(new Date());
+const timesheetEndDate = payrollPeriodEndDate < timesheetAsOfDate ? payrollPeriodEndDate : timesheetAsOfDate;
+const workerAttendanceByDate = new Map();
+attendance.forEach(a => {
   const recordDate = String(a.date || '').slice(0, 10);
-  return String(a.worker_id) === String(viewingWorkerTimesheet.id) && recordDate >= payrollPeriodStartDate && recordDate <= payrollPeriodEndDate;
+  if (String(a.worker_id) === String(viewingWorkerTimesheet.id) && recordDate >= payrollPeriodStartDate && recordDate <= timesheetEndDate && (!timesheetJoinDate || recordDate >= timesheetJoinDate)) workerAttendanceByDate.set(recordDate, a);
 });
+const workerAttendance = Array.from(workerAttendanceByDate.values());
 
 const attendanceByDate = new Map(workerAttendance.map(att => [String(att.date || '').slice(0, 10), att]));
 const allPeriodDates = [];
 if (payrollPeriodStartDate && payrollPeriodEndDate && payrollPeriodStartDate <= payrollPeriodEndDate) {
   const cursor = new Date(`${payrollPeriodStartDate}T12:00:00`);
-  const end = new Date(`${payrollPeriodEndDate}T12:00:00`);
+  const end = new Date(`${timesheetEndDate}T12:00:00`);
   while (cursor <= end && allPeriodDates.length < 400) {
     allPeriodDates.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`);
     cursor.setDate(cursor.getDate() + 1);
   }
 }
 const monthlyRows = allPeriodDates
-  .filter(date => attendanceByDate.has(date) || isHolidayDate(date) || getAnnualLeaveForWorker(viewingWorkerTimesheet.id, date))
+  .filter(date => (!timesheetJoinDate || date >= timesheetJoinDate) && (attendanceByDate.has(date) || isHolidayDate(date) || getAnnualLeaveForWorker(viewingWorkerTimesheet.id, date)))
   .map(date => {
     const att = attendanceByDate.get(date) || {
       worker_id: viewingWorkerTimesheet.id,
