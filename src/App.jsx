@@ -234,9 +234,12 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
       @page { size:A4 landscape; margin:8mm; }
       body * { visibility:hidden !important; }
       .nda-print-target, .nda-print-target * { visibility:visible !important; }
-      .nda-print-target { position:absolute !important; left:0 !important; top:0 !important; width:100% !important; padding:0 !important; margin:0 !important; background:#fff !important; color:#000 !important; box-shadow:none !important; }
+      .nda-print-target { position:relative !important; left:auto !important; top:auto !important; width:100% !important; padding:25mm 0 0 !important; margin:0 !important; overflow:visible !important; background:#fff !important; color:#000 !important; box-shadow:none !important; }
+      .nda-print-target table{page-break-inside:auto!important;break-inside:auto!important}
+      .nda-print-target thead{display:table-header-group!important}
+      .nda-print-target tr{page-break-inside:avoid!important;break-inside:avoid!important}
       .nda-print-target .business-no-print, .nda-print-target button, .nda-print-target input, .nda-print-target select, .nda-print-target textarea, .nda-print-target form { display:none !important; }
-      .business-print-brand { display:flex !important; align-items:center !important; gap:14px !important; border-bottom:2px solid #c69227 !important; padding-bottom:8px !important; margin-bottom:12px !important; color:#064e3b !important; }
+      .business-print-brand { display:flex !important; position:fixed !important; top:0 !important; left:0 !important; right:0 !important; z-index:9999 !important; align-items:center !important; gap:14px !important; height:21mm !important; box-sizing:border-box !important; background:#fff !important; border-bottom:2px solid #c69227 !important; padding-bottom:8px !important; margin:0 !important; color:#064e3b !important; }
       .business-print-brand img { width:95px !important; height:58px !important; object-fit:contain !important; }
     } .business-print-brand{display:none;}`}</style>
     <header style={{padding:'18px clamp(14px,3vw,30px)',background:'linear-gradient(115deg,#064e3b,#047857)',color:'#fff',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
@@ -3184,9 +3187,15 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
             @page { size:A4 landscape; margin:8mm; }
             body * { visibility:hidden !important; }
             .nda-print-target, .nda-print-target * { visibility:visible !important; }
-            .nda-print-target { position:absolute !important; left:0 !important; top:0 !important; width:100% !important; max-width:100% !important; margin:0 !important; padding:0 !important; background:#fff !important; color:#000 !important; box-shadow:none !important; border:0 !important; }
+            .nda-print-target { position:relative !important; left:auto !important; top:auto !important; width:100% !important; max-width:100% !important; margin:0 !important; padding:25mm 0 0 !important; background:#fff !important; color:#000 !important; box-shadow:none !important; border:0 !important; overflow:visible !important; }
+            html, body, #root { height:auto !important; min-height:0 !important; overflow:visible !important; }
+            .nda-print-target table { page-break-inside:auto !important; break-inside:auto !important; }
+            .nda-print-target thead { display:table-header-group !important; }
+            .nda-print-target tfoot { display:table-footer-group !important; }
+            .nda-print-target tr { page-break-inside:avoid !important; break-inside:avoid !important; }
+            .nda-print-target h1, .nda-print-target h2, .nda-print-target h3 { page-break-after:avoid !important; break-after:avoid-page !important; }
             .nda-print-target .no-print, .nda-print-target button, .nda-print-target input, .nda-print-target select, .nda-print-target textarea { display:none !important; }
-            .nda-page-print-brand { display:flex !important; align-items:center !important; justify-content:center !important; gap:14px !important; text-align:left !important; border-bottom:2px solid #c69227 !important; padding:0 0 8px !important; margin:0 0 12px !important; color:#0b2853 !important; }
+            .nda-page-print-brand { display:flex !important; position:fixed !important; top:0 !important; left:0 !important; right:0 !important; z-index:9999 !important; align-items:center !important; justify-content:center !important; gap:14px !important; text-align:left !important; border-bottom:2px solid #c69227 !important; padding:0 0 8px !important; margin:0 !important; height:21mm !important; box-sizing:border-box !important; background:#fff !important; color:#0b2853 !important; }
             .nda-page-print-brand img { display:block !important; width:95px !important; height:58px !important; object-fit:contain !important; }
             .nda-page-print-brand .brand-title { font-size:18px !important; font-weight:800 !important; }
             .nda-page-print-brand .brand-subtitle { font-size:10px !important; }
@@ -4725,13 +4734,14 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
 
   @media print {
     #hr-payroll-print {
-      position: absolute !important;
-      left: 0 !important;
-      top: 0 !important;
+      position: relative !important;
+      left: auto !important;
+      top: auto !important;
       width: 100% !important;
       max-width: 100% !important;
-      padding: 0 !important;
+      padding: 25mm 0 0 !important;
       margin: 0 !important;
+      overflow: visible !important;
       box-shadow: none !important;
       border-radius: 0 !important;
       box-sizing: border-box !important;
@@ -5566,6 +5576,7 @@ accruedDays = balance.toFixed(1);
         {/* 📊 MONTHLY TIMESHEET MODAL WITH SEARCH, DEPT FILTER & VIEW/PRINT OPTIONS */}
 {activeTab === 'monthly-timesheet' && (userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_payroll) && (
   <section id="hr-monthly-timesheet-print" className="monthly-timesheet-page" style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', width: '100%', maxWidth: 'none', minHeight: '70vh', boxSizing: 'border-box', boxShadow: '0 2px 8px rgba(15,23,42,.06)' }}>
+      <div className="nda-page-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><div className="brand-title">NDA-PK — Monthly Timesheet</div><div className="brand-subtitle">Monthly Worker Attendance Report</div></div></div>
       
       {/* Modal Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
