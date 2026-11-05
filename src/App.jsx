@@ -1972,14 +1972,11 @@ async function handleToggleHolidayDate() {
         }
       }
 
-      // Business-only staff must authenticate through Supabase Auth. Legacy HR staff
-      // passwords are deliberately not accepted for Business access.
+      // Business and HR use the same HR login ID/password from user_permissions.
+      // Business staff additionally need an active business_access permission.
       const isMatchedAdmin = !!resolvedAccount && String(resolvedAccount.user_password) === cleanPassword &&
         (resolvedAccount.is_admin === true || resolvedAccount.is_admin === 'true');
-      // Business-only staff are authenticated through Supabase Auth even when
-      // they do not have an HR user_permissions row. HR staff can still fall
-      // through to the existing HR login if they are not Business users.
-      if (!isMatchedAdmin && (!resolvedAccount || selectedSystem === 'business')) {
+      if (!isMatchedAdmin && !resolvedAccount) {
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password: cleanPassword });
         if (!authError && authData?.user?.email) {
           const { data: accessRows, error: accessError } = await supabase.from('business_access').select('business_id').ilike('user_email', cleanEmail).eq('active', true).eq('can_view', true);
@@ -2008,6 +2005,47 @@ async function handleToggleHolidayDate() {
 
       const isAdminAccount =
         resolvedAccount.is_admin === true || resolvedAccount.is_admin === 'true';
+
+      // Business login reuses the exact same HR credentials. Non-admin HR users
+      // must also have an active Business access row; admin HR users have full access.
+      if (selectedSystem === 'business') {
+        let businessRole;
+        if (isAdminAccount) {
+          businessRole = { is_admin: true, business_only: false, can_view_business: true };
+        } else {
+          const { data: businessRows, error: businessAccessError } = await supabase
+            .from('business_access')
+            .select('business_id')
+            .ilike('user_email', cleanEmail)
+            .eq('active', true)
+            .eq('can_view', true);
+          if (businessAccessError) {
+            alert('Business access check nahi ho saki: ' + businessAccessError.message);
+            return;
+          }
+          if (!businessRows?.length) {
+            alert('Aapka HR login sahi hai, lekin is Login ID ko Business ki permission nahi mili. Admin se Business access dilwayein.');
+            return;
+          }
+          businessRole = { is_admin: false, business_only: true, can_view_business: true };
+        }
+        // Keep an existing Supabase Auth session if the same credentials are registered
+        // there too; the HR login itself does not depend on a separate Business password.
+        try {
+          const { data: authNow } = await supabase.auth.getSession();
+          if (!authNow?.session) {
+            await supabase.auth.signInWithPassword({ email: cleanEmail, password: cleanPassword });
+          }
+        } catch (optionalAuthError) {
+          console.warn('Optional storage authentication not available:', optionalAuthError?.message || optionalAuthError);
+        }
+        const businessSession = { user: { email: cleanEmail }, role: businessRole, system_scope: 'business' };
+        setSession(businessSession);
+        setUserRole(businessRole);
+        setSelectedSystem('business');
+        void logActivity('Login', 'Business system login', cleanEmail);
+        return;
+      }
 
       // Keep the existing HR login (user_permissions). The Edge Function validates
       // the same credentials server-side and issues a short-lived token for private files.
@@ -3151,7 +3189,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
                 <div style={{ fontSize: 40 }}>👷</div><h2 style={{ fontSize: 25, margin: '14px 0 8px' }}>NDA.PK HR SYSTEM</h2><p style={{ color: '#dbeafe', lineHeight: 1.6 }}>Workers, attendance, timesheet, overtime, payroll, annual leave, permissions aur HR reports.</p><span style={{ display: 'inline-block', marginTop: 10, padding: '10px 16px', background: '#fff', color: '#1d4ed8', borderRadius: 10, fontWeight: 800 }}>Open HR System →</span>
               </div>
             </button>
-            <button onClick={async () => { const businessEmail = String(session?.user?.email || email || '').trim().toLowerCase(); const businessPassword = password || window.prompt('Business system secure access ke liye apna password enter karein:'); if (!businessPassword) return; const { data: currentAuth } = await supabase.auth.getSession(); if (currentAuth?.session?.user?.email?.toLowerCase() !== businessEmail) { if (currentAuth?.session) await supabase.auth.signOut(); let { error: authError } = await supabase.auth.signInWithPassword({ email: businessEmail, password: businessPassword }); if (authError && userRole?.is_admin) { const { data: createdAuth, error: createAuthError } = await supabase.auth.signUp({ email: businessEmail, password: businessPassword }); if (createAuthError) { alert('Secure Business login create/sign in nahi hua. Supabase Authentication mein isi email ka account check karein. Details: ' + createAuthError.message); return; } if (!createdAuth?.session) { alert('Secure Business login create ho gaya. Supabase confirmation email confirm karein, phir Business dobara open karein.'); return; } } else if (authError) { alert('Is email ka secure Business login available nahi. Admin se Business access / login banwane ko kahen. Details: ' + authError.message); return; } } setSelectedSystem('business'); setBusinessType('transport'); }} style={{ position: 'relative', overflow: 'hidden', textAlign: 'left', padding: 28, minHeight: 270, borderRadius: 22, border: '1px solid #34d399', color: '#fff', background: 'linear-gradient(145deg,#065f46,#14532d)', boxShadow: '0 18px 50px #0005', cursor: 'pointer', isolation: 'isolate' }}>
+            <button onClick={() => { setSelectedSystem('business'); setBusinessType('transport'); }} style={{ position: 'relative', overflow: 'hidden', textAlign: 'left', padding: 28, minHeight: 270, borderRadius: 22, border: '1px solid #34d399', color: '#fff', background: 'linear-gradient(145deg,#065f46,#14532d)', boxShadow: '0 18px 50px #0005', cursor: 'pointer', isolation: 'isolate' }}>
               <img src="/nda-naveed-logo.png" alt="" aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', opacity: 0.22, padding: 8, boxSizing: 'border-box', pointerEvents: 'none', zIndex: 0 }} />
               <span aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(145deg,rgba(6,95,70,.80),rgba(20,83,45,.86))', zIndex: 0, pointerEvents: 'none' }} />
               <div style={{ position: 'relative', zIndex: 1 }}>
