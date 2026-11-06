@@ -576,6 +576,19 @@ const [newDesignation, setNewDesignation] = useState('');
  const [dailyWorkDetailSite, setDailyWorkDetailSite] = useState('Sharjah Mamzar');
  const [dailyWorkDetailDepartment, setDailyWorkDetailDepartment] = useState('Mustafa');
  const [payrollDepartment, setPayrollDepartment] = useState('All');
+  useEffect(() => {
+    if (userRole?.is_admin) {
+      setDailyTimesheetDepartment(selectedDeptFilter);
+      setBulkMarkDepartment(selectedDeptFilter);
+      setBulkDepartment(selectedDeptFilter);
+      setPayrollDepartment(selectedDeptFilter);
+    } else if (userRole?.assigned_department) {
+      setDailyTimesheetDepartment(userRole.assigned_department);
+      setBulkMarkDepartment(userRole.assigned_department);
+      setBulkDepartment(userRole.assigned_department);
+      setPayrollDepartment(userRole.assigned_department);
+    }
+  }, [selectedDeptFilter, userRole?.is_admin, userRole?.assigned_department]);
  const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
  const [dailyWorkDetailsLoadError, setDailyWorkDetailsLoadError] = useState('');
  const [dailyWorkDetailsSaving, setDailyWorkDetailsSaving] = useState(false);
@@ -825,7 +838,7 @@ const [newDesignation, setNewDesignation] = useState('');
       setDailyWorkDetailRows(data || []);
       const norm = value => String(value || '').trim().toLowerCase();
       const effectiveDepartment = !userRole.is_admin && userRole.assigned_department && userRole.assigned_department !== 'All'
-        ? userRole.assigned_department : dailyTimesheetDepartment;
+        ? userRole.assigned_department : selectedDeptFilter;
       const effectiveSite = !userRole.is_admin && userRole.assigned_site && userRole.assigned_site !== 'All'
         ? userRole.assigned_site : dailyTimesheetSite;
       const allRows = (data || []).filter(item => {
@@ -851,7 +864,7 @@ const [newDesignation, setNewDesignation] = useState('');
     }
     loadDailyWorkDetails();
     return () => { cancelled = true; };
-  }, [selectedTimesheetDate, dailyTimesheetSite, dailyTimesheetDepartment, userRole.is_admin, userRole.assigned_department, userRole.assigned_site]);
+  }, [selectedTimesheetDate, dailyTimesheetSite, selectedDeptFilter, userRole.is_admin, userRole.assigned_department, userRole.assigned_site]);
 
 
   const now = new Date();
@@ -3186,8 +3199,10 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@nda.pk" style={{ width: '100%', padding: '10px', borderRadius: '6px', backgroundColor: '#0f172a', border: '1px solid #475569', color: '#fff', boxSizing: 'border-box' }} required />
               </div>
             ) : (
-              <div style={{ marginBottom: '15px', padding: '10px 12px', borderRadius: 6, background: '#0f3d35', border: '1px solid #166534', color: '#d1fae5', fontSize: 12 }}>
-                HR Login ID: <strong>{email || 'Not saved yet'}</strong><br />Business ke liye sirf HR System wala password enter karein.
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ color: '#cbd5e1', fontSize: '12px', display: 'block', marginBottom: '5px' }}>HR Login ID / Email Address</label>
+                <input type="email" value={email} onChange={e => { setEmail(e.target.value); try { sessionStorage.setItem('nda_last_hr_email', e.target.value); } catch {} }} placeholder="admin@nda.pk" autoComplete="username" style={{ width: '100%', padding: '10px', borderRadius: '6px', backgroundColor: '#0f172a', border: '1px solid #475569', color: '#fff', boxSizing: 'border-box' }} required />
+                <div style={{ color: '#a7f3d0', fontSize: 11, marginTop: 6 }}>Apni HR System wali Login ID aur wahi password enter karein.</div>
               </div>
             )}
             <div style={{ marginBottom: '20px' }}>
@@ -3799,7 +3814,7 @@ style={{
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: '12px' }}>
           <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Attendance Date</label><input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }} /></div>
           <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Working Site</label><select value={bulkMarkSite} onChange={e => setBulkMarkSite(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }}>{sitesList.map(site => <option key={site} value={site}>{site}</option>)}</select></div>
-          <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Department</label><select value={bulkMarkDepartment} onChange={e => setBulkMarkDepartment(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}><option value="All">All Departments</option>{visibleDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}</select></div>
+          <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Department (Top Filter)</label><div style={{ ...fieldStyle, marginTop: 5, background: '#f8fafc' }}>{userRole.is_admin ? selectedDeptFilter : userRole.assigned_department}</div></div>
           <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Designation</label><select value={bulkMarkDesignation} onChange={e => setBulkMarkDesignation(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}><option value="All">All Designations</option>{designationsList.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
           <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Attendance Status</label><select value={bulkMarkStatus} onChange={e => setBulkMarkStatus(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}><option value="Present">Present</option><option value="Absent">Absent</option></select></div>
         </div>
@@ -3970,11 +3985,8 @@ style={{
       </div>
 
       <div>
-        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Department</label>
-        <select value={userRole.is_admin ? bulkDepartment : userRole.assigned_department} onChange={e => setBulkDepartment(e.target.value)} disabled={!userRole.is_admin} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-          {userRole.is_admin && <option value="All">All Departments</option>}
-          {visibleDepartments.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
-        </select>
+        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Department (Top Filter)</label>
+        <div style={{ width: '100%', boxSizing: 'border-box', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#f8fafc' }}>{userRole.is_admin ? selectedDeptFilter : userRole.assigned_department}</div>
       </div>
 
       <div>
@@ -4639,7 +4651,7 @@ await handleSingleAttendanceChange(
   style={{ padding: '20px', background: '#fff', borderRadius: '8px' }}
 >
   
-  <div className="nda-page-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><div className="brand-title">NDA-PK — Daily Timesheet</div><div className="brand-subtitle">Date: {selectedTimesheetDate} · Site: {dailyTimesheetSite} · Department: {dailyTimesheetDepartment}</div></div></div>
+  <div className="nda-page-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><div className="brand-title">NDA-PK — Daily Timesheet</div><div className="brand-subtitle">Date: {selectedTimesheetDate} · Site: {dailyTimesheetSite} · Department: {selectedDeptFilter}</div></div></div>
   <style>{dailyTimesheetPrintStyle}</style>
 
             <h2 className="no-print">📄 Daily Timesheet</h2>
@@ -4675,12 +4687,9 @@ await handleSingleAttendanceChange(
 {(userRole.is_admin ? sitesList : (userRole.assigned_site && userRole.assigned_site !== 'All' ? [userRole.assigned_site] : sitesList)).map((site, idx) => (<option key={idx} value={site}>{site}</option>))}
                 </select>
               </div>
-              <div>
+              <div style={{ minWidth: 180 }}>
                 <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Department</label>
-                <select value={userRole.is_admin || userRole.assigned_department === 'All' ? dailyTimesheetDepartment : userRole.assigned_department} onChange={e => setDailyTimesheetDepartment(e.target.value)} disabled={!userRole.is_admin && userRole.assigned_department !== 'All'} style={{ padding: '9px', minWidth: '200px', border: '1px solid #cbd5e1', borderRadius: '5px' }}>
-                  {userRole.is_admin || userRole.assigned_department === 'All' ? <option value="All">All Departments</option> : null}
-                  {(userRole.is_admin ? visibleDepartments : (userRole.assigned_department && userRole.assigned_department !== 'All' ? [userRole.assigned_department] : visibleDepartments)).map(dept => <option key={dept} value={dept}>{dept}</option>)}
-                </select>
+                <div style={{ padding: '9px', minWidth: '180px', border: '1px solid #cbd5e1', borderRadius: '5px', background: '#f8fafc' }}>{userRole.is_admin ? selectedDeptFilter : userRole.assigned_department}</div>
               </div>
             </div>
 
@@ -4719,7 +4728,7 @@ await handleSingleAttendanceChange(
                     
 const workerSite = record.site || record.work_site || worker.work_site || '';
                       const workerDept = String(worker.department || '').trim().toLowerCase();
-                      const departmentMatches = dailyTimesheetDepartment === 'All' || workerDept === dailyTimesheetDepartment.toLowerCase().trim();
+                      const departmentMatches = selectedDeptFilter === 'All' || workerDept === selectedDeptFilter.toLowerCase().trim();
                       const siteMatches = dailyTimesheetSite === 'All' || dailyTimesheetSite === 'All Workers' || workerSite.toLowerCase().trim() === dailyTimesheetSite.toLowerCase().trim();
                       const permittedDept = userRole.is_admin || !userRole.assigned_department || userRole.assigned_department === 'All' || workerDept === String(userRole.assigned_department).toLowerCase().trim();
                       return departmentMatches && siteMatches && permittedDept;
@@ -4805,7 +4814,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
               </form>}
               {dailyWorkDetailsLoadError && <p style={{color:'#991b1b'}}>Details read nahi ho sakin: {dailyWorkDetailsLoadError}</p>}
               <div style={{marginTop:14,display:'grid',gap:9}}>
-                {dailyWorkDetailRows.filter(r => (dailyTimesheetSite==='All Workers'||dailyTimesheetSite==='All'||String(r.work_site||'').toLowerCase()===String(dailyTimesheetSite).toLowerCase()) && (dailyTimesheetDepartment==='All'||String(r.work_department||'').toLowerCase()===String(dailyTimesheetDepartment).toLowerCase()) && (userRole.is_admin || ((userRole.assigned_site==='All'||String(r.work_site).toLowerCase()===String(userRole.assigned_site).toLowerCase()) && (userRole.assigned_department==='All'||String(r.work_department).toLowerCase()===String(userRole.assigned_department).toLowerCase())))).map(row=><div key={`${row.work_date}-${row.work_site}-${row.work_department}`} style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:7,padding:11}}>
+                {dailyWorkDetailRows.filter(r => (dailyTimesheetSite==='All Workers'||dailyTimesheetSite==='All'||String(r.work_site||'').toLowerCase()===String(dailyTimesheetSite).toLowerCase()) && (selectedDeptFilter==='All'||String(r.work_department||'').toLowerCase()===String(selectedDeptFilter).toLowerCase()) && (userRole.is_admin || ((userRole.assigned_site==='All'||String(r.work_site).toLowerCase()===String(userRole.assigned_site).toLowerCase()) && (userRole.assigned_department==='All'||String(r.work_department).toLowerCase()===String(userRole.assigned_department).toLowerCase())))).map(row=><div key={`${row.work_date}-${row.work_site}-${row.work_department}`} style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:7,padding:11}}>
                   <div style={{fontSize:12,color:'#64748b',fontWeight:700}}>{row.work_date} · {row.work_site} · {row.work_department}</div>
                   <p style={{whiteSpace:'pre-wrap',margin:'7px 0'}}>{row.work_details}</p>
                   {(userRole.is_admin||userRole.can_use_bulk||userRole.can_edit_timesheet) && <div style={{display:'flex',gap:7}}><button type="button" onClick={()=>editDailyWorkDetail(row)} style={{...primaryStyle,width:'auto',padding:'6px 12px',background:'#1d4ed8'}}>Edit</button><button type="button" onClick={()=>deleteDailyWorkDetail(row)} style={{...primaryStyle,width:'auto',padding:'6px 12px',background:'#b91c1c'}}>Delete</button></div>}
@@ -4932,11 +4941,8 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
         <input type="date" value={payrollEndDate} min={payrollStartDate || undefined} disabled={!userRole.is_admin} onChange={e => setPayrollEndDate(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6 }} />
       </label>
       {userRole.is_admin && <button type="button" disabled={savingPayrollPeriodSettings} onClick={() => savePayrollPeriodSettings()} style={{ padding: '9px 12px', background: '#1d4ed8', color: '#fff', border: 0, borderRadius: 6, fontWeight: 800, cursor: 'pointer' }}>Save Dates</button>}
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Department:
-        <select value={userRole.is_admin ? payrollDepartment : userRole.assigned_department} onChange={e => setPayrollDepartment(e.target.value)} disabled={!userRole.is_admin} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6 }}>
-          <option value="All">All Departments</option>
-          {visibleDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
-        </select>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Department (Top Filter):
+        <span style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', minWidth: 120 }}>{userRole.is_admin ? selectedDeptFilter : userRole.assigned_department}</span>
       </label>
       {userRole.is_admin && (currentPayrollPeriodClosed
         ? <button type="button" onClick={reopenSelectedPayrollPeriod} style={{ padding: '10px 13px', background: '#b45309', color: '#fff', border: 0, borderRadius: 6, fontWeight: 800, cursor: 'pointer' }}>Reopen Salary Period</button>
@@ -5735,19 +5741,9 @@ accruedDays = balance.toFixed(1);
             />
           </div>
 
-          {/* Department Filter */}
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Filter Department</label>
-            <select 
-              value={userRole.is_admin ? monthlyDepartmentFilter : userRole.assigned_department} 
-              onChange={e => setMonthlyDepartmentFilter(e.target.value)}
-              style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', minWidth: '150px' }}
-            >
-              <option value="All">All Departments</option>
-              {visibleDepartments.map((d, idx) => (
-                <option key={idx} value={d}>{d}</option>
-              ))}
-            </select>
+            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Department (Top Filter)</label>
+            <div style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', minWidth: '150px', background: '#fff' }}>{userRole.is_admin ? selectedDeptFilter : userRole.assigned_department}</div>
           </div>
 
           <div>
@@ -5778,7 +5774,7 @@ accruedDays = balance.toFixed(1);
           <tbody>
             {(userRole.is_admin ? workers : filteredWorkers)
               .filter(w => {
-                const reportDepartment = userRole.is_admin ? monthlyDepartmentFilter : userRole.assigned_department;
+                const reportDepartment = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
                 const matchesDept = reportDepartment === 'All' || !reportDepartment || String(w.department || '').trim().toLowerCase() === String(reportDepartment).trim().toLowerCase();
                 const matchesSearch = !timesheetSearchQuery || 
                   String(w.id).toLowerCase().includes(timesheetSearchQuery.toLowerCase()) || 
