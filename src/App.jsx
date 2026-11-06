@@ -1897,14 +1897,91 @@ async function handleToggleHolidayDate() {
     e.preventDefault();
     setAuthLoading(true);
 
-    const cleanEmail = String(selectedSystem === 'business' ? (email || sessionStorage.getItem('nda_last_hr_email') || '') : email).trim().toLowerCase();
+    const cleanEmail = String(email || '').trim().toLowerCase();
     const cleanPassword = password.trim();
-    if (selectedSystem === 'business' && !cleanEmail) {
-      alert('Pehle HR System mein apni ID se ek martaba login karein. Business mein usi saved ID ke sath sirf password manga jayega.');
-      return;
-    }
 
     try {
+      // BUSINESS LOGIN: the shared Admin account is verified against the existing
+      // HR Admin record. All other Business users authenticate only with their
+      // own Supabase Auth account and business_access row; no HR staff record is
+      // required or used for them.
+      if (selectedSystem === 'business') {
+        let isAdminForBusiness = false;
+        const { data: adminRows, error: adminLookupError } = await supabase
+          .from('user_permissions')
+          .select('user_email,user_password,is_admin')
+          .ilike('user_email', cleanEmail)
+          .eq('is_admin', true);
+
+        if (!adminLookupError) {
+          isAdminForBusiness = (adminRows || []).some(row =>
+            String(row.user_password ?? '') === cleanPassword &&
+            (row.is_admin === true || row.is_admin === 'true')
+          );
+        }
+
+        let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: cleanPassword
+        });
+
+        // Only the verified shared Admin may initialize its own Business Auth
+        // identity. Business staff accounts are created by Admin in Staff Access.
+        if (authError && isAdminForBusiness) {
+          const { data: createdAuth, error: createAuthError } = await supabase.auth.signUp({
+            email: cleanEmail,
+            password: cleanPassword
+          });
+          if (!createAuthError && createdAuth?.session) {
+            authData = createdAuth;
+            authError = null;
+          } else if (!createAuthError && createdAuth?.user && !createdAuth?.session) {
+            alert('Admin ka Business secure account ban gaya hai, lekin Supabase email confirmation enabled hai. Email confirm karke dobara Business login karein.');
+            return;
+          } else if (createAuthError) {
+            authError = createAuthError;
+          }
+        }
+
+        if (authError || !authData?.user?.email) {
+          const message = isAdminForBusiness
+            ? 'Admin ki same ID/password ka Business secure login verify nahi ho saka. Agar pehle se Auth account hai to us ka password HR Admin password ke barabar hona chahiye.'
+            : 'Business Login ID ya password ghalat hai. Business Admin se apna Business login banwayein.';
+          alert(message + ' Details: ' + (authError?.message || 'Authentication session nahi mila.'));
+          return;
+        }
+
+        if (!isAdminForBusiness) {
+          const { data: accessRows, error: accessError } = await supabase
+            .from('business_access')
+            .select('*')
+            .ilike('user_email', cleanEmail)
+            .eq('active', true)
+            .eq('can_view', true);
+
+          if (accessError || !accessRows?.length) {
+            await supabase.auth.signOut();
+            alert(accessError
+              ? ('Business permission check nahi ho saka: ' + accessError.message)
+              : 'Is Business Login ID ko access nahi mila. Business Admin se permission lein.');
+            return;
+          }
+        }
+
+        const businessRole = isAdminForBusiness
+          ? { is_admin: true, assigned_department: 'All', assigned_site: 'All', can_view_business: true, can_manage_business: true }
+          : { is_admin: false, business_only: true, can_view_business: true };
+        const businessSession = { user: { email: cleanEmail }, role: businessRole, system_scope: 'business' };
+        setSession(businessSession);
+        setUserRole(businessRole);
+        setSelectedSystem('business');
+        setBusinessType('transport');
+        void logActivity('Login', 'Business system login', cleanEmail);
+        return;
+      }
+
+      // HR LOGIN: unchanged HR-only authentication. Business-only staff are not
+      // accepted as HR users and there is no Business-login fallback here.
       const { data: accounts, error: accountError } = await supabase
         .from('user_permissions')
         .select('*')
@@ -1958,81 +2035,15 @@ async function handleToggleHolidayDate() {
         }
       }
 
-      // Business login has its own Supabase Auth password. HR credentials and
-      // HR user_permissions remain independent; only the admin-role flag is read
-      // to identify the Business administrator.
-      const businessAdminAccount = accountRows.find(row => row.is_admin === true || row.is_admin === 'true') || null;
-      const isMatchedAdmin = !!resolvedAccount && String(resolvedAccount.user_password) === cleanPassword &&
-        (resolvedAccount.is_admin === true || resolvedAccount.is_admin === 'true');
-
-      if (selectedSystem === 'business') {
-        // Business login always uses its own Supabase Auth password for RLS.
-        // It is intentionally independent from the HR System password.
-        let { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password: cleanPassword });
-
-        // If no Business Auth account exists yet, create one with the Business password.
-        if (authError) {
-          const { data: createdAuth, error: createAuthError } = await supabase.auth.signUp({ email: cleanEmail, password: cleanPassword });
-          if (!createAuthError && createdAuth?.session) {
-            authData = createdAuth;
-            authError = null;
-          } else if (!createAuthError && createdAuth?.user && !createdAuth?.session) {
-            alert('Business secure account ban gaya hai, lekin Supabase email confirmation enabled hai. Email confirm karke dobara Business login karein.');
-            return;
-          }
-        }
-
-        if (authError || !authData?.user?.email) {
-          alert('Business login ke liye Supabase secure account ka password HR password se match hona zaroori hai. Agar is email ka Business account pehle se bana hua hai aur us ka password mukhtalif hai, Admin ko Supabase Authentication mein us account ka password HR password ke barabar set karna hoga. Details: ' + (authError?.message || 'Authentication session nahi mila.'));
-          return;
-        }
-
-        const isAdminForBusiness = !!businessAdminAccount;
-        const { data: accessRows, error: accessError } = await supabase.from('business_access').select('*').ilike('user_email', cleanEmail).eq('active', true).eq('can_view', true);
-        if (!isAdminForBusiness && (accessError || !accessRows?.length)) {
-          await supabase.auth.signOut();
-          alert(accessError ? ('Business permission check nahi ho saka: ' + accessError.message) : 'Is HR ID ko Business viewing permission nahi mili. Admin se Business access lein.');
-          return;
-        }
-
-        const businessRole = isAdminForBusiness
-          ? { is_admin: true, assigned_department: 'All', assigned_site: 'All', can_view_business: true, can_manage_business: true }
-          : { is_admin: false, business_only: true, can_view_business: true };
-        const businessSession = { user: { email: cleanEmail }, role: businessRole, system_scope: 'business' };
-        setSession(businessSession);
-        setUserRole(businessRole);
-        setSelectedSystem('business');
-        setBusinessType('transport');
-        void logActivity('Login', 'Business system login', cleanEmail);
-        return;
-      }
-
-      if (!isMatchedAdmin && !resolvedAccount) {
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password: cleanPassword });
-        if (!authError && authData?.user?.email) {
-          const { data: accessRows, error: accessError } = await supabase.from('business_access').select('business_id').ilike('user_email', cleanEmail).eq('active', true).eq('can_view', true);
-          if (!accessError && accessRows?.length) {
-            const businessRole = { is_admin: false, business_only: true, can_view_business: true };
-            const businessSession = { user: { email: cleanEmail }, role: businessRole, system_scope: 'business' };
-            setSession(businessSession); setUserRole(businessRole); setSelectedSystem('business');
-            void logActivity('Login', 'Business system login', cleanEmail);
-            return;
-          }
-          await supabase.auth.signOut();
-        }
-      }
-
       if (!resolvedAccount || String(resolvedAccount.user_password) !== cleanPassword) {
         alert('Invalid Email or Password!');
         return;
       }
       try { sessionStorage.setItem('nda_last_hr_email', cleanEmail); } catch {}
 
-      const isAdminAccount =
-        resolvedAccount.is_admin === true || resolvedAccount.is_admin === 'true';
+      const isAdminAccount = resolvedAccount.is_admin === true || resolvedAccount.is_admin === 'true';
 
-      // Keep the existing HR login (user_permissions). The Edge Function validates
-      // the same credentials server-side and issues a short-lived token for private files.
+      // Keep the existing HR document-session flow unchanged.
       try {
         const { data: docAuth, error: docAuthError } = await supabase.functions.invoke('worker-documents', {
           body: { action: 'session', email: cleanEmail, password: cleanPassword }
@@ -2066,7 +2077,6 @@ async function handleToggleHolidayDate() {
           can_edit_timesheet: true,
           can_view_payroll: true
         };
-
         const sessionObj = { user: { email: cleanEmail }, role: adminRole };
         setSession(sessionObj);
         setUserRole(adminRole);
@@ -2091,12 +2101,10 @@ async function handleToggleHolidayDate() {
         can_edit_timesheet: resolvedAccount.can_edit_timesheet ?? false,
         can_view_payroll: resolvedAccount.can_view_payroll ?? false
       };
-
       const sessionObj = { user: { email: cleanEmail }, role: staffRole };
       setSession(sessionObj);
       setUserRole(staffRole);
       void logActivity('Login', `Staff login — ${staffRole.assigned_department} / ${staffRole.assigned_site}`, cleanEmail);
-
       if (staffRole.assigned_department !== 'All') {
         setSelectedDeptFilter(staffRole.assigned_department);
         setBulkDepartment(staffRole.assigned_department);
@@ -2110,8 +2118,6 @@ async function handleToggleHolidayDate() {
         setBulkSite(staffRole.assigned_site);
         setQuickSite(staffRole.assigned_site);
       }
-
-
       if (staffRole.can_view_dashboard) setActiveTab('dashboard');
       else if (staffRole.can_view_timesheet) setActiveTab('attendance');
       else if (staffRole.can_view_daily_timesheet) setActiveTab('daily-timesheet');
@@ -3210,9 +3216,9 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
               </div>
             ) : (
               <div style={{ marginBottom: '15px' }}>
-                <label style={{ color: '#cbd5e1', fontSize: '12px', display: 'block', marginBottom: '5px' }}>HR Login ID / Email Address</label>
-                <input type="email" value={email} onChange={e => { setEmail(e.target.value); try { sessionStorage.setItem('nda_last_hr_email', e.target.value); } catch {} }} placeholder="admin@nda.pk" autoComplete="username" style={{ width: '100%', padding: '10px', borderRadius: '6px', backgroundColor: '#0f172a', border: '1px solid #475569', color: '#fff', boxSizing: 'border-box' }} required />
-                <div style={{ color: '#a7f3d0', fontSize: 11, marginTop: 6 }}>Apni HR System wali Login ID aur wahi password enter karein.</div>
+                <label style={{ color: '#cbd5e1', fontSize: '12px', display: 'block', marginBottom: '5px' }}>Business Login ID / Email Address</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="business@example.com" autoComplete="username" style={{ width: '100%', padding: '10px', borderRadius: '6px', backgroundColor: '#0f172a', border: '1px solid #475569', color: '#fff', boxSizing: 'border-box' }} required />
+                <div style={{ color: '#a7f3d0', fontSize: 11, marginTop: 6 }}>Business Admin ki shared Admin ID ya apni Business staff ID enter karein.</div>
               </div>
             )}
             <div style={{ marginBottom: '20px' }}>
