@@ -366,7 +366,7 @@ export default function App() {
   const [businessAccessEmail, setBusinessAccessEmail] = useState('');
   const [businessAccessType, setBusinessAccessType] = useState('transport');
   const [businessAccessFlags, setBusinessAccessFlags] = useState({ can_view: true, can_add: false, can_edit: false, can_delete: false, can_manage_workers: false, can_manage_access: false });
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => { try { return sessionStorage.getItem('nda_last_hr_email') || ''; } catch { return ''; } });
   const [password, setPassword] = useState('');
   // Short-lived server-issued token for private HR worker documents (custom HR login).
   const [workerDocToken, setWorkerDocToken] = useState(() => { try { return sessionStorage.getItem('nda_worker_docs_token') || ''; } catch { return ''; } });
@@ -562,6 +562,7 @@ const [newDesignation, setNewDesignation] = useState('');
   const [bulkMarkDesignation, setBulkMarkDesignation] = useState('All');
   const [bulkMarkStatus, setBulkMarkStatus] = useState('Present');
   const [bulkMarkSaving, setBulkMarkSaving] = useState(false);
+  const [bulkOpenSection, setBulkOpenSection] = useState('designationAttendance');
   const [siteHolidayNormalOT, setSiteHolidayNormalOT] = useState('2');
   const [siteHolidayContractOT, setSiteHolidayContractOT] = useState('0');
   
@@ -1872,8 +1873,12 @@ async function handleToggleHolidayDate() {
     e.preventDefault();
     setAuthLoading(true);
 
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanEmail = String(selectedSystem === 'business' ? (email || sessionStorage.getItem('nda_last_hr_email') || '') : email).trim().toLowerCase();
     const cleanPassword = password.trim();
+    if (selectedSystem === 'business' && !cleanEmail) {
+      alert('Pehle HR System mein apni ID se ek martaba login karein. Business mein usi saved ID ke sath sirf password manga jayega.');
+      return;
+    }
 
     try {
       const { data: accounts, error: accountError } = await supabase
@@ -1929,14 +1934,66 @@ async function handleToggleHolidayDate() {
         }
       }
 
-      // Business-only staff must authenticate through Supabase Auth. Legacy HR staff
-      // passwords are deliberately not accepted for Business access.
+      // Business users need a Supabase Auth session so Business table RLS remains active.
+      // The same HR password is checked against user_permissions before Business access is granted.
       const isMatchedAdmin = !!resolvedAccount && String(resolvedAccount.user_password) === cleanPassword &&
         (resolvedAccount.is_admin === true || resolvedAccount.is_admin === 'true');
       // Business-only staff are authenticated through Supabase Auth even when
       // they do not have an HR user_permissions row. HR staff can still fall
       // through to the existing HR login if they are not Business users.
-      if (!isMatchedAdmin && (!resolvedAccount || selectedSystem === 'business')) {
+      if (selectedSystem === 'business' && accountRows.length > 0 && !resolvedAccount) {
+        alert('HR System ka password ghalat hai. Business mein bhi wohi HR password use karein.');
+        return;
+      }
+
+      if (selectedSystem === 'business') {
+        // Business access always uses a real Supabase Auth session for RLS.
+        // First validate the same HR password when this email has an HR account.
+        if (resolvedAccount && String(resolvedAccount.user_password) !== cleanPassword) {
+          alert('HR System ka password ghalat hai. Wohi password enter karein jo HR login mein use hota hai.');
+          return;
+        }
+        let { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password: cleanPassword });
+
+        // If the HR user is valid but has no Supabase Auth account yet, create
+        // the matching account once so the same HR password can be used.
+        if (authError && resolvedAccount) {
+          const { data: createdAuth, error: createAuthError } = await supabase.auth.signUp({ email: cleanEmail, password: cleanPassword });
+          if (!createAuthError && createdAuth?.session) {
+            authData = createdAuth;
+            authError = null;
+          } else if (!createAuthError && createdAuth?.user && !createdAuth?.session) {
+            alert('Business secure account ban gaya hai, lekin Supabase email confirmation enabled hai. Email confirm karke dobara Business login karein.');
+            return;
+          }
+        }
+
+        if (authError || !authData?.user?.email) {
+          alert('Business login ke liye Supabase secure account ka password HR password se match hona zaroori hai. Agar is email ka Business account pehle se bana hua hai aur us ka password mukhtalif hai, Admin ko Supabase Authentication mein us account ka password HR password ke barabar set karna hoga. Details: ' + (authError?.message || 'Authentication session nahi mila.'));
+          return;
+        }
+
+        const isAdminForBusiness = !!resolvedAccount && (resolvedAccount.is_admin === true || resolvedAccount.is_admin === 'true');
+        const { data: accessRows, error: accessError } = await supabase.from('business_access').select('*').ilike('user_email', cleanEmail).eq('active', true).eq('can_view', true);
+        if (!isAdminForBusiness && (accessError || !accessRows?.length)) {
+          await supabase.auth.signOut();
+          alert(accessError ? ('Business permission check nahi ho saka: ' + accessError.message) : 'Is HR ID ko Business viewing permission nahi mili. Admin se Business access lein.');
+          return;
+        }
+
+        const businessRole = isAdminForBusiness
+          ? { is_admin: true, assigned_department: 'All', assigned_site: 'All', can_view_business: true, can_manage_business: true }
+          : { is_admin: false, business_only: true, can_view_business: true };
+        const businessSession = { user: { email: cleanEmail }, role: businessRole, system_scope: 'business' };
+        setSession(businessSession);
+        setUserRole(businessRole);
+        setSelectedSystem('business');
+        setBusinessType('transport');
+        void logActivity('Login', 'Business system login', cleanEmail);
+        return;
+      }
+
+      if (!isMatchedAdmin && !resolvedAccount) {
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password: cleanPassword });
         if (!authError && authData?.user?.email) {
           const { data: accessRows, error: accessError } = await supabase.from('business_access').select('business_id').ilike('user_email', cleanEmail).eq('active', true).eq('can_view', true);
@@ -1948,13 +2005,6 @@ async function handleToggleHolidayDate() {
             return;
           }
           await supabase.auth.signOut();
-          if (!resolvedAccount || selectedSystem === 'business') {
-            alert('Is email ko kisi Business ki viewing permission nahi mili. Admin se Business access lein.');
-            return;
-          }
-        } else if (!resolvedAccount || selectedSystem === 'business') {
-          alert('Business login ke liye Admin se mila hua email/password Supabase Authentication mein mojood hona chahiye.');
-          return;
         }
       }
 
@@ -1962,6 +2012,7 @@ async function handleToggleHolidayDate() {
         alert('Invalid Email or Password!');
         return;
       }
+      try { sessionStorage.setItem('nda_last_hr_email', cleanEmail); } catch {}
 
       const isAdminAccount =
         resolvedAccount.is_admin === true || resolvedAccount.is_admin === 'true';
@@ -3097,14 +3148,14 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
             <p style={{ color: '#cbd5e1', margin: 0 }}>Apna system select karein jahan aap kaam karna chahte hain.</p>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 20 }}>
-            <button onClick={() => setSelectedSystem('hr')} style={{ position: 'relative', overflow: 'hidden', textAlign: 'left', padding: 28, minHeight: 270, borderRadius: 22, border: '1px solid #38bdf8', color: '#fff', background: 'linear-gradient(145deg,#075985,#1e3a8a)', boxShadow: '0 18px 50px #0005', cursor: 'pointer', isolation: 'isolate' }}>
+            <button onClick={() => { setSession(null); setSelectedSystem('hr'); }} style={{ position: 'relative', overflow: 'hidden', textAlign: 'left', padding: 28, minHeight: 270, borderRadius: 22, border: '1px solid #38bdf8', color: '#fff', background: 'linear-gradient(145deg,#075985,#1e3a8a)', boxShadow: '0 18px 50px #0005', cursor: 'pointer', isolation: 'isolate' }}>
               <img src="/nda-naveed-logo.png" alt="" aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', opacity: 0.22, padding: 8, boxSizing: 'border-box', pointerEvents: 'none', zIndex: 0 }} />
               <span aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(145deg,rgba(7,89,133,.78),rgba(30,58,138,.84))', zIndex: 0, pointerEvents: 'none' }} />
               <div style={{ position: 'relative', zIndex: 1 }}>
                 <div style={{ fontSize: 40 }}>👷</div><h2 style={{ fontSize: 25, margin: '14px 0 8px' }}>NDA.PK HR SYSTEM</h2><p style={{ color: '#dbeafe', lineHeight: 1.6 }}>Workers, attendance, timesheet, overtime, payroll, annual leave, permissions aur HR reports.</p><span style={{ display: 'inline-block', marginTop: 10, padding: '10px 16px', background: '#fff', color: '#1d4ed8', borderRadius: 10, fontWeight: 800 }}>Open HR System →</span>
               </div>
             </button>
-            <button onClick={async () => { const businessEmail = String(session?.user?.email || email || '').trim().toLowerCase(); const businessPassword = password || window.prompt('Business system secure access ke liye apna password enter karein:'); if (!businessPassword) return; const { data: currentAuth } = await supabase.auth.getSession(); if (currentAuth?.session?.user?.email?.toLowerCase() !== businessEmail) { if (currentAuth?.session) await supabase.auth.signOut(); let { error: authError } = await supabase.auth.signInWithPassword({ email: businessEmail, password: businessPassword }); if (authError && userRole?.is_admin) { const { data: createdAuth, error: createAuthError } = await supabase.auth.signUp({ email: businessEmail, password: businessPassword }); if (createAuthError) { alert('Secure Business login create/sign in nahi hua. Supabase Authentication mein isi email ka account check karein. Details: ' + createAuthError.message); return; } if (!createdAuth?.session) { alert('Secure Business login create ho gaya. Supabase confirmation email confirm karein, phir Business dobara open karein.'); return; } } else if (authError) { alert('Is email ka secure Business login available nahi. Admin se Business access / login banwane ko kahen. Details: ' + authError.message); return; } } setSelectedSystem('business'); setBusinessType('transport'); }} style={{ position: 'relative', overflow: 'hidden', textAlign: 'left', padding: 28, minHeight: 270, borderRadius: 22, border: '1px solid #34d399', color: '#fff', background: 'linear-gradient(145deg,#065f46,#14532d)', boxShadow: '0 18px 50px #0005', cursor: 'pointer', isolation: 'isolate' }}>
+            <button onClick={() => { setSession(null); setSelectedSystem('business'); setBusinessType('transport'); setPassword(''); }} style={{ position: 'relative', overflow: 'hidden', textAlign: 'left', padding: 28, minHeight: 270, borderRadius: 22, border: '1px solid #34d399', color: '#fff', background: 'linear-gradient(145deg,#065f46,#14532d)', boxShadow: '0 18px 50px #0005', cursor: 'pointer', isolation: 'isolate' }}>
               <img src="/nda-naveed-logo.png" alt="" aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', opacity: 0.22, padding: 8, boxSizing: 'border-box', pointerEvents: 'none', zIndex: 0 }} />
               <span aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(145deg,rgba(6,95,70,.80),rgba(20,83,45,.86))', zIndex: 0, pointerEvents: 'none' }} />
               <div style={{ position: 'relative', zIndex: 1 }}>
@@ -3129,10 +3180,16 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
             <button type="button" onClick={() => setSelectedSystem(null)} style={{ marginTop: 8, background: 'transparent', border: '1px solid #475569', color: '#cbd5e1', borderRadius: 6, padding: '6px 10px', cursor: 'pointer' }}>← Change System</button>
           </div>
           <form onSubmit={handleLogin}>
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ color: '#cbd5e1', fontSize: '12px', display: 'block', marginBottom: '5px' }}>Email Address</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@nda.pk" style={{ width: '100%', padding: '10px', borderRadius: '6px', backgroundColor: '#0f172a', border: '1px solid #475569', color: '#fff', boxSizing: 'border-box' }} required />
-            </div>
+            {selectedSystem === 'hr' ? (
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ color: '#cbd5e1', fontSize: '12px', display: 'block', marginBottom: '5px' }}>Email Address</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@nda.pk" style={{ width: '100%', padding: '10px', borderRadius: '6px', backgroundColor: '#0f172a', border: '1px solid #475569', color: '#fff', boxSizing: 'border-box' }} required />
+              </div>
+            ) : (
+              <div style={{ marginBottom: '15px', padding: '10px 12px', borderRadius: 6, background: '#0f3d35', border: '1px solid #166534', color: '#d1fae5', fontSize: 12 }}>
+                HR Login ID: <strong>{email || 'Not saved yet'}</strong><br />Business ke liye sirf HR System wala password enter karein.
+              </div>
+            )}
             <div style={{ marginBottom: '20px' }}>
               <label style={{ color: '#cbd5e1', fontSize: '12px', display: 'block', marginBottom: '5px' }}>Password</label>
               <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" style={{ width: '100%', padding: '10px', borderRadius: '6px', backgroundColor: '#0f172a', border: '1px solid #475569', color: '#fff', boxSizing: 'border-box' }} required />
@@ -3718,89 +3775,24 @@ style={{
 {/* TAB 2: BULK & OCR */}
 {activeTab === 'bulk' && (userRole.is_admin || userRole.can_use_bulk) && (
   <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-    <form onSubmit={handleBulkContractOnlyOT} style={{ marginBottom: 22, padding: 16, border: '2px solid #93c5fd', borderRadius: 10, background: '#eff6ff' }}>
-      <h3 style={{ margin: '0 0 6px', color: '#1e3a8a' }}>🧾 Bulk Contract OT — Site + Multiple Designations</h3>
-      <p style={{ margin: '0 0 12px', fontSize: 12, color: '#334155' }}>Site ka match Workers Directory ki default site se nahi, us date ki saved attendance site se hoga. Pehle Site Attendance by Worker ID mein worker ko selected site par save karein. Phir sirf usi site ke saved Present / Holiday Present workers ka Contract OT update hoga; status aur Normal OT mehfooz rahenge.</p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12 }}>
-        <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Attendance / OT Date</label><input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }} /></div>
-        <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Working Site</label><select value={bulkContractOnlySite} onChange={e => setBulkContractOnlySite(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{sitesList.map(site => <option key={site} value={site}>{site}</option>)}</select></div>
-        <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Contract OT Hours (per worker)</label><input type="number" min="0" step="0.25" value={bulkContractOnlyHours} onChange={e => setBulkContractOnlyHours(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }} /></div>
-        <div style={{ gridColumn: '1 / -1' }}><label style={{ display: 'block', fontSize: 12, fontWeight: 800, marginBottom: 7 }}>Select Designation(s) — multiple allowed</label><div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', padding: 10, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 7 }}>{designationsList.map(d => <label key={d} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}><input type="checkbox" checked={bulkContractOnlyDesignations.includes(d)} onChange={e => setBulkContractOnlyDesignations(old => e.target.checked ? [...old, d] : old.filter(x => x !== d))} />{d}</label>)}</div></div>
-      </div>
-      <button type="submit" disabled={bulkContractOnlySaving || !userRole.is_admin} style={{ marginTop: 12, padding: '10px 16px', border: 0, borderRadius: 7, background: '#1d4ed8', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: bulkContractOnlySaving || !userRole.is_admin ? .55 : 1 }}>{bulkContractOnlySaving ? 'Saving Contract OT…' : 'Apply Contract OT to Present Workers'}</button>
-    </form>
-
-    <h3 style={{ margin: '0 0 10px 0' }}>⚡ Bulk Overtime Only — Department / Designation</h3>
-    <p style={{ margin: '0 0 12px', fontSize: 12, color: '#475569' }}>Yeh option bhi selected date ki attendance mein saved daily site aur Present / Holiday Present status ko check karta hai. Workers Directory ki default site ko daily site nahi samjha jayega.</p>
-
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
-      <div>
-        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Select Date</label>
-        <input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
-      </div>
-
-      <div>
-        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Department</label>
-        <select value={userRole.is_admin ? bulkDepartment : userRole.assigned_department} onChange={e => setBulkDepartment(e.target.value)} disabled={!userRole.is_admin} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-          {userRole.is_admin && <option value="All">All Departments</option>}
-          {visibleDepartments.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
-        </select>
-      </div>
-
-      <div>
-        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Designation (Steel, Carpenter etc)</label>      
-<select
-  value={bulkDesignation}
-  onChange={e => setBulkDesignation(e.target.value)}
-  style={{
-    width: '100%',
-    padding: '8px',
-    borderRadius: '6px',
-    border: '1px solid #cbd5e1'
-  }}
->
-  <option value="All">All Designations</option>
-  {editingWorkerId && designation && !designationsList.some(d => String(d).trim().toLowerCase() === String(designation).trim().toLowerCase()) && (
-    <option value={designation}>{designation} (existing worker record)</option>
-  )}
-  {designationsList.map((d, idx) => (
-    <option key={idx} value={d}>{d}</option>
-  ))}
-</select>
-      </div>
-
-      <div>
-        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Working Site</label>
-        <select value={bulkSite} onChange={e => setBulkSite(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-          {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
-        </select>
-      </div>
-
-      <div>
-        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Overtime Hours</label>
-        <input type="number" value={bulkOT} onChange={e => setBulkOT(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
-      </div>
-      
-<div>
-  <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Contract OT Hours</label>
-  <input
-    type="number"
-    min="0"
-    value={bulkContractOT}
-    onChange={e => setBulkContractOT(e.target.value)}
-    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-  />
-</div>
-
-
-      <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-        <button onClick={handleBulkAttendance} style={{ width: '100%', padding: '9px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Apply OT to Selected Workers</button>
-      </div>
+    <div style={{ marginBottom: 16, padding: 14, border: '1px solid #bfdbfe', borderRadius: 10, background: '#eff6ff' }}>
+      <label htmlFor="bulk-tool-select" style={{ display: 'block', marginBottom: 7, color: '#1e3a8a', fontSize: 13, fontWeight: 800 }}>Select Bulk Function</label>
+      <select id="bulk-tool-select" value={bulkOpenSection} onChange={e => setBulkOpenSection(e.target.value)} style={{ ...fieldStyle, fontWeight: 700, border: '1px solid #93c5fd', background: '#fff' }}>
+        <option value="designationAttendance">👷 Bulk Present / Absent — By Designation</option>
+        <option value="ocrScanner">📸 OCR Scanner</option>
+        <option value="quickAttendance">⚡ Quick Bulk Attendance</option>
+        <option value="contractOT">🧾 Bulk Contract OT — Site + Multiple Designations</option>
+        <option value="bulkOT">⏱️ Bulk Overtime Only — Department / Designation</option>
+        <option value="siteAttendance">🟢 Site Attendance by Worker ID</option>
+        <option value="individualAttendance">👥 Individual Attendance List</option>
+      </select>
+      <p style={{ margin: '7px 0 0', color: '#475569', fontSize: 11 }}>Dropdown se function select karein. Sirf selected function ka working page khulega; baqi options band rahenge.</p>
     </div>
-
-
-
-    <div style={{ marginTop: '20px', padding: '18px', background: '#f0f9ff', border: '1px solid #7dd3fc', borderRadius: '10px' }}>
+    <div style={{ marginBottom: 10, border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden', background: '#fff', display: bulkOpenSection === 'designationAttendance' ? 'block' : 'none' }}>
+      <button type="button" onClick={() => setBulkOpenSection(bulkOpenSection === 'designationAttendance' ? '' : 'designationAttendance')} style={{ width: '100%', display: 'none', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px', border: 0, background: bulkOpenSection === 'designationAttendance' ? '#eaf2ff' : '#f8fafc', color: '#12345a', fontWeight: 800, fontSize: 14, textAlign: 'left', cursor: 'pointer' }}>
+        <span>👷 Bulk Present / Absent — By Designation</span><span style={{ fontSize: 18, transform: bulkOpenSection === 'designationAttendance' ? 'rotate(180deg)' : 'none' }}>⌄</span>
+      </button>
+      {bulkOpenSection === 'designationAttendance' && <div style={{ padding: 14, borderTop: '1px solid #e2e8f0' }}><div style={{ marginTop: '20px', padding: '18px', background: '#f0f9ff', border: '1px solid #7dd3fc', borderRadius: '10px' }}>
       <h3 style={{ margin: '0 0 8px', color: '#075985' }}>👷 Bulk Present / Absent — By Designation</h3>
       <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#334155' }}>Date, site, department aur designation select karein. Misal: Carpenter select karne se selected group ke tamam Carpenters ki attendance ek sath save hogi. Workers Directory ki default site ko ignore karke selected daily site save hogi. Jo worker isi date par pehle se kisi doosri site par recorded hai, usay automatically move/overwrite nahi kiya jayega.</p>
       <form onSubmit={handleBulkDesignationAttendance}>
@@ -3814,37 +3806,26 @@ style={{
         {isHolidayDate(selectedTimesheetDate) && <p style={{ margin: '10px 0 0', padding: 10, background: '#fffbeb', borderRadius: 7, color: '#92400e', fontSize: 12 }}>Selected date holiday/Sunday hai: Present save karne par Holiday Present hoga; Absent select karne par Holiday save hoga aur absent count nahi hoga.</p>}
         <button type="submit" disabled={bulkMarkSaving || !userRole.is_admin} style={{ marginTop: 12, padding: '10px 16px', border: 0, borderRadius: 7, background: bulkMarkStatus === 'Present' ? '#15803d' : '#b91c1c', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: bulkMarkSaving || !userRole.is_admin ? .55 : 1 }}>{bulkMarkSaving ? 'Saving Attendance…' : `Mark All Selected Workers ${bulkMarkStatus}`}</button>
         </form>
+    </div></div>}
     </div>
 
-    <div style={{ marginTop: '20px', padding: '18px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '10px' }}>
-      <h3 style={{ margin: '0 0 8px', color: '#166534' }}>🟢 Site Attendance by Worker ID</h3>
-      <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#166534' }}>Date, site aur department select karein. Entered worker IDs selected daily site par Present save honge. Workers Directory ki default site restriction nahi hogi. Jo IDs enter nahi ki jayengi unka purana record bilkul change nahi hoga; is tarah doosri sites ke workers ghalti se Absent nahi honge. Sunday/holiday par entered IDs Holiday Present hongi aur sirf unka OT save hoga.</p>
-      <form onSubmit={handleSaveSiteAttendance}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '12px' }}>
-          <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Attendance Date</label><input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }} /></div>
-          <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Working Site</label><select value={siteAttendanceSite} onChange={e => setSiteAttendanceSite(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{sitesList.map(site => <option key={site} value={site}>{site}</option>)}</select></div>
-          <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Department</label><select value={siteAttendanceDepartment} onChange={e => setSiteAttendanceDepartment(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{visibleDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}</select></div>
-        </div>
-        <label style={{ display: 'block', fontWeight: 'bold', fontSize: '12px', marginTop: 12 }}>{isHolidayDate(selectedTimesheetDate) ? 'Holiday Duty Workers — ID No.' : 'Present Workers — ID No.'}</label>
-        <textarea value={siteAttendanceIds} onChange={e => setSiteAttendanceIds(e.target.value)} rows={3} placeholder={'Example: 101, 102, 108\n109\n115'} style={{ ...fieldStyle, marginTop: 5, resize: 'vertical' }} />
-        {isHolidayDate(selectedTimesheetDate) && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, marginTop: 10, padding: 12, background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8 }}>
-            <div><label style={{ fontWeight: 'bold', fontSize: 12 }}>Normal OT Hours (per entered ID)</label><input type="number" min="0" step="0.25" value={siteHolidayNormalOT} onChange={e => setSiteHolidayNormalOT(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }} /></div>
-            <div><label style={{ fontWeight: 'bold', fontSize: 12 }}>Contract OT Hours (per entered ID)</label><input type="number" min="0" step="0.25" value={siteHolidayContractOT} onChange={e => setSiteHolidayContractOT(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }} /></div>
-          </div>
-        )}
-        <button type="submit" disabled={siteAttendanceSaving} style={{ ...primaryStyle, marginTop: 12, background: '#15803d', opacity: siteAttendanceSaving ? .7 : 1 }}>{siteAttendanceSaving ? 'Saving Attendance…' : (isHolidayDate(selectedTimesheetDate) ? 'Save Holiday Duty by Worker ID' : 'Save Present Workers by ID')}</button>
-      </form>
-    </div>
-
-    <div style={{ marginTop: '25px', padding: '15px', backgroundColor: '#f1f5f9', borderRadius: '8px', border: '1px dashed #94a3b8' }}>
+<div style={{ marginBottom: 10, border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden', background: '#fff', display: bulkOpenSection === 'ocrScanner' ? 'block' : 'none' }}>
+      <button type="button" onClick={() => setBulkOpenSection(bulkOpenSection === 'ocrScanner' ? '' : 'ocrScanner')} style={{ width: '100%', display: 'none', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px', border: 0, background: bulkOpenSection === 'ocrScanner' ? '#eaf2ff' : '#f8fafc', color: '#12345a', fontWeight: 800, fontSize: 14, textAlign: 'left', cursor: 'pointer' }}>
+        <span>📸 OCR Scanner</span><span style={{ fontSize: 18, transform: bulkOpenSection === 'ocrScanner' ? 'rotate(180deg)' : 'none' }}>⌄</span>
+      </button>
+      {bulkOpenSection === 'ocrScanner' && <div style={{ padding: 14, borderTop: '1px solid #e2e8f0' }}><div style={{ marginTop: '25px', padding: '15px', backgroundColor: '#f1f5f9', borderRadius: '8px', border: '1px dashed #94a3b8' }}>
       <h4 style={{ margin: '0 0 8px 0' }}>📸 OCR Scanner (For Date: {selectedTimesheetDate})</h4>
       <input type="file" accept="image/*" onChange={handleScanPaperSheet} disabled={scanning} />
       {scanning && <p style={{ color: '#2563eb', fontWeight: 'bold' }}>{scanStatus}</p>}
       {!scanning && scanStatus && <p style={{ color: '#16a34a', fontWeight: 'bold' }}>{scanStatus}</p>}
+    </div></div>}
     </div>
-    
-{/* QUICK ATTENDANCE BOX */}
+
+<div style={{ marginBottom: 10, border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden', background: '#fff', display: bulkOpenSection === 'quickAttendance' ? 'block' : 'none' }}>
+      <button type="button" onClick={() => setBulkOpenSection(bulkOpenSection === 'quickAttendance' ? '' : 'quickAttendance')} style={{ width: '100%', display: 'none', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px', border: 0, background: bulkOpenSection === 'quickAttendance' ? '#eaf2ff' : '#f8fafc', color: '#12345a', fontWeight: 800, fontSize: 14, textAlign: 'left', cursor: 'pointer' }}>
+        <span>⚡ Quick Bulk Attendance</span><span style={{ fontSize: 18, transform: bulkOpenSection === 'quickAttendance' ? 'rotate(180deg)' : 'none' }}>⌄</span>
+      </button>
+      {bulkOpenSection === 'quickAttendance' && <div style={{ padding: 14, borderTop: '1px solid #e2e8f0' }}>{/* QUICK ATTENDANCE BOX */}
 <div style={{
   marginTop: '20px',
   padding: '18px',
@@ -3955,9 +3936,130 @@ style={{
       Date: {selectedTimesheetDate} | Status: Present
     </p>
   </form>
+</div></div>}
+    </div>
+
+<div style={{ marginBottom: 10, border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden', background: '#fff', display: bulkOpenSection === 'contractOT' ? 'block' : 'none' }}>
+      <button type="button" onClick={() => setBulkOpenSection(bulkOpenSection === 'contractOT' ? '' : 'contractOT')} style={{ width: '100%', display: 'none', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px', border: 0, background: bulkOpenSection === 'contractOT' ? '#eaf2ff' : '#f8fafc', color: '#12345a', fontWeight: 800, fontSize: 14, textAlign: 'left', cursor: 'pointer' }}>
+        <span>🧾 Bulk Contract OT — Site + Multiple Designations</span><span style={{ fontSize: 18, transform: bulkOpenSection === 'contractOT' ? 'rotate(180deg)' : 'none' }}>⌄</span>
+      </button>
+      {bulkOpenSection === 'contractOT' && <div style={{ padding: 14, borderTop: '1px solid #e2e8f0' }}><form onSubmit={handleBulkContractOnlyOT} style={{ marginBottom: 22, padding: 16, border: '2px solid #93c5fd', borderRadius: 10, background: '#eff6ff' }}>
+      <h3 style={{ margin: '0 0 6px', color: '#1e3a8a' }}>🧾 Bulk Contract OT — Site + Multiple Designations</h3>
+      <p style={{ margin: '0 0 12px', fontSize: 12, color: '#334155' }}>Site ka match Workers Directory ki default site se nahi, us date ki saved attendance site se hoga. Pehle Site Attendance by Worker ID mein worker ko selected site par save karein. Phir sirf usi site ke saved Present / Holiday Present workers ka Contract OT update hoga; status aur Normal OT mehfooz rahenge.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12 }}>
+        <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Attendance / OT Date</label><input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }} /></div>
+        <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Working Site</label><select value={bulkContractOnlySite} onChange={e => setBulkContractOnlySite(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{sitesList.map(site => <option key={site} value={site}>{site}</option>)}</select></div>
+        <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Contract OT Hours (per worker)</label><input type="number" min="0" step="0.25" value={bulkContractOnlyHours} onChange={e => setBulkContractOnlyHours(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }} /></div>
+        <div style={{ gridColumn: '1 / -1' }}><label style={{ display: 'block', fontSize: 12, fontWeight: 800, marginBottom: 7 }}>Select Designation(s) — multiple allowed</label><div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', padding: 10, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 7 }}>{designationsList.map(d => <label key={d} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}><input type="checkbox" checked={bulkContractOnlyDesignations.includes(d)} onChange={e => setBulkContractOnlyDesignations(old => e.target.checked ? [...old, d] : old.filter(x => x !== d))} />{d}</label>)}</div></div>
+      </div>
+      <button type="submit" disabled={bulkContractOnlySaving || !userRole.is_admin} style={{ marginTop: 12, padding: '10px 16px', border: 0, borderRadius: 7, background: '#1d4ed8', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: bulkContractOnlySaving || !userRole.is_admin ? .55 : 1 }}>{bulkContractOnlySaving ? 'Saving Contract OT…' : 'Apply Contract OT to Present Workers'}</button>
+    </form></div>}
+    </div>
+
+<div style={{ marginBottom: 10, border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden', background: '#fff', display: bulkOpenSection === 'bulkOT' ? 'block' : 'none' }}>
+      <button type="button" onClick={() => setBulkOpenSection(bulkOpenSection === 'bulkOT' ? '' : 'bulkOT')} style={{ width: '100%', display: 'none', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px', border: 0, background: bulkOpenSection === 'bulkOT' ? '#eaf2ff' : '#f8fafc', color: '#12345a', fontWeight: 800, fontSize: 14, textAlign: 'left', cursor: 'pointer' }}>
+        <span>⏱️ Bulk Overtime Only — Department / Designation</span><span style={{ fontSize: 18, transform: bulkOpenSection === 'bulkOT' ? 'rotate(180deg)' : 'none' }}>⌄</span>
+      </button>
+      {bulkOpenSection === 'bulkOT' && <div style={{ padding: 14, borderTop: '1px solid #e2e8f0' }}><h3 style={{ margin: '0 0 10px 0' }}>⚡ Bulk Overtime Only — Department / Designation</h3>
+    <p style={{ margin: '0 0 12px', fontSize: 12, color: '#475569' }}>Yeh option bhi selected date ki attendance mein saved daily site aur Present / Holiday Present status ko check karta hai. Workers Directory ki default site ko daily site nahi samjha jayega.</p>
+
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
+      <div>
+        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Select Date</label>
+        <input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+      </div>
+
+      <div>
+        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Department</label>
+        <select value={userRole.is_admin ? bulkDepartment : userRole.assigned_department} onChange={e => setBulkDepartment(e.target.value)} disabled={!userRole.is_admin} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+          {userRole.is_admin && <option value="All">All Departments</option>}
+          {visibleDepartments.map((d, idx) => <option key={idx} value={d}>{d}</option>)}
+        </select>
+      </div>
+
+      <div>
+        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Designation (Steel, Carpenter etc)</label>      
+<select
+  value={bulkDesignation}
+  onChange={e => setBulkDesignation(e.target.value)}
+  style={{
+    width: '100%',
+    padding: '8px',
+    borderRadius: '6px',
+    border: '1px solid #cbd5e1'
+  }}
+>
+  <option value="All">All Designations</option>
+  {editingWorkerId && designation && !designationsList.some(d => String(d).trim().toLowerCase() === String(designation).trim().toLowerCase()) && (
+    <option value={designation}>{designation} (existing worker record)</option>
+  )}
+  {designationsList.map((d, idx) => (
+    <option key={idx} value={d}>{d}</option>
+  ))}
+</select>
+      </div>
+
+      <div>
+        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Working Site</label>
+        <select value={bulkSite} onChange={e => setBulkSite(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+          {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
+        </select>
+      </div>
+
+      <div>
+        <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Overtime Hours</label>
+        <input type="number" value={bulkOT} onChange={e => setBulkOT(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+      </div>
+      
+<div>
+  <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Contract OT Hours</label>
+  <input
+    type="number"
+    min="0"
+    value={bulkContractOT}
+    onChange={e => setBulkContractOT(e.target.value)}
+    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+  />
 </div>
 
-    {/* Individual Worker Attendance List */}
+
+      <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+        <button onClick={handleBulkAttendance} style={{ width: '100%', padding: '9px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Apply OT to Selected Workers</button>
+      </div>
+    </div></div>}
+    </div>
+
+<div style={{ marginBottom: 10, border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden', background: '#fff', display: bulkOpenSection === 'siteAttendance' ? 'block' : 'none' }}>
+      <button type="button" onClick={() => setBulkOpenSection(bulkOpenSection === 'siteAttendance' ? '' : 'siteAttendance')} style={{ width: '100%', display: 'none', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px', border: 0, background: bulkOpenSection === 'siteAttendance' ? '#eaf2ff' : '#f8fafc', color: '#12345a', fontWeight: 800, fontSize: 14, textAlign: 'left', cursor: 'pointer' }}>
+        <span>🟢 Site Attendance by Worker ID</span><span style={{ fontSize: 18, transform: bulkOpenSection === 'siteAttendance' ? 'rotate(180deg)' : 'none' }}>⌄</span>
+      </button>
+      {bulkOpenSection === 'siteAttendance' && <div style={{ padding: 14, borderTop: '1px solid #e2e8f0' }}><div style={{ marginTop: '20px', padding: '18px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '10px' }}>
+      <h3 style={{ margin: '0 0 8px', color: '#166534' }}>🟢 Site Attendance by Worker ID</h3>
+      <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#166534' }}>Date, site aur department select karein. Entered worker IDs selected daily site par Present save honge. Workers Directory ki default site restriction nahi hogi. Jo IDs enter nahi ki jayengi unka purana record bilkul change nahi hoga; is tarah doosri sites ke workers ghalti se Absent nahi honge. Sunday/holiday par entered IDs Holiday Present hongi aur sirf unka OT save hoga.</p>
+      <form onSubmit={handleSaveSiteAttendance}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '12px' }}>
+          <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Attendance Date</label><input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }} /></div>
+          <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Working Site</label><select value={siteAttendanceSite} onChange={e => setSiteAttendanceSite(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{sitesList.map(site => <option key={site} value={site}>{site}</option>)}</select></div>
+          <div><label style={{ fontWeight: 'bold', fontSize: '12px' }}>Department</label><select value={siteAttendanceDepartment} onChange={e => setSiteAttendanceDepartment(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}>{visibleDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}</select></div>
+        </div>
+        <label style={{ display: 'block', fontWeight: 'bold', fontSize: '12px', marginTop: 12 }}>{isHolidayDate(selectedTimesheetDate) ? 'Holiday Duty Workers — ID No.' : 'Present Workers — ID No.'}</label>
+        <textarea value={siteAttendanceIds} onChange={e => setSiteAttendanceIds(e.target.value)} rows={3} placeholder={'Example: 101, 102, 108\n109\n115'} style={{ ...fieldStyle, marginTop: 5, resize: 'vertical' }} />
+        {isHolidayDate(selectedTimesheetDate) && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, marginTop: 10, padding: 12, background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8 }}>
+            <div><label style={{ fontWeight: 'bold', fontSize: 12 }}>Normal OT Hours (per entered ID)</label><input type="number" min="0" step="0.25" value={siteHolidayNormalOT} onChange={e => setSiteHolidayNormalOT(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }} /></div>
+            <div><label style={{ fontWeight: 'bold', fontSize: 12 }}>Contract OT Hours (per entered ID)</label><input type="number" min="0" step="0.25" value={siteHolidayContractOT} onChange={e => setSiteHolidayContractOT(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }} /></div>
+          </div>
+        )}
+        <button type="submit" disabled={siteAttendanceSaving} style={{ ...primaryStyle, marginTop: 12, background: '#15803d', opacity: siteAttendanceSaving ? .7 : 1 }}>{siteAttendanceSaving ? 'Saving Attendance…' : (isHolidayDate(selectedTimesheetDate) ? 'Save Holiday Duty by Worker ID' : 'Save Present Workers by ID')}</button>
+      </form>
+    </div></div>}
+    </div>
+
+<div style={{ marginBottom: 10, border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden', background: '#fff', display: bulkOpenSection === 'individualAttendance' ? 'block' : 'none' }}>
+      <button type="button" onClick={() => setBulkOpenSection(bulkOpenSection === 'individualAttendance' ? '' : 'individualAttendance')} style={{ width: '100%', display: 'none', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px', border: 0, background: bulkOpenSection === 'individualAttendance' ? '#eaf2ff' : '#f8fafc', color: '#12345a', fontWeight: 800, fontSize: 14, textAlign: 'left', cursor: 'pointer' }}>
+        <span>👥 Individual Attendance List</span><span style={{ fontSize: 18, transform: bulkOpenSection === 'individualAttendance' ? 'rotate(180deg)' : 'none' }}>⌄</span>
+      </button>
+      {bulkOpenSection === 'individualAttendance' && <div style={{ padding: 14, borderTop: '1px solid #e2e8f0' }}>{/* Individual Worker Attendance List */}
     <div style={{ marginTop: '30px', backgroundColor: '#fff', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
       <h4 style={{ margin: '0 0 15px 0', color: '#0f172a' }}>
         👥 Individual Attendance ({bulkDepartment} - {selectedTimesheetDate})
@@ -4120,6 +4222,7 @@ await handleSingleAttendanceChange(
           </tbody>
         </table>
       </div>
+    </div></div>}
     </div>
   </div>
 )}
