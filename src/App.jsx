@@ -85,7 +85,6 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [remarks, setRemarks] = useState('');
   const [billFile, setBillFile] = useState(null);
   const [accessEmail, setAccessEmail] = useState('');
-  const [accessPassword, setAccessPassword] = useState('');
   const [accessBusinessId, setAccessBusinessId] = useState('');
   const [accessFlags, setAccessFlags] = useState({can_view:true,can_view_daily:true,can_view_vehicles:true,can_view_workers:true,can_view_monthly:true,can_add:false,can_edit:false,can_delete:false,can_manage_vehicles:false,can_manage_workers:false,can_manage_access:false});
   const [currency, setCurrency] = useState('AED');
@@ -195,35 +194,14 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   }
   async function saveAccess(e) {
     e.preventDefault();
-    if(!admin) return alert('Sirf Admin staff login aur permissions bana sakta hai.');
+    if(!admin) return alert('Sirf Admin staff permissions bana sakta hai.');
     const email=accessEmail.trim().toLowerCase();
-    const newPassword=accessPassword;
-    if(!email||!accessBusinessId) return alert('Email aur business select karein.');
-    if(newPassword.trim().length < 6) return alert('Staff ka password kam az kam 6 characters ka hona chahiye.');
-
-    // Create the email/password login through Supabase Auth; never save passwords in a table.
-    const {data:oldAuthData}=await supabase.auth.getSession();
-    const oldAuthSession=oldAuthData?.session||null;
-    let accountCreated=false;
-    const {data:signupData,error:signupError}=await supabase.auth.signUp({email,password:newPassword});
-    if(signupError) {
-      const msg=String(signupError.message||'');
-      if(/already registered|already exists|user already/i.test(msg)) {
-        const proceed=window.confirm('Is email ka Supabase login pehle se mojood hai. Is password se purana password change nahi hoga. Kya sirf permissions save karni hain?');
-        if(!proceed) return;
-      } else {
-        return alert('Staff login create nahi hua: '+msg+'\nSupabase Authentication mein email sign-ups enabled honay chahiye.');
-      }
-    } else {
-      accountCreated=true;
-    }
-    // Restore the current admin Auth session if one existed; otherwise remove the temporary signup session.
-    if(oldAuthSession?.access_token && oldAuthSession?.refresh_token) {
-      await supabase.auth.setSession({access_token:oldAuthSession.access_token,refresh_token:oldAuthSession.refresh_token});
-    } else if(signupData?.session) {
-      await supabase.auth.signOut();
-    }
-
+    if(!email||!accessBusinessId) return alert('HR login email aur business select karein.');
+    // Business access is linked to the existing NDA-PK HR login. No second password
+    // is created or stored here; the staff member keeps the same HR ID/password.
+    const { data: hrAccounts, error: hrLookupError } = await supabase.from('user_permissions').select('user_email').ilike('user_email', email);
+    if (hrLookupError) return alert('HR login verify nahi ho saka: ' + hrLookupError.message);
+    if (!hrAccounts?.length) return alert('Pehle HR Permissions mein is staff ka login ID/password create karein. Business access usi login ke saath link hoga.');
     const payload={user_email:email,business_id:Number(accessBusinessId),...accessFlags,active:true,updated_by:session?.user?.email||''};
     const {data:matchingAccess,error:lookupError}=await supabase.from('business_access').select('id').eq('user_email',email).eq('business_id',Number(accessBusinessId));
     if(lookupError) return alert('Staff permission check nahi hui: '+lookupError.message);
@@ -235,11 +213,12 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
       const {error}=await supabase.from('business_access').insert([payload]);
       saveError=error;
     }
-    if(saveError) return alert('Login '+(accountCreated?'create ho gaya, lekin ':'')+'permission save nahi hui: '+saveError.message+'\nSupabase Business policies / Admin login check karein.');
-    setAccessEmail('');setAccessPassword('');
+    if(saveError) return alert('Business permission save nahi hui: '+saveError.message+'\nSupabase Business policies / Admin login check karein.');
+    setAccessEmail('');
     await loadBusinesses(businessId);
-    alert((accountCreated?'Staff email/password account create ho gaya. ':'')+'Business permissions save ho gayi.'+(signupData?.user&&!signupData?.session?' Supabase email confirmation enabled hai; staff ko email confirm karni hogi.':''));
+    alert('Business permissions save ho gayi. Staff ab apne existing HR login ID/password se Business open kar sakta hai.');
   }
+
   const vehicleFilter = row => !activeVehicleId || String(row.vehicle_id || '') === String(activeVehicleId);
   const selectedEntries=entries.filter(r=>r.entry_date===entryDate && vehicleFilter(r));
   const monthEntries=entries.filter(r=>String(r.entry_date||'').slice(0,7)===month && vehicleFilter(r));
@@ -313,7 +292,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
         <section id="business-driver-monthly-print" style={{...card,overflowX:'auto',marginBottom:16}}><div className="business-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><strong>NDA.PK BUSINESS SYSTEM</strong><div>Driver Monthly Sheet · {month}</div></div></div><h3 style={{marginTop:0}}>NDA.PK — Driver Monthly Sheet ({month})</h3><p style={{fontSize:12,color:'#64748b'}}>Driver ki salary / profit share ka alag hisaab. Percentage net business profit (income minus daily expenses) par calculate hota hai.</p><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Driver / Staff','Payment Method','Monthly Salary','Profit %','Earned / Payable'].map(h=><th key={h} style={{padding:9,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead><tbody>{profitShare.map(p=><tr key={p.id}>{[p.person_name,p.pay_type==='profit_percent'?'Net Profit Share':'Fixed Monthly Salary',money(p.monthly_salary),p.pay_type==='profit_percent'?`${p.profit_percent||0}%`:'—',money(p.share)].map((v,i)=><td key={i} style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{v}</td>)}</tr>)}{!profitShare.length&&<tr><td colSpan="5" style={{padding:12}}>No driver added. Add driver in Vehicle / Driver section.</td></tr>}<tr><td colSpan="4" style={{padding:9,fontWeight:900,textAlign:'right'}}>Total Driver Salary / Share</td><td style={{padding:9,fontWeight:900}}>{money(totalDriverPay)}</td></tr></tbody></table><h4 style={{marginBottom:8}}>Driver Daily Activity Details</h4><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Date','Driver','Category','Type','Amount','Details'].map(h=><th key={h} style={{padding:8,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead><tbody>{monthEntries.filter(r=>r.driver_id).map(r=><tr key={`driver-${r.id}`}><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{r.entry_date}</td><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{labelForPerson(r.driver_id)}</td><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{r.category}</td><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{r.entry_kind}</td><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{money(r.amount)}</td><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{r.description||r.remarks||'—'}</td></tr>)}{!monthEntries.some(r=>r.driver_id)&&<tr><td colSpan="6" style={{padding:10}}>No transactions linked to a driver this month.</td></tr>}</tbody></table></section>
         <section id="business-owner-monthly-print" style={{...card,overflowX:'auto',marginBottom:16}}><div className="business-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><strong>NDA.PK BUSINESS SYSTEM</strong><div>Owner Monthly Sheet · {month}</div></div></div><h3 style={{marginTop:0}}>NDA.PK — Owner Monthly Sheet ({month})</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:14}}>{[['Cash Income',mCashIncome],['Credit Income',mCreditIncome],['All Expenses',mExpense],['Profit Before Driver',mNet],['Driver Share / Salary',totalDriverPay],['Owner Final Profit',ownerMonthlyProfit]].map(([l,n])=><div key={l} style={{padding:10,background:'#f8fafc',borderRadius:9}}><div style={{fontSize:11,color:'#64748b'}}>{l}</div><strong>{money(n)}</strong></div>)}</div><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Date','Vehicle','Activity / Expense Details','Income','Expense','Net','Why Minus?'].map(h=><th key={h} style={{padding:9,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead><tbody>{monthEntries.map(r=>{const isExpense=r.entry_kind==='expense';return <tr key={r.id}><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{r.entry_date}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{labelForVehicle(r.vehicle_id)}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{r.category}: {r.description||r.remarks||'Details not entered'} {r.bill_url?<a href={r.bill_url} target="_blank" rel="noreferrer">Bill</a>:''}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{!isExpense?money(r.amount):'—'}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{isExpense?money(r.amount):'—'}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9',color:isExpense?'#b91c1c':'#047857'}}>{isExpense?`-${money(r.amount)}`:money(r.amount)}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{isExpense?`Minus: ${r.description||r.category||'Expense recorded'}`:'—'}</td></tr>})}{!monthEntries.length&&<tr><td colSpan="7" style={{padding:12}}>No transaction details for this month.</td></tr>}</tbody></table><p style={{fontSize:12,color:'#64748b',marginTop:12}}>Credit income is included in earned income but separately shown as receivable; it is not cash received yet. Owner final profit = total income − recorded expenses − driver salary / profit share.</p></section>
       </>}
-      {view==='access'&&admin&&<section style={card}><h3 style={{marginTop:0}}>Business Staff Access</h3><p style={{fontSize:13,color:'#64748b'}}>Sirf Admin yahan staff ka email/password login banaye aur har section ki permission select kare. Staff khud Admin ya permissions create/change nahi kar sakta.</p><form onSubmit={saveAccess} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:10,alignItems:'center'}}><input style={inputStyle} type="email" value={accessEmail} onChange={e=>setAccessEmail(e.target.value)} placeholder="Staff email / login ID" autoComplete="username" required/><input style={inputStyle} type="password" value={accessPassword} onChange={e=>setAccessPassword(e.target.value)} placeholder="Create password (minimum 6 characters)" autoComplete="new-password" minLength={6} required/><select style={inputStyle} value={accessBusinessId} onChange={e=>setAccessBusinessId(e.target.value)} required><option value="">Choose business</option>{businesses.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select>{Object.entries({can_view:'Can access this business',can_view_daily:'Can view Daily Roznamcha',can_add:'Can add daily entries',can_edit:'Can edit entries',can_delete:'Can delete entries',can_view_vehicles:'Can view Vehicle Files',can_manage_vehicles:'Can manage vehicle files',can_view_workers:'Can view Workers & Salary',can_manage_workers:'Can manage workers / salaries',can_view_monthly:'Can view Monthly Sheet'}).map(([key,label])=><label key={key} style={{display:'flex',gap:8,alignItems:'center',fontSize:13}}><input type="checkbox" checked={!!accessFlags[key]} onChange={e=>setAccessFlags(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}<button style={btn}>Create Login & Save Permissions</button></form><div style={{overflowX:'auto',marginTop:18}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Email','Business','Permissions','Status'].map(h=><th key={h} style={{padding:9,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead><tbody>{accessRows.map(r=><tr key={r.id}><td style={{padding:9}}>{r.user_email}</td><td style={{padding:9}}>{r.business_profiles?.name||businesses.find(b=>String(b.id)===String(r.business_id))?.name||`Business #${r.business_id}`}</td><td style={{padding:9}}>{['can_view','can_view_daily','can_add','can_edit','can_delete','can_view_vehicles','can_manage_vehicles','can_view_workers','can_manage_workers','can_view_monthly','can_manage_access'].filter(k=>r[k]).join(', ')||'None'}</td><td style={{padding:9}}>{r.active?'Active':'Disabled'}</td></tr>)}{!accessRows.length&&<tr><td colSpan="4" style={{padding:12}}>No staff permissions yet.</td></tr>}</tbody></table></div></section>}
+      {view==='access'&&admin&&<section style={card}><h3 style={{marginTop:0}}>Business Staff Access</h3><p style={{fontSize:13,color:'#64748b'}}>Sirf Admin yahan pehle se mojood HR login ko Business access deta hai. Staff wahi HR Login ID aur Password use karega; koi doosra password nahi banega.</p><form onSubmit={saveAccess} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:10,alignItems:'center'}}><input style={inputStyle} type="email" value={accessEmail} onChange={e=>setAccessEmail(e.target.value)} placeholder="Staff email / login ID" autoComplete="username" required/><select style={inputStyle} value={accessBusinessId} onChange={e=>setAccessBusinessId(e.target.value)} required><option value="">Choose business</option>{businesses.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select>{Object.entries({can_view:'Can access this business',can_view_daily:'Can view Daily Roznamcha',can_add:'Can add daily entries',can_edit:'Can edit entries',can_delete:'Can delete entries',can_view_vehicles:'Can view Vehicle Files',can_manage_vehicles:'Can manage vehicle files',can_view_workers:'Can view Workers & Salary',can_manage_workers:'Can manage workers / salaries',can_view_monthly:'Can view Monthly Sheet'}).map(([key,label])=><label key={key} style={{display:'flex',gap:8,alignItems:'center',fontSize:13}}><input type="checkbox" checked={!!accessFlags[key]} onChange={e=>setAccessFlags(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}<button style={btn}>Save Business Permissions</button></form><div style={{overflowX:'auto',marginTop:18}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Email','Business','Permissions','Status'].map(h=><th key={h} style={{padding:9,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead><tbody>{accessRows.map(r=><tr key={r.id}><td style={{padding:9}}>{r.user_email}</td><td style={{padding:9}}>{r.business_profiles?.name||businesses.find(b=>String(b.id)===String(r.business_id))?.name||`Business #${r.business_id}`}</td><td style={{padding:9}}>{['can_view','can_view_daily','can_add','can_edit','can_delete','can_view_vehicles','can_manage_vehicles','can_view_workers','can_manage_workers','can_view_monthly','can_manage_access'].filter(k=>r[k]).join(', ')||'None'}</td><td style={{padding:9}}>{r.active?'Active':'Disabled'}</td></tr>)}{!accessRows.length&&<tr><td colSpan="4" style={{padding:12}}>No staff permissions yet.</td></tr>}</tbody></table></div></section>}
       </div>
       </>}
       {loading&&<div style={{position:'fixed',bottom:14,right:14,background:'#0f172a',color:'#fff',padding:'8px 12px',borderRadius:8}}>Loading…</div>}
@@ -372,7 +351,6 @@ export default function App() {
   const [workerDocToken, setWorkerDocToken] = useState(() => { try { return sessionStorage.getItem('nda_worker_docs_token') || ''; } catch { return ''; } });
   const [authLoading, setAuthLoading] = useState(false);
   // Admin starts in safe read-only mode; editing is enabled explicitly from the header.
-  const [adminEditMode, setAdminEditMode] = useState(false);
  // Monthly Timesheet Modal & Date Selection States
   const [showMonthlyTimesheetModal, setShowMonthlyTimesheetModal] = useState(false);
   const [payrollStartDate, setPayrollStartDate] = useState(() => getInitialPayrollRange().startDate);
@@ -453,13 +431,8 @@ export default function App() {
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const [notificationLoadError, setNotificationLoadError] = useState('');
   const isHolidayDate = dateStr => Boolean(dateStr && (new Date(`${String(dateStr).slice(0, 10)}T12:00:00`).getDay() === 0 || holidayDates.some(h => String(h.holiday_date || '').slice(0, 10) === String(dateStr).slice(0, 10))));
-  function requireHrEditMode(actionLabel = 'change') {
-    if (userRole.is_admin && !adminEditMode) {
-      alert(`HR system abhi View Mode mein hai. ${actionLabel} karne ke liye upar Admin Edit Mode ON karein.`);
-      return false;
-    }
-    return true;
-  }
+  // Admin Edit Mode has been removed. Existing role-based permission checks remain active.
+  function requireHrEditMode(_actionLabel = 'change') { return true; }
 
 
   // Data States
@@ -551,7 +524,6 @@ const [newDesignation, setNewDesignation] = useState('');
   const [bulkContractOnlyHours, setBulkContractOnlyHours] = useState('10');
   const [bulkContractOnlySite, setBulkContractOnlySite] = useState('Sharjah Mamzar');
   const [bulkContractOnlySaving, setBulkContractOnlySaving] = useState(false);
-  const [bulkWorkDetails, setBulkWorkDetails] = useState('');
   
   // Quick Attendance States
   const [quickWorkerId, setQuickWorkerId] = useState('');
@@ -741,80 +713,62 @@ const [newDesignation, setNewDesignation] = useState('');
     await fetchBusinessData();
   }
 
-  async function handleSaveBulkWorkDetails(e, silent = false) {
+  async function handleSaveDailyWorkDetails(e) {
     e?.preventDefault?.();
-    if (!requireHrEditMode('Daily Work Details save')) return;
-    if (!userRole.is_admin && !userRole.can_use_bulk && !userRole.can_edit_timesheet) {
-      return alert('Aapko Daily Work Details save karne ki permission nahi hai.');
-    }
+    if (!userRole.is_admin && !userRole.can_use_bulk && !userRole.can_edit_timesheet) return alert('Aapko Daily Work Details save karne ki permission nahi hai.');
     const workDate = selectedTimesheetDate;
-    const workSite = !userRole.is_admin && userRole.assigned_site && userRole.assigned_site !== 'All' ? userRole.assigned_site : bulkSite;
-    const workDepartment = !userRole.is_admin && userRole.assigned_department && userRole.assigned_department !== 'All' ? userRole.assigned_department : bulkDepartment;
-    const workDetails = bulkWorkDetails.trim();
+    const workSite = !userRole.is_admin && userRole.assigned_site && userRole.assigned_site !== 'All' ? userRole.assigned_site : dailyWorkDetailSite;
+    const workDepartment = !userRole.is_admin && userRole.assigned_department && userRole.assigned_department !== 'All' ? userRole.assigned_department : dailyWorkDetailDepartment;
+    const workDetails = dailyWorkDetailDraft.trim();
     if (!workDate || !workSite || !workDepartment || workDepartment === 'All') return alert('Date, working site aur ek specific department select karein.');
-    if (!workDetails) { if (!silent) alert('Daily work details likhein.'); return false; }
+    if (!workDetails) return alert('Daily work details likhein.');
     setDailyWorkDetailsSaving(true);
     try {
-      const { data: existingRows, error: findError } = await supabase
-        .from('daily_work_details')
-        .select('work_date,work_site,work_department')
-        .eq('work_date', workDate)
-        .eq('work_site', workSite)
-        .eq('work_department', workDepartment);
+      const { data: existingRows, error: findError } = await supabase.from('daily_work_details').select('work_date,work_site,work_department').eq('work_date', workDate).eq('work_site', workSite).eq('work_department', workDepartment);
       if (findError) throw findError;
       if ((existingRows || []).length) {
-        const { error: updateError } = await supabase
-          .from('daily_work_details')
-          .update({ work_details: workDetails })
-          .eq('work_date', workDate)
-          .eq('work_site', workSite)
-          .eq('work_department', workDepartment);
-        if (updateError) throw updateError;
+        const { error } = await supabase.from('daily_work_details').update({ work_details: workDetails }).eq('work_date', workDate).eq('work_site', workSite).eq('work_department', workDepartment);
+        if (error) throw error;
       } else {
-        // Avoid ON CONFLICT here: installations may have legacy constraint names.
-        // If two saves race, recover a unique violation by updating the matching row.
-        const { error: insertError } = await supabase
-          .from('daily_work_details')
-          .insert([{ work_date: workDate, work_site: workSite, work_department: workDepartment, work_details: workDetails }]);
-        if (insertError) {
-          if (insertError.code === '23505') {
-            const { error: retryUpdateError } = await supabase
-              .from('daily_work_details')
-              .update({ work_details: workDetails })
-              .eq('work_date', workDate)
-              .eq('work_site', workSite)
-              .eq('work_department', workDepartment);
-            if (retryUpdateError) throw retryUpdateError;
-          } else {
-            throw insertError;
-          }
-        }
+        const { error } = await supabase.from('daily_work_details').insert([{ work_date: workDate, work_site: workSite, work_department: workDepartment, work_details: workDetails }]);
+        if (error && error.code === '23505') {
+          const retry = await supabase.from('daily_work_details').update({ work_details: workDetails }).eq('work_date', workDate).eq('work_site', workSite).eq('work_department', workDepartment);
+          if (retry.error) throw retry.error;
+        } else if (error) throw error;
       }
-      const currentSiteMatches = dailyTimesheetSite === 'All Workers' || dailyTimesheetSite === 'All' || String(dailyTimesheetSite).trim().toLowerCase() === String(workSite).trim().toLowerCase();
-      const currentDepartmentMatches = dailyTimesheetDepartment === 'All' || String(dailyTimesheetDepartment).trim().toLowerCase() === String(workDepartment).trim().toLowerCase();
-      if (currentSiteMatches && currentDepartmentMatches) {
-        if (dailyTimesheetDepartment === 'All') {
-          const line = `${workSite} / ${workDepartment}: ${workDetails}`;
-          setSavedDailyWorkDetails(previous => [...previous.split('\n').filter(item => item && !item.toLowerCase().startsWith(`${workSite} / ${workDepartment}:`.toLowerCase())), line].join('\n'));
-        } else {
-          setSavedDailyWorkDetails(workDetails);
-        }
-      }
-      setBulkWorkDetails('');
-      if (!silent) alert(`Daily Work Details ${workDate} / ${workSite} / ${workDepartment} ke liye save ho gayi hain.`);
-      return true;
+      setDailyWorkDetailDraft('');
+      alert(`Daily Work Details ${workDate} / ${workSite} / ${workDepartment} ke liye save ho gayi hain.`);
+      // Refresh the existing date/site/department view without changing any other records.
+      const { data, error } = await supabase.from('daily_work_details').select('work_date,work_site,work_department,work_details').eq('work_date', workDate);
+      if (!error) setDailyWorkDetailRows(data || []);
     } catch (err) {
-      alert('Daily Work Details save nahi hui: ' + (err?.message || String(err)) + '. Agar work_department column missing ho to corrected SQL setup run karein.');
-      return false;
-    } finally {
-      setDailyWorkDetailsSaving(false);
-    }
+      alert('Daily Work Details save nahi hui: ' + (err?.message || String(err)));
+    } finally { setDailyWorkDetailsSaving(false); }
+  }
+
+  async function editDailyWorkDetail(row) {
+    if (!userRole.is_admin && !userRole.can_use_bulk && !userRole.can_edit_timesheet) return alert('Edit permission nahi hai.');
+    const next = window.prompt('Daily Work Details edit karein:', row.work_details || '');
+    if (next === null) return;
+    if (!next.trim()) return alert('Details khali nahi ho sakti.');
+    const { error } = await supabase.from('daily_work_details').update({ work_details: next.trim() }).eq('work_date', row.work_date).eq('work_site', row.work_site).eq('work_department', row.work_department);
+    if (error) return alert('Details update nahi hui: ' + error.message);
+    setDailyWorkDetailRows(rows => rows.map(x => x.work_date === row.work_date && x.work_site === row.work_site && x.work_department === row.work_department ? {...x, work_details: next.trim()} : x));
+  }
+
+  async function deleteDailyWorkDetail(row) {
+    if (!userRole.is_admin && !userRole.can_use_bulk && !userRole.can_edit_timesheet) return alert('Delete permission nahi hai.');
+    if (!window.confirm(`${row.work_date} / ${row.work_site} / ${row.work_department} ki details delete karni hain?`)) return;
+    const { error } = await supabase.from('daily_work_details').delete().eq('work_date', row.work_date).eq('work_site', row.work_site).eq('work_department', row.work_department);
+    if (error) return alert('Details delete nahi hui: ' + error.message);
+    setDailyWorkDetailRows(rows => rows.filter(x => !(x.work_date === row.work_date && x.work_site === row.work_site && x.work_department === row.work_department)));
   }
 
   useEffect(() => {
     let cancelled = false;
     async function loadDailyWorkDetails() {
       if (!selectedTimesheetDate) {
+        setDailyWorkDetailRows([]);
         setSavedDailyWorkDetails('');
         setDailyWorkDetailsLoadError('');
         return;
@@ -842,6 +796,7 @@ const [newDesignation, setNewDesignation] = useState('');
         setDailyWorkDetailsLoadError(error.message || 'Database read failed');
         return;
       }
+      setDailyWorkDetailRows(data || []);
       const norm = value => String(value || '').trim().toLowerCase();
       const effectiveDepartment = !userRole.is_admin && userRole.assigned_department && userRole.assigned_department !== 'All'
         ? userRole.assigned_department : dailyTimesheetDepartment;
@@ -872,29 +827,6 @@ const [newDesignation, setNewDesignation] = useState('');
     return () => { cancelled = true; };
   }, [selectedTimesheetDate, dailyTimesheetSite, dailyTimesheetDepartment, userRole.is_admin, userRole.assigned_department, userRole.assigned_site]);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadBulkWorkDetails() {
-      if (!selectedTimesheetDate || !bulkSite || !bulkDepartment || bulkDepartment === 'All') { setBulkWorkDetails(''); return; }
-      const { data, error } = await supabase
-        .from('daily_work_details')
-        .select('work_department,work_details')
-        .eq('work_date', selectedTimesheetDate)
-        .eq('work_site', bulkSite)
-        .in('work_department', [bulkDepartment, 'All'])
-        .order('work_department', { ascending: true });
-      if (cancelled) return;
-      if (error) {
-        console.warn('Bulk daily work details load error:', error.message);
-        return;
-      }
-      const exact = (data || []).find(row => String(row.work_department || '').trim().toLowerCase() === String(bulkDepartment).trim().toLowerCase());
-      const legacy = (data || []).find(row => String(row.work_department || '').trim().toLowerCase() === 'all');
-      setBulkWorkDetails(exact?.work_details || legacy?.work_details || '');
-    }
-    loadBulkWorkDetails();
-    return () => { cancelled = true; };
-  }, [selectedTimesheetDate, bulkSite, bulkDepartment]);
 
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -1972,42 +1904,31 @@ async function handleToggleHolidayDate() {
         }
       }
 
-      // Business-only staff must authenticate through Supabase Auth. Legacy HR staff
-      // passwords are deliberately not accepted for Business access.
-      const isMatchedAdmin = !!resolvedAccount && String(resolvedAccount.user_password) === cleanPassword &&
-        (resolvedAccount.is_admin === true || resolvedAccount.is_admin === 'true');
-      // Business-only staff are authenticated through Supabase Auth even when
-      // they do not have an HR user_permissions row. HR staff can still fall
-      // through to the existing HR login if they are not Business users.
-      if (!isMatchedAdmin && (!resolvedAccount || selectedSystem === 'business')) {
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password: cleanPassword });
-        if (!authError && authData?.user?.email) {
-          const { data: accessRows, error: accessError } = await supabase.from('business_access').select('business_id').ilike('user_email', cleanEmail).eq('active', true).eq('can_view', true);
-          if (!accessError && accessRows?.length) {
-            const businessRole = { is_admin: false, business_only: true, can_view_business: true };
-            const businessSession = { user: { email: cleanEmail }, role: businessRole, system_scope: 'business' };
-            setSession(businessSession); setUserRole(businessRole); setSelectedSystem('business');
-            void logActivity('Login', 'Business system login', cleanEmail);
-            return;
-          }
-          await supabase.auth.signOut();
-          if (!resolvedAccount || selectedSystem === 'business') {
-            alert('Is email ko kisi Business ki viewing permission nahi mili. Admin se Business access lein.');
-            return;
-          }
-        } else if (!resolvedAccount || selectedSystem === 'business') {
-          alert('Business login ke liye Admin se mila hua email/password Supabase Authentication mein mojood hona chahiye.');
-          return;
-        }
-      }
-
+      // HR and Business share the same NDA-PK user_permissions login ID/password.
+      // No separate Supabase Auth password or second password prompt is used.
       if (!resolvedAccount || String(resolvedAccount.user_password) !== cleanPassword) {
         alert('Invalid Email or Password!');
         return;
       }
-
-      const isAdminAccount =
-        resolvedAccount.is_admin === true || resolvedAccount.is_admin === 'true';
+      const isAdminAccount = resolvedAccount.is_admin === true || resolvedAccount.is_admin === 'true';
+      if (selectedSystem === 'business') {
+        if (!isAdminAccount) {
+          const { data: accessRows, error: accessError } = await supabase.from('business_access').select('business_id').ilike('user_email', cleanEmail).eq('active', true).eq('can_view', true);
+          if (accessError) { alert('Business permission check nahi ho saki: ' + accessError.message); return; }
+          if (!accessRows?.length) { alert('Aapko Business access nahi diya gaya. Admin se permission lein.'); return; }
+        }
+        const businessRole = isAdminAccount ? { is_admin: true, assigned_department: 'All', assigned_site: 'All' } : {
+          is_admin: false, business_only: true, can_view_business: true,
+          staff_id: resolvedAccount.staff_id || '',
+          assigned_department: resolvedAccount.assigned_department || 'Unassigned',
+          assigned_site: resolvedAccount.assigned_site || 'All'
+        };
+        setSession({ user: { email: cleanEmail }, role: businessRole, system_scope: 'business' });
+        setUserRole(businessRole);
+        setSelectedSystem('business');
+        void logActivity('Login', isAdminAccount ? 'Administrator Business login' : 'Business staff login', cleanEmail);
+        return;
+      }
 
       // Keep the existing HR login (user_permissions). The Edge Function validates
       // the same credentials server-side and issues a short-lived token for private files.
@@ -2103,7 +2024,6 @@ async function handleToggleHolidayDate() {
   }
 
   function handleLogout() {
-    setAdminEditMode(false);
     try {
       supabase.auth.signOut().catch(() => {});
       sessionStorage.removeItem('nda_user_session');
@@ -2525,12 +2445,9 @@ async function handleToggleHolidayDate() {
   });
 
 
-  if (bulkWorkDetails.trim()) {
-    await handleSaveBulkWorkDetails(null, true);
-  }
   void logActivity('Overtime entry', `${selectedTimesheetDate}: ${deptWorkers.length} workers; department ${bulkDepartment}; site ${effectiveBulkSite}; normal OT ${bulkOT}; contract OT ${bulkContractOT}`);
   alert(
-    `Overtime updated for ${selectedTimesheetDate}: ${deptWorkers.length} workers. Existing attendance status was preserved.${bulkWorkDetails.trim() ? ' Daily Work Details bhi save karne ki koshish ki gayi.' : ''}`
+    `Overtime updated for ${selectedTimesheetDate}: ${deptWorkers.length} workers. Existing attendance status was preserved.`
   );
 
   fetchAttendance();
@@ -3151,7 +3068,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
                 <div style={{ fontSize: 40 }}>👷</div><h2 style={{ fontSize: 25, margin: '14px 0 8px' }}>NDA.PK HR SYSTEM</h2><p style={{ color: '#dbeafe', lineHeight: 1.6 }}>Workers, attendance, timesheet, overtime, payroll, annual leave, permissions aur HR reports.</p><span style={{ display: 'inline-block', marginTop: 10, padding: '10px 16px', background: '#fff', color: '#1d4ed8', borderRadius: 10, fontWeight: 800 }}>Open HR System →</span>
               </div>
             </button>
-            <button onClick={async () => { const businessEmail = String(session?.user?.email || email || '').trim().toLowerCase(); const businessPassword = password || window.prompt('Business system secure access ke liye apna password enter karein:'); if (!businessPassword) return; const { data: currentAuth } = await supabase.auth.getSession(); if (currentAuth?.session?.user?.email?.toLowerCase() !== businessEmail) { if (currentAuth?.session) await supabase.auth.signOut(); let { error: authError } = await supabase.auth.signInWithPassword({ email: businessEmail, password: businessPassword }); if (authError && userRole?.is_admin) { const { data: createdAuth, error: createAuthError } = await supabase.auth.signUp({ email: businessEmail, password: businessPassword }); if (createAuthError) { alert('Secure Business login create/sign in nahi hua. Supabase Authentication mein isi email ka account check karein. Details: ' + createAuthError.message); return; } if (!createdAuth?.session) { alert('Secure Business login create ho gaya. Supabase confirmation email confirm karein, phir Business dobara open karein.'); return; } } else if (authError) { alert('Is email ka secure Business login available nahi. Admin se Business access / login banwane ko kahen. Details: ' + authError.message); return; } } setSelectedSystem('business'); setBusinessType('transport'); }} style={{ position: 'relative', overflow: 'hidden', textAlign: 'left', padding: 28, minHeight: 270, borderRadius: 22, border: '1px solid #34d399', color: '#fff', background: 'linear-gradient(145deg,#065f46,#14532d)', boxShadow: '0 18px 50px #0005', cursor: 'pointer', isolation: 'isolate' }}>
+            <button onClick={() => { setSelectedSystem('business'); setBusinessType('transport'); }} style={{ position: 'relative', overflow: 'hidden', textAlign: 'left', padding: 28, minHeight: 270, borderRadius: 22, border: '1px solid #34d399', color: '#fff', background: 'linear-gradient(145deg,#065f46,#14532d)', boxShadow: '0 18px 50px #0005', cursor: 'pointer', isolation: 'isolate' }}>
               <img src="/nda-naveed-logo.png" alt="" aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', opacity: 0.22, padding: 8, boxSizing: 'border-box', pointerEvents: 'none', zIndex: 0 }} />
               <span aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(145deg,rgba(6,95,70,.80),rgba(20,83,45,.86))', zIndex: 0, pointerEvents: 'none' }} />
               <div style={{ position: 'relative', zIndex: 1 }}>
@@ -3216,7 +3133,6 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
           <div style={{display:'flex',alignItems:'center',gap:9,padding:'5px 10px',borderRadius:10,background:'rgba(255,255,255,.13)'}}>
             <img src="/muhammad-naveed-profile.jpg" alt="Muhammad Naveed" style={{width:48,height:48,objectFit:"cover",borderRadius:"50%",border:"2px solid #2563eb",boxShadow:"0 2px 8px rgba(37,99,235,.25)"}}/><div><div style={{fontSize:13,fontWeight:800,color:"#ffffff"}}>Muhammad Naveed</div><div style={{fontSize:10,color:'#dbeafe'}}>Administrator</div></div>
           </div>
-          {userRole.is_admin && selectedSystem === 'hr' && <button type="button" onClick={() => setAdminEditMode(v => !v)} style={{ padding: '9px 12px', background: adminEditMode ? '#b91c1c' : '#facc15', color: adminEditMode ? '#fff' : '#172554', border: '1px solid rgba(255,255,255,.4)', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 900 }}>{adminEditMode ? '✏️ Admin Edit Mode: ON' : '👁️ View Mode · Click to Edit'}</button>}
           {userRole.is_admin && selectedSystem === 'hr' && <div style={{ position: 'relative' }}>
             <button type="button" onClick={() => { setNotificationPanelOpen(v => !v); if (!notificationPanelOpen) void markActivityNotificationsRead(); }} style={{ position: 'relative', padding: '8px 11px', background: notificationPanelOpen ? '#f8fafc' : 'rgba(255,255,255,.14)', color: notificationPanelOpen ? '#0f172a' : '#fff', border: '1px solid rgba(255,255,255,.35)', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 800 }} title="Staff activity notifications">🔔 Notifications {activityNotifications.filter(n => !n.is_read).length > 0 ? `(${activityNotifications.filter(n => !n.is_read).length})` : ''}</button>
             {notificationPanelOpen && <div style={{ position: 'absolute', right: 0, top: '44px', width: 'min(390px, 88vw)', maxHeight: 420, overflowY: 'auto', background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 12px 30px rgba(0,0,0,.25)', zIndex: 10001, padding: 12 }}>
@@ -3775,8 +3691,7 @@ style={{
         <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Contract OT Hours (per worker)</label><input type="number" min="0" step="0.25" value={bulkContractOnlyHours} onChange={e => setBulkContractOnlyHours(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }} /></div>
         <div style={{ gridColumn: '1 / -1' }}><label style={{ display: 'block', fontSize: 12, fontWeight: 800, marginBottom: 7 }}>Select Designation(s) — multiple allowed</label><div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', padding: 10, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 7 }}>{designationsList.map(d => <label key={d} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}><input type="checkbox" checked={bulkContractOnlyDesignations.includes(d)} onChange={e => setBulkContractOnlyDesignations(old => e.target.checked ? [...old, d] : old.filter(x => x !== d))} />{d}</label>)}</div></div>
       </div>
-      <button type="submit" disabled={bulkContractOnlySaving || !userRole.is_admin || !adminEditMode} style={{ marginTop: 12, padding: '10px 16px', border: 0, borderRadius: 7, background: '#1d4ed8', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: bulkContractOnlySaving || !userRole.is_admin || !adminEditMode ? .55 : 1 }}>{bulkContractOnlySaving ? 'Saving Contract OT…' : 'Apply Contract OT to Present Workers'}</button>
-      {userRole.is_admin && !adminEditMode && <span style={{ marginLeft: 10, fontSize: 12, color: '#92400e' }}>Save ke liye Admin Edit Mode ON karein.</span>}
+      <button type="submit" disabled={bulkContractOnlySaving || !userRole.is_admin} style={{ marginTop: 12, padding: '10px 16px', border: 0, borderRadius: 7, background: '#1d4ed8', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: bulkContractOnlySaving || !userRole.is_admin ? .55 : 1 }}>{bulkContractOnlySaving ? 'Saving Contract OT…' : 'Apply Contract OT to Present Workers'}</button>
     </form>
 
     <h3 style={{ margin: '0 0 10px 0' }}>⚡ Bulk Overtime Only — Department / Designation</h3>
@@ -3847,12 +3762,7 @@ style={{
       </div>
     </div>
 
-    <form onSubmit={handleSaveBulkWorkDetails} style={{ marginTop: 18, padding: 18, background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 10 }}>
-      <h3 style={{ margin: '0 0 8px', color: '#1d4ed8' }}>📝 Daily Work Details — Save to Daily Timesheet</h3>
-      <p style={{ margin: '0 0 12px', fontSize: 13, color: '#475569' }}>Selected date, site aur department ki details yahan likhein. Har department ki details alag save hongi aur save hote hi box khali ho jayega.</p>
-      <textarea value={bulkWorkDetails} onChange={e => setBulkWorkDetails(e.target.value)} rows={4} placeholder="Example: Carpenters formwork fixing kar rahe hain; steel fixers reinforcement tying kar rahe hain..." style={{ ...fieldStyle, resize: 'vertical', marginBottom: 10 }} />
-      <button type="submit" disabled={dailyWorkDetailsSaving} style={{ ...primaryStyle, background: '#1d4ed8', opacity: dailyWorkDetailsSaving ? .7 : 1 }}>{dailyWorkDetailsSaving ? 'Saving details…' : 'Save Daily Work Details'}</button>
-    </form>
+
 
     <div style={{ marginTop: '20px', padding: '18px', background: '#f0f9ff', border: '1px solid #7dd3fc', borderRadius: '10px' }}>
       <h3 style={{ margin: '0 0 8px', color: '#075985' }}>👷 Bulk Present / Absent — By Designation</h3>
@@ -3866,9 +3776,8 @@ style={{
           <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Attendance Status</label><select value={bulkMarkStatus} onChange={e => setBulkMarkStatus(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}><option value="Present">Present</option><option value="Absent">Absent</option></select></div>
         </div>
         {isHolidayDate(selectedTimesheetDate) && <p style={{ margin: '10px 0 0', padding: 10, background: '#fffbeb', borderRadius: 7, color: '#92400e', fontSize: 12 }}>Selected date holiday/Sunday hai: Present save karne par Holiday Present hoga; Absent select karne par Holiday save hoga aur absent count nahi hoga.</p>}
-        <button type="submit" disabled={bulkMarkSaving || !userRole.is_admin || !adminEditMode} style={{ marginTop: 12, padding: '10px 16px', border: 0, borderRadius: 7, background: bulkMarkStatus === 'Present' ? '#15803d' : '#b91c1c', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: bulkMarkSaving || !userRole.is_admin || !adminEditMode ? .55 : 1 }}>{bulkMarkSaving ? 'Saving Attendance…' : `Mark All Selected Workers ${bulkMarkStatus}`}</button>
-        {userRole.is_admin && !adminEditMode && <span style={{ marginLeft: 10, fontSize: 12, color: '#92400e' }}>Save ke liye Admin Edit Mode ON karein.</span>}
-      </form>
+        <button type="submit" disabled={bulkMarkSaving || !userRole.is_admin} style={{ marginTop: 12, padding: '10px 16px', border: 0, borderRadius: 7, background: bulkMarkStatus === 'Present' ? '#15803d' : '#b91c1c', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: bulkMarkSaving || !userRole.is_admin ? .55 : 1 }}>{bulkMarkSaving ? 'Saving Attendance…' : `Mark All Selected Workers ${bulkMarkStatus}`}</button>
+        </form>
     </div>
 
     <div style={{ marginTop: '20px', padding: '18px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '10px' }}>
@@ -4744,18 +4653,27 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
               </table>
             </div>
 
-            <div style={{
-              marginTop: '20px',
-              padding: '12px',
-              background: '#f8fafc',
-              border: '1px solid #cbd5e1',
-              borderRadius: '6px'
-            }}>
-              <strong>Daily Work Details / Remarks</strong>
-              <p style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap' }}>
-                {dailyWorkDetailsLoadError ? `Details read nahi ho sakin: ${dailyWorkDetailsLoadError}. Supabase SQL policy fix run karein.` : (savedDailyWorkDetails || 'Is date, site aur department ke liye koi Daily Work Details save nahi hain.')}
-              </p>
-            </div>
+            <section style={{ marginTop: '20px', padding: '16px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px' }}>
+              <h3 style={{ margin: '0 0 10px' }}>📝 Daily Work Details — {selectedTimesheetDate}</h3>
+              <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: 13 }}>Details yahan save hongi aur date, site aur department ke mutabiq purana record bhi yahin milega.</p>
+              {userRole.is_admin && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10, marginBottom: 10 }}>
+                <label>Site<select value={dailyWorkDetailSite} onChange={e=>setDailyWorkDetailSite(e.target.value)} style={{...fieldStyle,marginTop:4}}>{sitesList.map(site=><option key={site} value={site}>{site}</option>)}</select></label>
+                <label>Department<select value={dailyWorkDetailDepartment} onChange={e=>setDailyWorkDetailDepartment(e.target.value)} style={{...fieldStyle,marginTop:4}}>{visibleDepartments.map(dept=><option key={dept} value={dept}>{dept}</option>)}</select></label>
+              </div>}
+              {(userRole.is_admin || userRole.can_use_bulk || userRole.can_edit_timesheet) && <form onSubmit={handleSaveDailyWorkDetails}>
+                <textarea value={dailyWorkDetailDraft} onChange={e=>setDailyWorkDetailDraft(e.target.value)} rows={3} placeholder="Aaj ka work detail yahan likhein..." style={{...fieldStyle,resize:'vertical',marginBottom:9}} />
+                <button type="submit" disabled={dailyWorkDetailsSaving} style={{...primaryStyle,maxWidth:220,background:'#1d4ed8'}}>{dailyWorkDetailsSaving?'Saving...':'Save Work Details'}</button>
+              </form>}
+              {dailyWorkDetailsLoadError && <p style={{color:'#991b1b'}}>Details read nahi ho sakin: {dailyWorkDetailsLoadError}</p>}
+              <div style={{marginTop:14,display:'grid',gap:9}}>
+                {dailyWorkDetailRows.filter(r => (dailyTimesheetSite==='All Workers'||dailyTimesheetSite==='All'||String(r.work_site||'').toLowerCase()===String(dailyTimesheetSite).toLowerCase()) && (dailyTimesheetDepartment==='All'||String(r.work_department||'').toLowerCase()===String(dailyTimesheetDepartment).toLowerCase()) && (userRole.is_admin || ((userRole.assigned_site==='All'||String(r.work_site).toLowerCase()===String(userRole.assigned_site).toLowerCase()) && (userRole.assigned_department==='All'||String(r.work_department).toLowerCase()===String(userRole.assigned_department).toLowerCase())))).map(row=><div key={`${row.work_date}-${row.work_site}-${row.work_department}`} style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:7,padding:11}}>
+                  <div style={{fontSize:12,color:'#64748b',fontWeight:700}}>{row.work_date} · {row.work_site} · {row.work_department}</div>
+                  <p style={{whiteSpace:'pre-wrap',margin:'7px 0'}}>{row.work_details}</p>
+                  {(userRole.is_admin||userRole.can_use_bulk||userRole.can_edit_timesheet) && <div style={{display:'flex',gap:7}}><button type="button" onClick={()=>editDailyWorkDetail(row)} style={{...primaryStyle,width:'auto',padding:'6px 12px',background:'#1d4ed8'}}>Edit</button><button type="button" onClick={()=>deleteDailyWorkDetail(row)} style={{...primaryStyle,width:'auto',padding:'6px 12px',background:'#b91c1c'}}>Delete</button></div>}
+                </div>)}
+                {!dailyWorkDetailRows.length && <p style={{color:'#64748b',margin:0}}>Is date ka koi saved Work Details record nahi.</p>}
+              </div>
+            </section>
 
             <div style={{ marginTop: '15px' }}>
               {userRole.is_admin && <button
