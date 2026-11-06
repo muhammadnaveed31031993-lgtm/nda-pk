@@ -85,6 +85,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [remarks, setRemarks] = useState('');
   const [billFile, setBillFile] = useState(null);
   const [accessEmail, setAccessEmail] = useState('');
+  const [accessPassword, setAccessPassword] = useState('');
   const [accessBusinessId, setAccessBusinessId] = useState('');
   const [accessFlags, setAccessFlags] = useState({can_view:true,can_view_daily:true,can_view_vehicles:true,can_view_workers:true,can_view_monthly:true,can_add:false,can_edit:false,can_delete:false,can_manage_vehicles:false,can_manage_workers:false,can_manage_access:false});
   const [currency, setCurrency] = useState('AED');
@@ -194,14 +195,35 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   }
   async function saveAccess(e) {
     e.preventDefault();
-    if(!admin) return alert('Sirf Admin staff permissions bana sakta hai.');
+    if(!admin) return alert('Sirf Admin staff login aur permissions bana sakta hai.');
     const email=accessEmail.trim().toLowerCase();
-    if(!email||!accessBusinessId) return alert('HR login email aur business select karein.');
-    // Business access is linked to the existing NDA-PK HR login. No second password
-    // is created or stored here; the staff member keeps the same HR ID/password.
-    const { data: hrAccounts, error: hrLookupError } = await supabase.from('user_permissions').select('user_email').ilike('user_email', email);
-    if (hrLookupError) return alert('HR login verify nahi ho saka: ' + hrLookupError.message);
-    if (!hrAccounts?.length) return alert('Pehle HR Permissions mein is staff ka login ID/password create karein. Business access usi login ke saath link hoga.');
+    const newPassword=accessPassword;
+    if(!email||!accessBusinessId) return alert('Email aur business select karein.');
+    if(newPassword.trim().length < 6) return alert('Staff ka password kam az kam 6 characters ka hona chahiye.');
+
+    // Create the email/password login through Supabase Auth; never save passwords in a table.
+    const {data:oldAuthData}=await supabase.auth.getSession();
+    const oldAuthSession=oldAuthData?.session||null;
+    let accountCreated=false;
+    const {data:signupData,error:signupError}=await supabase.auth.signUp({email,password:newPassword});
+    if(signupError) {
+      const msg=String(signupError.message||'');
+      if(/already registered|already exists|user already/i.test(msg)) {
+        const proceed=window.confirm('Is email ka Supabase login pehle se mojood hai. Is password se purana password change nahi hoga. Kya sirf permissions save karni hain?');
+        if(!proceed) return;
+      } else {
+        return alert('Staff login create nahi hua: '+msg+'\nSupabase Authentication mein email sign-ups enabled honay chahiye.');
+      }
+    } else {
+      accountCreated=true;
+    }
+    // Restore the current admin Auth session if one existed; otherwise remove the temporary signup session.
+    if(oldAuthSession?.access_token && oldAuthSession?.refresh_token) {
+      await supabase.auth.setSession({access_token:oldAuthSession.access_token,refresh_token:oldAuthSession.refresh_token});
+    } else if(signupData?.session) {
+      await supabase.auth.signOut();
+    }
+
     const payload={user_email:email,business_id:Number(accessBusinessId),...accessFlags,active:true,updated_by:session?.user?.email||''};
     const {data:matchingAccess,error:lookupError}=await supabase.from('business_access').select('id').eq('user_email',email).eq('business_id',Number(accessBusinessId));
     if(lookupError) return alert('Staff permission check nahi hui: '+lookupError.message);
@@ -213,12 +235,11 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
       const {error}=await supabase.from('business_access').insert([payload]);
       saveError=error;
     }
-    if(saveError) return alert('Business permission save nahi hui: '+saveError.message+'\nSupabase Business policies / Admin login check karein.');
-    setAccessEmail('');
+    if(saveError) return alert('Login '+(accountCreated?'create ho gaya, lekin ':'')+'permission save nahi hui: '+saveError.message+'\nSupabase Business policies / Admin login check karein.');
+    setAccessEmail('');setAccessPassword('');
     await loadBusinesses(businessId);
-    alert('Business permissions save ho gayi. Staff ab apne existing HR login ID/password se Business open kar sakta hai.');
+    alert((accountCreated?'Staff email/password account create ho gaya. ':'')+'Business permissions save ho gayi.'+(signupData?.user&&!signupData?.session?' Supabase email confirmation enabled hai; staff ko email confirm karni hogi.':''));
   }
-
   const vehicleFilter = row => !activeVehicleId || String(row.vehicle_id || '') === String(activeVehicleId);
   const selectedEntries=entries.filter(r=>r.entry_date===entryDate && vehicleFilter(r));
   const monthEntries=entries.filter(r=>String(r.entry_date||'').slice(0,7)===month && vehicleFilter(r));
@@ -292,7 +313,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
         <section id="business-driver-monthly-print" style={{...card,overflowX:'auto',marginBottom:16}}><div className="business-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><strong>NDA.PK BUSINESS SYSTEM</strong><div>Driver Monthly Sheet · {month}</div></div></div><h3 style={{marginTop:0}}>NDA.PK — Driver Monthly Sheet ({month})</h3><p style={{fontSize:12,color:'#64748b'}}>Driver ki salary / profit share ka alag hisaab. Percentage net business profit (income minus daily expenses) par calculate hota hai.</p><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Driver / Staff','Payment Method','Monthly Salary','Profit %','Earned / Payable'].map(h=><th key={h} style={{padding:9,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead><tbody>{profitShare.map(p=><tr key={p.id}>{[p.person_name,p.pay_type==='profit_percent'?'Net Profit Share':'Fixed Monthly Salary',money(p.monthly_salary),p.pay_type==='profit_percent'?`${p.profit_percent||0}%`:'—',money(p.share)].map((v,i)=><td key={i} style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{v}</td>)}</tr>)}{!profitShare.length&&<tr><td colSpan="5" style={{padding:12}}>No driver added. Add driver in Vehicle / Driver section.</td></tr>}<tr><td colSpan="4" style={{padding:9,fontWeight:900,textAlign:'right'}}>Total Driver Salary / Share</td><td style={{padding:9,fontWeight:900}}>{money(totalDriverPay)}</td></tr></tbody></table><h4 style={{marginBottom:8}}>Driver Daily Activity Details</h4><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Date','Driver','Category','Type','Amount','Details'].map(h=><th key={h} style={{padding:8,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead><tbody>{monthEntries.filter(r=>r.driver_id).map(r=><tr key={`driver-${r.id}`}><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{r.entry_date}</td><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{labelForPerson(r.driver_id)}</td><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{r.category}</td><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{r.entry_kind}</td><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{money(r.amount)}</td><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{r.description||r.remarks||'—'}</td></tr>)}{!monthEntries.some(r=>r.driver_id)&&<tr><td colSpan="6" style={{padding:10}}>No transactions linked to a driver this month.</td></tr>}</tbody></table></section>
         <section id="business-owner-monthly-print" style={{...card,overflowX:'auto',marginBottom:16}}><div className="business-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><strong>NDA.PK BUSINESS SYSTEM</strong><div>Owner Monthly Sheet · {month}</div></div></div><h3 style={{marginTop:0}}>NDA.PK — Owner Monthly Sheet ({month})</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:14}}>{[['Cash Income',mCashIncome],['Credit Income',mCreditIncome],['All Expenses',mExpense],['Profit Before Driver',mNet],['Driver Share / Salary',totalDriverPay],['Owner Final Profit',ownerMonthlyProfit]].map(([l,n])=><div key={l} style={{padding:10,background:'#f8fafc',borderRadius:9}}><div style={{fontSize:11,color:'#64748b'}}>{l}</div><strong>{money(n)}</strong></div>)}</div><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Date','Vehicle','Activity / Expense Details','Income','Expense','Net','Why Minus?'].map(h=><th key={h} style={{padding:9,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead><tbody>{monthEntries.map(r=>{const isExpense=r.entry_kind==='expense';return <tr key={r.id}><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{r.entry_date}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{labelForVehicle(r.vehicle_id)}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{r.category}: {r.description||r.remarks||'Details not entered'} {r.bill_url?<a href={r.bill_url} target="_blank" rel="noreferrer">Bill</a>:''}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{!isExpense?money(r.amount):'—'}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{isExpense?money(r.amount):'—'}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9',color:isExpense?'#b91c1c':'#047857'}}>{isExpense?`-${money(r.amount)}`:money(r.amount)}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{isExpense?`Minus: ${r.description||r.category||'Expense recorded'}`:'—'}</td></tr>})}{!monthEntries.length&&<tr><td colSpan="7" style={{padding:12}}>No transaction details for this month.</td></tr>}</tbody></table><p style={{fontSize:12,color:'#64748b',marginTop:12}}>Credit income is included in earned income but separately shown as receivable; it is not cash received yet. Owner final profit = total income − recorded expenses − driver salary / profit share.</p></section>
       </>}
-      {view==='access'&&admin&&<section style={card}><h3 style={{marginTop:0}}>Business Staff Access</h3><p style={{fontSize:13,color:'#64748b'}}>Sirf Admin yahan pehle se mojood HR login ko Business access deta hai. Staff wahi HR Login ID aur Password use karega; koi doosra password nahi banega.</p><form onSubmit={saveAccess} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:10,alignItems:'center'}}><input style={inputStyle} type="email" value={accessEmail} onChange={e=>setAccessEmail(e.target.value)} placeholder="Staff email / login ID" autoComplete="username" required/><select style={inputStyle} value={accessBusinessId} onChange={e=>setAccessBusinessId(e.target.value)} required><option value="">Choose business</option>{businesses.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select>{Object.entries({can_view:'Can access this business',can_view_daily:'Can view Daily Roznamcha',can_add:'Can add daily entries',can_edit:'Can edit entries',can_delete:'Can delete entries',can_view_vehicles:'Can view Vehicle Files',can_manage_vehicles:'Can manage vehicle files',can_view_workers:'Can view Workers & Salary',can_manage_workers:'Can manage workers / salaries',can_view_monthly:'Can view Monthly Sheet'}).map(([key,label])=><label key={key} style={{display:'flex',gap:8,alignItems:'center',fontSize:13}}><input type="checkbox" checked={!!accessFlags[key]} onChange={e=>setAccessFlags(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}<button style={btn}>Save Business Permissions</button></form><div style={{overflowX:'auto',marginTop:18}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Email','Business','Permissions','Status'].map(h=><th key={h} style={{padding:9,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead><tbody>{accessRows.map(r=><tr key={r.id}><td style={{padding:9}}>{r.user_email}</td><td style={{padding:9}}>{r.business_profiles?.name||businesses.find(b=>String(b.id)===String(r.business_id))?.name||`Business #${r.business_id}`}</td><td style={{padding:9}}>{['can_view','can_view_daily','can_add','can_edit','can_delete','can_view_vehicles','can_manage_vehicles','can_view_workers','can_manage_workers','can_view_monthly','can_manage_access'].filter(k=>r[k]).join(', ')||'None'}</td><td style={{padding:9}}>{r.active?'Active':'Disabled'}</td></tr>)}{!accessRows.length&&<tr><td colSpan="4" style={{padding:12}}>No staff permissions yet.</td></tr>}</tbody></table></div></section>}
+      {view==='access'&&admin&&<section style={card}><h3 style={{marginTop:0}}>Business Staff Access</h3><p style={{fontSize:13,color:'#64748b'}}>Sirf Admin yahan staff ka email/password login banaye aur har section ki permission select kare. Staff khud Admin ya permissions create/change nahi kar sakta.</p><form onSubmit={saveAccess} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:10,alignItems:'center'}}><input style={inputStyle} type="email" value={accessEmail} onChange={e=>setAccessEmail(e.target.value)} placeholder="Staff email / login ID" autoComplete="username" required/><input style={inputStyle} type="password" value={accessPassword} onChange={e=>setAccessPassword(e.target.value)} placeholder="Create password (minimum 6 characters)" autoComplete="new-password" minLength={6} required/><select style={inputStyle} value={accessBusinessId} onChange={e=>setAccessBusinessId(e.target.value)} required><option value="">Choose business</option>{businesses.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select>{Object.entries({can_view:'Can access this business',can_view_daily:'Can view Daily Roznamcha',can_add:'Can add daily entries',can_edit:'Can edit entries',can_delete:'Can delete entries',can_view_vehicles:'Can view Vehicle Files',can_manage_vehicles:'Can manage vehicle files',can_view_workers:'Can view Workers & Salary',can_manage_workers:'Can manage workers / salaries',can_view_monthly:'Can view Monthly Sheet'}).map(([key,label])=><label key={key} style={{display:'flex',gap:8,alignItems:'center',fontSize:13}}><input type="checkbox" checked={!!accessFlags[key]} onChange={e=>setAccessFlags(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}<button style={btn}>Create Login & Save Permissions</button></form><div style={{overflowX:'auto',marginTop:18}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Email','Business','Permissions','Status'].map(h=><th key={h} style={{padding:9,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead><tbody>{accessRows.map(r=><tr key={r.id}><td style={{padding:9}}>{r.user_email}</td><td style={{padding:9}}>{r.business_profiles?.name||businesses.find(b=>String(b.id)===String(r.business_id))?.name||`Business #${r.business_id}`}</td><td style={{padding:9}}>{['can_view','can_view_daily','can_add','can_edit','can_delete','can_view_vehicles','can_manage_vehicles','can_view_workers','can_manage_workers','can_view_monthly','can_manage_access'].filter(k=>r[k]).join(', ')||'None'}</td><td style={{padding:9}}>{r.active?'Active':'Disabled'}</td></tr>)}{!accessRows.length&&<tr><td colSpan="4" style={{padding:12}}>No staff permissions yet.</td></tr>}</tbody></table></div></section>}
       </div>
       </>}
       {loading&&<div style={{position:'fixed',bottom:14,right:14,background:'#0f172a',color:'#fff',padding:'8px 12px',borderRadius:8}}>Loading…</div>}
@@ -549,6 +570,10 @@ const [newDesignation, setNewDesignation] = useState('');
   const [attendanceData, setAttendanceData] = useState({});
  const [dailyTimesheetSite, setDailyTimesheetSite] = useState('All Workers');
  const [dailyTimesheetDepartment, setDailyTimesheetDepartment] = useState('All');
+ const [dailyWorkDetailRows, setDailyWorkDetailRows] = useState([]);
+ const [dailyWorkDetailDraft, setDailyWorkDetailDraft] = useState('');
+ const [dailyWorkDetailSite, setDailyWorkDetailSite] = useState('Sharjah Mamzar');
+ const [dailyWorkDetailDepartment, setDailyWorkDetailDepartment] = useState('Mustafa');
  const [payrollDepartment, setPayrollDepartment] = useState('All');
  const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
  const [dailyWorkDetailsLoadError, setDailyWorkDetailsLoadError] = useState('');
@@ -1904,31 +1929,42 @@ async function handleToggleHolidayDate() {
         }
       }
 
-      // HR and Business share the same NDA-PK user_permissions login ID/password.
-      // No separate Supabase Auth password or second password prompt is used.
+      // Business-only staff must authenticate through Supabase Auth. Legacy HR staff
+      // passwords are deliberately not accepted for Business access.
+      const isMatchedAdmin = !!resolvedAccount && String(resolvedAccount.user_password) === cleanPassword &&
+        (resolvedAccount.is_admin === true || resolvedAccount.is_admin === 'true');
+      // Business-only staff are authenticated through Supabase Auth even when
+      // they do not have an HR user_permissions row. HR staff can still fall
+      // through to the existing HR login if they are not Business users.
+      if (!isMatchedAdmin && (!resolvedAccount || selectedSystem === 'business')) {
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password: cleanPassword });
+        if (!authError && authData?.user?.email) {
+          const { data: accessRows, error: accessError } = await supabase.from('business_access').select('business_id').ilike('user_email', cleanEmail).eq('active', true).eq('can_view', true);
+          if (!accessError && accessRows?.length) {
+            const businessRole = { is_admin: false, business_only: true, can_view_business: true };
+            const businessSession = { user: { email: cleanEmail }, role: businessRole, system_scope: 'business' };
+            setSession(businessSession); setUserRole(businessRole); setSelectedSystem('business');
+            void logActivity('Login', 'Business system login', cleanEmail);
+            return;
+          }
+          await supabase.auth.signOut();
+          if (!resolvedAccount || selectedSystem === 'business') {
+            alert('Is email ko kisi Business ki viewing permission nahi mili. Admin se Business access lein.');
+            return;
+          }
+        } else if (!resolvedAccount || selectedSystem === 'business') {
+          alert('Business login ke liye Admin se mila hua email/password Supabase Authentication mein mojood hona chahiye.');
+          return;
+        }
+      }
+
       if (!resolvedAccount || String(resolvedAccount.user_password) !== cleanPassword) {
         alert('Invalid Email or Password!');
         return;
       }
-      const isAdminAccount = resolvedAccount.is_admin === true || resolvedAccount.is_admin === 'true';
-      if (selectedSystem === 'business') {
-        if (!isAdminAccount) {
-          const { data: accessRows, error: accessError } = await supabase.from('business_access').select('business_id').ilike('user_email', cleanEmail).eq('active', true).eq('can_view', true);
-          if (accessError) { alert('Business permission check nahi ho saki: ' + accessError.message); return; }
-          if (!accessRows?.length) { alert('Aapko Business access nahi diya gaya. Admin se permission lein.'); return; }
-        }
-        const businessRole = isAdminAccount ? { is_admin: true, assigned_department: 'All', assigned_site: 'All' } : {
-          is_admin: false, business_only: true, can_view_business: true,
-          staff_id: resolvedAccount.staff_id || '',
-          assigned_department: resolvedAccount.assigned_department || 'Unassigned',
-          assigned_site: resolvedAccount.assigned_site || 'All'
-        };
-        setSession({ user: { email: cleanEmail }, role: businessRole, system_scope: 'business' });
-        setUserRole(businessRole);
-        setSelectedSystem('business');
-        void logActivity('Login', isAdminAccount ? 'Administrator Business login' : 'Business staff login', cleanEmail);
-        return;
-      }
+
+      const isAdminAccount =
+        resolvedAccount.is_admin === true || resolvedAccount.is_admin === 'true';
 
       // Keep the existing HR login (user_permissions). The Edge Function validates
       // the same credentials server-side and issues a short-lived token for private files.
@@ -3068,7 +3104,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
                 <div style={{ fontSize: 40 }}>👷</div><h2 style={{ fontSize: 25, margin: '14px 0 8px' }}>NDA.PK HR SYSTEM</h2><p style={{ color: '#dbeafe', lineHeight: 1.6 }}>Workers, attendance, timesheet, overtime, payroll, annual leave, permissions aur HR reports.</p><span style={{ display: 'inline-block', marginTop: 10, padding: '10px 16px', background: '#fff', color: '#1d4ed8', borderRadius: 10, fontWeight: 800 }}>Open HR System →</span>
               </div>
             </button>
-            <button onClick={() => { setSelectedSystem('business'); setBusinessType('transport'); }} style={{ position: 'relative', overflow: 'hidden', textAlign: 'left', padding: 28, minHeight: 270, borderRadius: 22, border: '1px solid #34d399', color: '#fff', background: 'linear-gradient(145deg,#065f46,#14532d)', boxShadow: '0 18px 50px #0005', cursor: 'pointer', isolation: 'isolate' }}>
+            <button onClick={async () => { const businessEmail = String(session?.user?.email || email || '').trim().toLowerCase(); const businessPassword = password || window.prompt('Business system secure access ke liye apna password enter karein:'); if (!businessPassword) return; const { data: currentAuth } = await supabase.auth.getSession(); if (currentAuth?.session?.user?.email?.toLowerCase() !== businessEmail) { if (currentAuth?.session) await supabase.auth.signOut(); let { error: authError } = await supabase.auth.signInWithPassword({ email: businessEmail, password: businessPassword }); if (authError && userRole?.is_admin) { const { data: createdAuth, error: createAuthError } = await supabase.auth.signUp({ email: businessEmail, password: businessPassword }); if (createAuthError) { alert('Secure Business login create/sign in nahi hua. Supabase Authentication mein isi email ka account check karein. Details: ' + createAuthError.message); return; } if (!createdAuth?.session) { alert('Secure Business login create ho gaya. Supabase confirmation email confirm karein, phir Business dobara open karein.'); return; } } else if (authError) { alert('Is email ka secure Business login available nahi. Admin se Business access / login banwane ko kahen. Details: ' + authError.message); return; } } setSelectedSystem('business'); setBusinessType('transport'); }} style={{ position: 'relative', overflow: 'hidden', textAlign: 'left', padding: 28, minHeight: 270, borderRadius: 22, border: '1px solid #34d399', color: '#fff', background: 'linear-gradient(145deg,#065f46,#14532d)', boxShadow: '0 18px 50px #0005', cursor: 'pointer', isolation: 'isolate' }}>
               <img src="/nda-naveed-logo.png" alt="" aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', opacity: 0.22, padding: 8, boxSizing: 'border-box', pointerEvents: 'none', zIndex: 0 }} />
               <span aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(145deg,rgba(6,95,70,.80),rgba(20,83,45,.86))', zIndex: 0, pointerEvents: 'none' }} />
               <div style={{ position: 'relative', zIndex: 1 }}>
