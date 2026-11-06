@@ -582,13 +582,19 @@ const [newDesignation, setNewDesignation] = useState('');
       setBulkMarkDepartment(selectedDeptFilter);
       setBulkDepartment(selectedDeptFilter);
       setPayrollDepartment(selectedDeptFilter);
-    } else if (userRole?.assigned_department) {
-      setDailyTimesheetDepartment(userRole.assigned_department);
-      setBulkMarkDepartment(userRole.assigned_department);
-      setBulkDepartment(userRole.assigned_department);
-      setPayrollDepartment(userRole.assigned_department);
+      setDailyTimesheetSite(selectedSiteFilter === 'All' ? 'All Workers' : selectedSiteFilter);
+    } else {
+      if (userRole?.assigned_department) {
+        setDailyTimesheetDepartment(userRole.assigned_department);
+        setBulkMarkDepartment(userRole.assigned_department);
+        setBulkDepartment(userRole.assigned_department);
+        setPayrollDepartment(userRole.assigned_department);
+      }
+      if (userRole?.assigned_site) {
+        setDailyTimesheetSite(userRole.assigned_site === 'All' ? 'All Workers' : userRole.assigned_site);
+      }
     }
-  }, [selectedDeptFilter, userRole?.is_admin, userRole?.assigned_department]);
+  }, [selectedDeptFilter, selectedSiteFilter, userRole?.is_admin, userRole?.assigned_department, userRole?.assigned_site]);
  const [savedDailyWorkDetails, setSavedDailyWorkDetails] = useState('');
  const [dailyWorkDetailsLoadError, setDailyWorkDetailsLoadError] = useState('');
  const [dailyWorkDetailsSaving, setDailyWorkDetailsSaving] = useState(false);
@@ -864,7 +870,7 @@ const [newDesignation, setNewDesignation] = useState('');
     }
     loadDailyWorkDetails();
     return () => { cancelled = true; };
-  }, [selectedTimesheetDate, dailyTimesheetSite, selectedDeptFilter, userRole.is_admin, userRole.assigned_department, userRole.assigned_site]);
+  }, [selectedTimesheetDate, dailyTimesheetSite, selectedDeptFilter, selectedSiteFilter, userRole.is_admin, userRole.assigned_department, userRole.assigned_site]);
 
 
   const now = new Date();
@@ -2496,9 +2502,11 @@ async function handleToggleHolidayDate() {
     const workerDesignation = normalizeDesignation(w.designation);
     const matchDesig = selectedDesignations.includes('All') || selectedDesignations.includes(workerDesignation);
     const row = existingByWorker.get(String(w.id));
-    const matchDailySite = row && normalizeSite(row.work_site || row.site) === normalizeSite(effectiveBulkSite);
+    const rowSite = normalizeSite(row?.work_site || row?.site);
+    const matchDailySite = row && rowSite === normalizeSite(effectiveBulkSite);
+    const matchGlobalSite = selectedSiteFilter === 'All' || rowSite === normalizeSite(selectedSiteFilter);
     const eligibleStatus = row && isPresentAttendanceStatus(row.status) && !getAnnualLeaveForWorker(w.id, selectedTimesheetDate);
-    return matchDept && matchDesig && matchDailySite && eligibleStatus;
+    return matchDept && matchDesig && matchDailySite && matchGlobalSite && eligibleStatus;
   });
 
   if (deptWorkers.length === 0) {
@@ -2768,7 +2776,11 @@ async function handleBulkDesignationAttendance(e) {
     return actual === chosenDesignation;
   };
   const departmentMatches = w => normalize(bulkMarkDepartment) === 'all' || normalize(w.department) === normalize(bulkMarkDepartment);
-  const candidates = workers.filter(w => departmentMatches(w) && designationMatches(w));
+  const globalSiteMatches = w => {
+    const scope = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
+    return !scope || normalize(scope) === 'all' || normalize(w.work_site) === normalize(scope);
+  };
+  const candidates = workers.filter(w => departmentMatches(w) && designationMatches(w) && globalSiteMatches(w));
   if (!candidates.length) return alert('Selected department/designation mein koi worker nahi mila. Workers Directory mein designation check karein.');
 
   const dateRows = attendance.filter(a => String(a.date || '').slice(0, 10) === selectedTimesheetDate);
@@ -3069,10 +3081,13 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     const selectedPayrollDepartment = String(payrollDepartment || 'All').trim().toLowerCase();
     const assignedDept = String(userRole.assigned_department || 'All').trim().toLowerCase();
     const assignedSite = String(userRole.assigned_site || 'All').trim().toLowerCase();
+    const selectedSite = String(userRole.is_admin ? selectedSiteFilter : userRole.assigned_site || 'All').trim().toLowerCase();
+    const workerSite = String(worker.work_site || '').trim().toLowerCase();
     const payrollDeptMatch = selectedPayrollDepartment === 'all' || workerDepartment === selectedPayrollDepartment;
     const staffDeptMatch = userRole.is_admin || assignedDept === 'all' || workerDepartment === assignedDept;
-    const staffSiteMatch = userRole.is_admin || assignedSite === 'all' || String(worker.work_site || '').trim().toLowerCase() === assignedSite;
-    return payrollDeptMatch && staffDeptMatch && staffSiteMatch;
+    const selectedSiteMatch = selectedSite === 'all' || workerSite === selectedSite;
+    const staffSiteMatch = userRole.is_admin || assignedSite === 'all' || workerSite === assignedSite;
+    return payrollDeptMatch && staffDeptMatch && selectedSiteMatch && staffSiteMatch;
   });
 
   payrollWorkers.forEach(worker => {
@@ -4094,7 +4109,12 @@ style={{
 
           <tbody>
             {(userRole.is_admin ? workers : filteredWorkers)
-              .filter(w => bulkDepartment === 'All' || w.department === bulkDepartment)
+              .filter(w => {
+                const deptMatch = bulkDepartment === 'All' || String(w.department || '').toLowerCase() === String(bulkDepartment).toLowerCase();
+                const siteScope = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
+                const siteMatch = !siteScope || siteScope === 'All' || String(w.work_site || '').toLowerCase() === String(siteScope).toLowerCase();
+                return deptMatch && siteMatch;
+              })
               .map((worker) => {
                 const record = attendanceData[selectedTimesheetDate]?.[worker.id] || { status: 'Present', ot: 0 };
                 const currentSite = record.site || worker.work_site || sitesList[0] || 'Sharjah Mamzar';
@@ -4678,14 +4698,9 @@ await handleSingleAttendanceChange(
                 <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>
                   Working Site
                 </label>
-                <select
-                  value={dailyTimesheetSite}
-                  onChange={e => setDailyTimesheetSite(e.target.value)}
-                  style={{ padding: '9px', minWidth: '200px', border: '1px solid #cbd5e1', borderRadius: '5px' }}
-                >
-{userRole.is_admin ? <option value="All Workers">All Workers</option> : null}
-{(userRole.is_admin ? sitesList : (userRole.assigned_site && userRole.assigned_site !== 'All' ? [userRole.assigned_site] : sitesList)).map((site, idx) => (<option key={idx} value={site}>{site}</option>))}
-                </select>
+                <div style={{ padding: '9px', minWidth: '200px', border: '1px solid #cbd5e1', borderRadius: '5px', background: '#f8fafc' }}>
+                  {userRole.is_admin ? (selectedSiteFilter === 'All' ? 'All Sites' : selectedSiteFilter) : userRole.assigned_site}
+                </div>
               </div>
               <div style={{ minWidth: 180 }}>
                 <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Department</label>
@@ -5775,11 +5790,13 @@ accruedDays = balance.toFixed(1);
             {(userRole.is_admin ? workers : filteredWorkers)
               .filter(w => {
                 const reportDepartment = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
+                const reportSite = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
                 const matchesDept = reportDepartment === 'All' || !reportDepartment || String(w.department || '').trim().toLowerCase() === String(reportDepartment).trim().toLowerCase();
+                const matchesSite = reportSite === 'All' || !reportSite || String(w.work_site || '').trim().toLowerCase() === String(reportSite).trim().toLowerCase();
                 const matchesSearch = !timesheetSearchQuery || 
                   String(w.id).toLowerCase().includes(timesheetSearchQuery.toLowerCase()) || 
                   w.name.toLowerCase().includes(timesheetSearchQuery.toLowerCase());
-                return matchesDept && matchesSearch;
+                return matchesDept && matchesSite && matchesSearch;
               })
               .map(w => (
               <tr key={w.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
