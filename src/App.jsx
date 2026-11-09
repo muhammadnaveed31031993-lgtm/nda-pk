@@ -273,7 +273,22 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     return {date,rows,income:dayIncome,expense:dayExpense,net:dayIncome-dayExpense,status,reason};
   });
   const panelTitle=currentBusiness?.name||'Business';
-  return <div style={{minHeight:'100vh',background:'#f1f5f9',fontFamily:"'Segoe UI',sans-serif",color:'#0f172a'}}>
+  return <div className="business-workspace" style={{minHeight:'100vh',background:'#f1f5f9',fontFamily:"'Segoe UI',sans-serif",color:'#0f172a'}}>
+    <style>{`
+      @media(max-width:700px){
+        .business-workspace>header{padding:12px!important;align-items:flex-start!important}
+        .business-workspace>header>div:first-child{width:100%!important;min-width:0!important}
+        .business-workspace>header h1{font-size:21px!important;overflow-wrap:anywhere}
+        .business-workspace>header>div:last-child{width:100%!important;justify-content:flex-start!important}
+        .business-workspace main{padding:10px!important}
+        .business-workspace main>section{min-width:0!important}
+        .business-workspace input,.business-workspace select,.business-workspace textarea,.business-workspace button{max-width:100%;box-sizing:border-box}
+        .business-workspace input,.business-workspace select,.business-workspace textarea{font-size:16px!important}
+        .business-workspace table{display:block!important;width:100%!important;max-width:100%!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}
+        .business-workspace th,.business-workspace td{white-space:nowrap}
+        .business-workspace img{max-width:100%;height:auto}
+      }
+    `}</style>
     <style>{`@media print {
       @page { size:A4 landscape; margin:8mm; }
       body * { visibility:hidden !important; }
@@ -3242,7 +3257,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: '#f4f7fc', fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
       
      {/* Compact top bar: system identity lives here; dashboard banner below is the only dashboard hero */}
-      <header style={{ background: 'linear-gradient(115deg,#0b1f46 0%,#123d78 58%,#087e8b 100%)', color: '#ffffff', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid #0b355f', boxShadow: '0 5px 18px rgba(15,47,99,.22)' }}>
+      <header className="nda-hr-header" style={{ background: 'linear-gradient(115deg,#0b1f46 0%,#123d78 58%,#087e8b 100%)', color: '#ffffff', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid #0b355f', boxShadow: '0 5px 18px rgba(15,47,99,.22)' }}>
         <div style={{display:'flex',alignItems:'center',gap:12,minWidth:230}}>
           <div style={{width:74,height:56,borderRadius:8,background:'#fff',padding:3,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
             <img src="/nda-naveed-logo.png" alt="NDA Naveed logo" style={{width:'100%',height:'100%',objectFit:'contain'}} />
@@ -3305,7 +3320,31 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
             #hr-workers-print th:last-child, #hr-workers-print td:last-child { display:none !important; }
             .nda-print-target * { print-color-adjust:exact !important; -webkit-print-color-adjust:exact !important; }
           }
-          @media(max-width:850px){.nda-sidebar{position:relative!important;top:auto!important;bottom:auto!important;width:100%!important;max-height:250px;flex-direction:row!important;flex-wrap:wrap;overflow:visible!important}.nda-sidebar>div:first-child{width:100%}.nda-main{margin-left:0!important;padding:12px!important}}
+          @media(max-width:850px){
+            .nda-hr-header{padding:10px 12px!important;gap:9px!important}
+            .nda-hr-header>div{min-width:0!important}
+            .nda-sidebar{position:relative!important;top:auto!important;bottom:auto!important;left:auto!important;width:100%!important;max-height:none!important;min-height:0!important;flex-direction:row!important;flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;gap:6px!important;padding:8px 10px!important;scrollbar-width:thin}
+            .nda-sidebar>div:first-child{display:none!important}
+            .nda-sidebar>button{flex:0 0 auto!important;white-space:nowrap!important;padding:10px 12px!important}
+            .nda-main{margin-left:0!important;padding:12px!important;width:100%!important;max-width:100%!important}
+            .nda-hr-footer{margin-left:0!important;width:100%!important}
+          }
+          @media(max-width:600px){
+            .nda-hr-header{align-items:flex-start!important}
+            .nda-hr-header>div:first-child{width:100%!important}
+            .nda-hr-header>div:first-child img{max-width:58px!important}
+            .nda-hr-header h2{font-size:16px!important}
+            .nda-hr-header>div:nth-child(2){width:100%!important;justify-content:flex-start!important;gap:7px!important}
+            .nda-hr-header>div:nth-child(2)>div{font-size:11px!important}
+            .nda-main{padding:9px!important}
+            .nda-main>div{max-width:100%!important}
+            .nda-main input,.nda-main select,.nda-main textarea,.nda-main button{max-width:100%;box-sizing:border-box}
+            .nda-main input,.nda-main select,.nda-main textarea{font-size:16px!important}
+            .nda-main table{display:block!important;width:100%!important;max-width:100%!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}
+            .nda-main th,.nda-main td{white-space:nowrap}
+            .nda-main img{max-width:100%;height:auto}
+            .nda-main [role="dialog"]>div{width:calc(100vw - 20px)!important;max-width:calc(100vw - 20px)!important;max-height:88vh!important;padding:14px!important;box-sizing:border-box!important}
+          }
           @media print{.nda-sidebar,header,.no-print{display:none!important}.nda-main{margin:0!important;padding:0!important;background:#fff!important}.nda-print-brand{display:block!important;text-align:center!important;border-bottom:3px solid #c69227!important;padding:8px!important;margin-bottom:12px!important}.nda-print-brand img{height:48px!important;object-fit:contain!important}.nda-main *{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
         `}</style>
         <div className="nda-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div style={{fontWeight:800,color:'#0b2853'}}>NDA-PK HR &amp; BUSINESS SYSTEM</div><div style={{fontSize:11}}>Together for a Better Workplace</div></div>
@@ -3415,7 +3454,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
 
     <div style={{
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))',
       gap: '20px'
     }}>
      {(userRole.is_admin
@@ -6017,6 +6056,7 @@ return monthlyRows.map((att, idx) => {
      
 {/* Footer */}
 <div
+  className="nda-hr-footer"
   style={{
     width: '100%',
     marginLeft: 278,
