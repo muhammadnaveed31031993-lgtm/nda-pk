@@ -578,9 +578,12 @@ const [newDesignation, setNewDesignation] = useState('');
   const [bulkContractOnlyHours, setBulkContractOnlyHours] = useState('10');
   const [bulkContractOnlySite, setBulkContractOnlySite] = useState('Sharjah Mamzar');
   const [bulkContractOnlySaving, setBulkContractOnlySaving] = useState(false);
+  // Management Extra OT: assign by department/designation or exact worker IDs.
   const [bulkExtraOTDepartment, setBulkExtraOTDepartment] = useState('All');
+  const [bulkExtraOTDesignation, setBulkExtraOTDesignation] = useState('All');
   const [bulkExtraOTSite, setBulkExtraOTSite] = useState('Sharjah Mamzar');
   const [bulkExtraOTHours, setBulkExtraOTHours] = useState('2');
+  const [bulkExtraOTWorkerIds, setBulkExtraOTWorkerIds] = useState('');
   const [bulkExtraOTSaving, setBulkExtraOTSaving] = useState(false);
   
   // Quick Attendance States
@@ -2465,6 +2468,8 @@ async function handleToggleHolidayDate() {
                 <th>Status</th>
                 <th>Normal OT</th>
 <th>Contract OT</th>
+<th>Extra OT</th>
+<th>Extra OT Site</th>
 <th>Total OT</th>
                 <th>Site</th>
               </tr>
@@ -2480,6 +2485,7 @@ async function handleToggleHolidayDate() {
 <td>${Number(att.overtime_hours) || 0} Hours</td>
 <td>${Number(att.contract_overtime_hours) || 0} Hours</td>
 <td>${Number(att.extra_ot_hours) || 0} Hours</td>
+<td>${att.extra_ot_site || (Number(att.extra_ot_hours) > 0 ? (att.work_site || worker.work_site || 'N/A') : '—')}</td>
 <td>${(Number(att.overtime_hours) || 0) + (Number(att.contract_overtime_hours) || 0) + (Number(att.extra_ot_hours) || 0)} Hours</td>
                         <td>${att.work_site || worker.work_site || 'N/A'}</td>
                       </tr>
@@ -2652,59 +2658,6 @@ async function handleBulkContractOnlyOT(e) {
   }
 }
 
-// Bulk Extra OT: assign management-awarded Extra OT to every eligible worker in a department.
-async function handleBulkExtraOT(e) {
-  e.preventDefault();
-  if (!requireHrEditMode('Bulk Extra OT save')) return;
-  if (!userRole.is_admin && !userRole.can_use_bulk) return alert('Aapko Bulk OT ki permission nahi hai.');
-  if (isPayrollDateClosed(selectedTimesheetDate)) return alert('Yeh salary period close hai. Admin pehle period reopen kare.');
-  const hours = Number(bulkExtraOTHours);
-  if (!Number.isFinite(hours) || hours < 0) return alert('Extra OT hours sahi enter karein.');
-  if (!bulkExtraOTDepartment || bulkExtraOTDepartment === 'All') return alert('Pehle aik specific department select karein.');
-  const normalize = value => String(value || '').normalize('NFKC').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
-  const siteKey = normalize(bulkExtraOTSite);
-  const allowedWorkers = userRole.is_admin ? workers : filteredWorkers;
-  const existingByWorker = new Map(attendance
-    .filter(a => String(a.date || '').slice(0, 10) === selectedTimesheetDate)
-    .map(a => [String(a.worker_id), a]));
-  const eligible = allowedWorkers.filter(w => {
-    if (normalize(w.department) !== normalize(bulkExtraOTDepartment)) return false;
-    const row = existingByWorker.get(String(w.id));
-    return row && normalize(row.work_site || row.site) === siteKey &&
-      isPresentAttendanceStatus(row.status) &&
-      !getAnnualLeaveForWorker(w.id, selectedTimesheetDate) &&
-      (selectedSiteFilter === 'All' || normalize(row.work_site || row.site) === normalize(selectedSiteFilter));
-  });
-  if (!eligible.length) return alert(`Is date aur site par ${bulkExtraOTDepartment} department ka koi Present / Holiday Present worker nahi mila. Pehle attendance save karein.`);
-  const records = eligible.map(w => {
-    const old = existingByWorker.get(String(w.id));
-    return {
-      worker_id: old.worker_id,
-      date: selectedTimesheetDate,
-      status: old.status,
-      overtime_hours: Number(old.overtime_hours) || 0,
-      contract_overtime_hours: Number(old.contract_overtime_hours) || 0,
-      extra_ot_hours: hours,
-      department: old.department || w.department || '',
-      work_site: old.work_site || old.site || bulkExtraOTSite
-    };
-  });
-  setBulkExtraOTSaving(true);
-  try {
-    for (let i = 0; i < records.length; i += 500) {
-      const { error } = await supabase.from('attendance').upsert(records.slice(i, i + 500), { onConflict: 'worker_id,date' });
-      if (error) throw error;
-    }
-    void logActivity('Bulk Extra OT', `${selectedTimesheetDate}: ${eligible.length} workers; department ${bulkExtraOTDepartment}; site ${bulkExtraOTSite}; Extra OT ${hours} hours each`);
-    await fetchAttendance();
-    alert(`Extra OT save ho gaya: ${eligible.length} workers (${bulkExtraOTDepartment}) ko ${hours} hours each. Normal OT aur Contract OT bilkul mehfooz rakha gaya.`);
-  } catch (err) {
-    alert('Bulk Extra OT save nahi hua: ' + (err?.message || String(err)));
-  } finally {
-    setBulkExtraOTSaving(false);
-  }
-}
-
  // 3. Handle Single Attendance & OT Change (Auto-saves to DB and updates Monthly Timesheet)
 async function handleSingleAttendanceChange(
   workerId,
@@ -2713,7 +2666,8 @@ async function handleSingleAttendanceChange(
   newOt,
   newSite,
   newContractOT = 0,
-  newExtraOT = null
+  newExtraOT = null,
+  newExtraOTSite = null
 ) {
   if (!requireHrEditMode('Attendance / OT update')) throw new Error('Admin Edit Mode OFF hai.');
   if (isPayrollDateClosed(dateStr)) throw new Error('Yeh salary period close hai. Is date ki attendance/OT edit nahi ho sakti. Admin pehle period reopen kare.');
@@ -2741,6 +2695,7 @@ async function handleSingleAttendanceChange(
   const savedContractOT = canCountOT ? (Number(newContractOT) || 0) : 0;
   // Extra OT is a separate management-awarded amount; preserve it unless explicitly supplied.
   const savedExtraOT = canCountOT ? (newExtraOT === null ? (Number(existingDbRecord?.extra_ot_hours ?? previousRecord.extra_ot_hours) || 0) : (Number(newExtraOT) || 0)) : 0;
+  const savedExtraOTSite = savedExtraOT > 0 ? (newExtraOTSite || existingDbRecord?.extra_ot_site || previousRecord.extra_ot_site || assignedSite) : '';
   const updatedRecord = {
     ...previousRecord,
     status: savedStatus,
@@ -2748,6 +2703,7 @@ async function handleSingleAttendanceChange(
     contract_ot: savedContractOT,
     contract_overtime_hours: savedContractOT,
     extra_ot_hours: savedExtraOT,
+    extra_ot_site: savedExtraOTSite,
     site: assignedSite
   };
 
@@ -2769,6 +2725,7 @@ async function handleSingleAttendanceChange(
         overtime_hours: savedNormalOT,
         contract_overtime_hours: savedContractOT,
         extra_ot_hours: savedExtraOT,
+        extra_ot_site: savedExtraOTSite,
         department: worker?.department,
         work_site: assignedSite
       }], { onConflict: 'worker_id,date' });
@@ -2932,6 +2889,58 @@ async function handleBulkDesignationAttendance(e) {
   }
 }
 
+async function handleBulkExtraOT(e) {
+  e.preventDefault();
+  if (!userRole.is_admin) return alert('Bulk Extra OT sirf Admin save kar sakta hai.');
+  if (!requireHrEditMode('Bulk Extra OT save')) return;
+  if (!selectedTimesheetDate || !bulkExtraOTSite) return alert('Date aur Extra OT site select karein.');
+  if (isPayrollDateClosed(selectedTimesheetDate)) return alert('Yeh salary period close hai. Admin pehle period reopen kare.');
+  const hours = Number(bulkExtraOTHours);
+  if (!Number.isFinite(hours) || hours <= 0) return alert('Extra OT hours zero se zyada enter karein.');
+  const normalize = value => String(value || '').normalize('NFKC').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  const enteredIds = [...new Set(bulkExtraOTWorkerIds.split(/[\s,;]+/).map(x => x.trim()).filter(Boolean))];
+  const idSet = new Set(enteredIds.map(normalize));
+  const chosenDepartment = normalize(bulkExtraOTDepartment);
+  const chosenDesignation = normalize(bulkExtraOTDesignation);
+  const candidates = workers.filter(w => {
+    if (enteredIds.length) return idSet.has(normalize(w.worker_id)) || idSet.has(normalize(w.id));
+    const deptMatch = chosenDepartment === 'all' || normalize(w.department) === chosenDepartment;
+    const designationMatch = chosenDesignation === 'all' || normalize(w.designation) === chosenDesignation;
+    return deptMatch && designationMatch;
+  });
+  if (!candidates.length) return alert('Selected Department / Designation ya Worker ID ke mutabiq koi worker nahi mila.');
+  const existingByWorker = new Map(attendance.filter(a => String(a.date || '').slice(0, 10) === selectedTimesheetDate).map(a => [String(a.worker_id), a]));
+  const eligible = candidates.filter(w => {
+    const row = existingByWorker.get(String(w.id));
+    return row && isPresentAttendanceStatus(row.status) && !getAnnualLeaveForWorker(w.id, selectedTimesheetDate);
+  });
+  const skipped = candidates.length - eligible.length;
+  if (!eligible.length) return alert('Selected date par in workers ki Present attendance nahi mili. Pehle attendance save karein; Extra OT sirf Present / Holiday Present workers ko diya jayega.');
+  const records = eligible.map(w => {
+    const old = existingByWorker.get(String(w.id));
+    return {
+      worker_id: w.id, date: selectedTimesheetDate, status: old.status,
+      overtime_hours: Number(old.overtime_hours) || 0,
+      contract_overtime_hours: Number(old.contract_overtime_hours) || 0,
+      extra_ot_hours: hours, extra_ot_site: bulkExtraOTSite,
+      department: old.department || w.department || '',
+      work_site: old.work_site || old.site || w.work_site || ''
+    };
+  });
+  setBulkExtraOTSaving(true);
+  try {
+    for (let i = 0; i < records.length; i += 500) {
+      const { error } = await supabase.from('attendance').upsert(records.slice(i, i + 500), { onConflict: 'worker_id,date' });
+      if (error) throw error;
+    }
+    void logActivity('Bulk Extra OT', `${selectedTimesheetDate}: ${eligible.length} workers; extra OT ${hours} hours; OT site ${bulkExtraOTSite}; department ${bulkExtraOTDepartment}; designation ${bulkExtraOTDesignation}; IDs ${enteredIds.join(', ')}`);
+    await fetchAttendance();
+    alert(`Extra OT save ho gaya: ${eligible.length} workers × ${hours} hours. Extra OT Site: ${bulkExtraOTSite}. ${skipped} worker(s) skip huay kyun ke unki selected date par Present attendance nahi thi.`);
+  } catch (err) {
+    alert('Bulk Extra OT save nahi hua: ' + (err?.message || String(err)));
+  } finally { setBulkExtraOTSaving(false); }
+}
+
 async function handleQuickAttendance(e) {
   if (!requireHrEditMode('Quick attendance save')) return;
 
@@ -2973,7 +2982,8 @@ async function handleQuickAttendance(e) {
       normalOT,
       quickSite,
       contractOT,
-      extraOT
+      extraOT,
+      quickOTType === 'Extra OT' ? quickSite : null
     );
 
     setQuickWorkerId('');
@@ -3939,8 +3949,8 @@ style={{
         <option value="ocrScanner">📸 OCR Scanner</option>
         <option value="quickAttendance">⚡ Quick Bulk Attendance</option>
         <option value="contractOT">🧾 Bulk Contract OT — Site + Multiple Designations</option>
+        <option value="extraOT">🎁 Bulk Extra OT — Department / Designation / Worker IDs</option>
         <option value="bulkOT">⏱️ Bulk Overtime Only — Department / Designation</option>
-        <option value="bulkExtraOT">➕ Bulk Extra OT — Whole Department</option>
         <option value="siteAttendance">🟢 Site Attendance by Worker ID</option>
         <option value="individualAttendance">👥 Individual Attendance List</option>
       </select>
@@ -4115,6 +4125,24 @@ style={{
     </form></div>}
     </div>
 
+<div style={{ marginBottom: 10, border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden', background: '#fff', display: bulkOpenSection === 'extraOT' ? 'block' : 'none' }}>
+  {bulkOpenSection === 'extraOT' && <div style={{ padding: 14, borderTop: '1px solid #e2e8f0' }}>
+    <form onSubmit={handleBulkExtraOT} style={{ padding: 16, border: '2px solid #c4b5fd', borderRadius: 10, background: '#f5f3ff' }}>
+      <h3 style={{ margin: '0 0 7px', color: '#5b21b6' }}>🎁 Management Extra OT — Department / Designation / Worker IDs</h3>
+      <p style={{ margin: '0 0 12px', fontSize: 12, color: '#475569' }}>Department aur Designation select karke poore group ko Extra OT dein, ya Worker IDs box mein ek ya multiple IDs (comma / new line separated) likhein. IDs dene par ID list ko priority milegi. Sirf selected date par Present / Holiday Present workers update honge; Normal OT aur Contract OT alag mehfooz rahenge. Extra OT ka Site alag save hoga.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(175px,1fr))', gap: 12 }}>
+        <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Extra OT Date</label><input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }} /></div>
+        <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Extra OT Site</label><select value={bulkExtraOTSite} onChange={e => setBulkExtraOTSite(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }}>{sitesList.map(site => <option key={site} value={site}>{site}</option>)}</select></div>
+        <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Department</label><select value={bulkExtraOTDepartment} onChange={e => setBulkExtraOTDepartment(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}><option value="All">All Departments</option>{departmentsList.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
+        <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Designation</label><select value={bulkExtraOTDesignation} onChange={e => setBulkExtraOTDesignation(e.target.value)} style={{ ...fieldStyle, marginTop: 5 }}><option value="All">All Designations</option>{designationsList.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
+        <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Extra OT Hours (per worker)</label><input type="number" min="0.25" step="0.25" value={bulkExtraOTHours} onChange={e => setBulkExtraOTHours(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }} /></div>
+        <div style={{ gridColumn: '1 / -1' }}><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Worker ID(s) — optional, multiple IDs allowed</label><textarea value={bulkExtraOTWorkerIds} onChange={e => setBulkExtraOTWorkerIds(e.target.value)} placeholder="Example: 101, 105, 118 (ya har ID alag line mein)" rows={2} style={{ ...fieldStyle, width: '100%', boxSizing: 'border-box', marginTop: 5, resize: 'vertical' }} /></div>
+      </div>
+      <button type="submit" disabled={bulkExtraOTSaving || !userRole.is_admin} style={{ marginTop: 12, padding: '10px 16px', border: 0, borderRadius: 7, background: '#6d28d9', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: bulkExtraOTSaving || !userRole.is_admin ? .55 : 1 }}>{bulkExtraOTSaving ? 'Saving Extra OT…' : 'Apply Extra OT to Selected Workers'}</button>
+    </form>
+  </div>}
+</div>
+
 <div style={{ marginBottom: 10, border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden', background: '#fff', display: bulkOpenSection === 'bulkOT' ? 'block' : 'none' }}>
       <button type="button" onClick={() => setBulkOpenSection(bulkOpenSection === 'bulkOT' ? '' : 'bulkOT')} style={{ width: '100%', display: 'none', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px', border: 0, background: bulkOpenSection === 'bulkOT' ? '#eaf2ff' : '#f8fafc', color: '#12345a', fontWeight: 800, fontSize: 14, textAlign: 'left', cursor: 'pointer' }}>
         <span>⏱️ Bulk Overtime Only — Department / Designation</span><span style={{ fontSize: 18, transform: bulkOpenSection === 'bulkOT' ? 'rotate(180deg)' : 'none' }}>⌄</span>
@@ -4184,41 +4212,6 @@ style={{
       </div>
     </div></div>}
     </div>
-
-<div style={{ marginBottom: 10, border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden', background: '#fff', display: bulkOpenSection === 'bulkExtraOT' ? 'block' : 'none' }}>
-  {bulkOpenSection === 'bulkExtraOT' && <div style={{ padding: 16, borderTop: '1px solid #e2e8f0' }}>
-    <h3 style={{ margin: '0 0 8px', color: '#166534' }}>➕ Bulk Extra OT — Whole Department</h3>
-    <p style={{ margin: '0 0 14px', fontSize: 12, color: '#475569' }}>Department select karein: us department ke tamam Present / Holiday Present workers (Carpenter, Helper, Foreman sab) par Extra OT aik sath apply hoga. Normal OT aur Contract OT change nahi honge. Enter kiye gaye hours har worker ke Extra OT mein set honge.</p>
-    <form onSubmit={handleBulkExtraOT}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
-        <div>
-          <label style={{ display: 'block', marginBottom: 5, fontSize: 12, fontWeight: 700 }}>Select Date</label>
-          <input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} style={{ width: '100%', padding: 9, border: '1px solid #cbd5e1', borderRadius: 6 }} />
-        </div>
-        <div>
-          <label style={{ display: 'block', marginBottom: 5, fontSize: 12, fontWeight: 700 }}>Department</label>
-          <select value={bulkExtraOTDepartment} onChange={e => setBulkExtraOTDepartment(e.target.value)} required style={{ width: '100%', padding: 9, border: '1px solid #cbd5e1', borderRadius: 6 }}>
-            <option value="">Select Department</option>
-            {Array.from(new Set([...(departmentsList || []), ...(workers || []).map(w => w.department).filter(Boolean)])).filter(d => userRole.is_admin || String(d).trim().toLowerCase() === String(userRole.assigned_department || '').trim().toLowerCase()).map((d, idx) => <option key={idx} value={d}>{d}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={{ display: 'block', marginBottom: 5, fontSize: 12, fontWeight: 700 }}>Working Site</label>
-          <select value={bulkExtraOTSite} onChange={e => setBulkExtraOTSite(e.target.value)} style={{ width: '100%', padding: 9, border: '1px solid #cbd5e1', borderRadius: 6 }}>
-            {sitesList.map((site, idx) => <option key={idx} value={site}>{site}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={{ display: 'block', marginBottom: 5, fontSize: 12, fontWeight: 700 }}>Extra OT Hours (each worker)</label>
-          <input type="number" min="0" step="0.5" value={bulkExtraOTHours} onChange={e => setBulkExtraOTHours(e.target.value)} required style={{ width: '100%', padding: 9, border: '1px solid #cbd5e1', borderRadius: 6 }} />
-        </div>
-        <div>
-          <button type="submit" disabled={bulkExtraOTSaving} style={{ width: '100%', padding: 11, background: '#16a34a', color: '#fff', border: 0, borderRadius: 6, fontWeight: 700, cursor: bulkExtraOTSaving ? 'wait' : 'pointer' }}>{bulkExtraOTSaving ? 'Saving...' : 'Apply Extra OT to Department'}</button>
-        </div>
-      </div>
-    </form>
-  </div>}
-</div>
 
 <div style={{ marginBottom: 10, border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden', background: '#fff', display: bulkOpenSection === 'siteAttendance' ? 'block' : 'none' }}>
       <button type="button" onClick={() => setBulkOpenSection(bulkOpenSection === 'siteAttendance' ? '' : 'siteAttendance')} style={{ width: '100%', display: 'none', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px', border: 0, background: bulkOpenSection === 'siteAttendance' ? '#eaf2ff' : '#f8fafc', color: '#12345a', fontWeight: 800, fontSize: 14, textAlign: 'left', cursor: 'pointer' }}>
@@ -5951,6 +5944,7 @@ accruedDays = balance.toFixed(1);
               <th style={{ padding: '10px' }}>Worker ID & Name</th>
               <th style={{ padding: '10px' }}>Department</th>
               <th style={{ padding: '10px' }}>Working Site</th>
+              <th style={{ padding: '10px' }}>Extra OT / OT Site</th>
               {userRole.is_admin && <th className="monthly-timesheet-actions" style={{ padding: '10px', textAlign: 'center' }}>Actions (View / Print / PDF)</th>}
             </tr>
           </thead>
@@ -5971,6 +5965,12 @@ accruedDays = balance.toFixed(1);
                 <td style={{ padding: '10px', fontWeight: 'bold' }}>#{w.id} - {w.name}</td>
                 <td style={{ padding: '10px' }}>{w.department}</td>
                 <td style={{ padding: '10px' }}>{w.work_site || sitesList[0]}</td>
+                <td style={{ padding: '10px', minWidth: 180 }}>
+                  {(() => {
+                    const extraRows = attendance.filter(a => String(a.worker_id) === String(w.id) && String(a.date || '').slice(0,10) >= payrollStartDate && String(a.date || '').slice(0,10) <= payrollEndDate && (Number(a.extra_ot_hours) || 0) > 0);
+                    return extraRows.length ? extraRows.map(a => <div key={`${a.date}-${a.id || a.worker_id}`} style={{ marginBottom: 4, padding: '4px 6px', borderRadius: 5, background: '#f5f3ff', color: '#5b21b6', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{a.date}: {Number(a.extra_ot_hours) || 0}h · {a.extra_ot_site || a.work_site || 'Site N/A'}</div>) : <span style={{ color: '#94a3b8' }}>—</span>;
+                  })()}
+                </td>
                 {userRole.is_admin && <td style={{ padding: '10px', textAlign: 'center', display: 'flex', gap: '8px', justifyContent: 'center' }}>
                   
                   {/* View Timesheet Button */}
@@ -6041,6 +6041,7 @@ accruedDays = balance.toFixed(1);
              <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Normal OT</th>
 <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Contract OT</th>
 <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Extra OT</th>
+<th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Extra OT Site</th>
 <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Total OT</th>
               <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Site</th>
             </tr>
@@ -6156,6 +6157,9 @@ return monthlyRows.map((att, idx) => {
 </td>
 <td style={{ padding: '8px 10px', color: '#b45309', fontWeight: 700 }}>
   {Number(att.extra_ot_hours) || 0} Hours
+</td>
+<td style={{ padding: '8px 10px', color: '#5b21b6', fontWeight: 700 }}>
+  {Number(att.extra_ot_hours) > 0 ? (att.extra_ot_site || att.work_site || viewingWorkerTimesheet.work_site || 'N/A') : '—'}
 </td>
 <td style={{ padding: '8px 10px', fontWeight: 'bold' }}>
   {(Number(att.overtime_hours) || 0) +
