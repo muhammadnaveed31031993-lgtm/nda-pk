@@ -3177,7 +3177,14 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
   const payrollPeriodEndDate = String(payrollEndDate || '').slice(0, 10);
   const payrollPeriodStart = payrollPeriodStartDate ? new Date(`${payrollPeriodStartDate}T12:00:00`) : new Date();
   const payrollPeriodEnd = payrollPeriodEndDate ? new Date(`${payrollPeriodEndDate}T12:00:00`) : new Date();
-  const payrollMonthDays = Math.round((Date.UTC(payrollPeriodEnd.getFullYear(), payrollPeriodEnd.getMonth(), payrollPeriodEnd.getDate()) - Date.UTC(payrollPeriodStart.getFullYear(), payrollPeriodStart.getMonth(), payrollPeriodStart.getDate())) / 86400000) + 1;
+  // Salary is always calculated for the calendar month containing the OT closing date.
+  // The configured 16th-to-15th dates remain the separate OT / attendance closing window.
+  const salaryMonthStart = new Date(payrollPeriodEnd.getFullYear(), payrollPeriodEnd.getMonth(), 1, 12, 0, 0);
+  const salaryMonthEnd = new Date(payrollPeriodEnd.getFullYear(), payrollPeriodEnd.getMonth() + 1, 0, 12, 0, 0);
+  const salaryMonthStartDate = formatPayrollDate(salaryMonthStart);
+  const salaryMonthEndDate = formatPayrollDate(salaryMonthEnd);
+  const salaryMonthDays = salaryMonthEnd.getDate();
+  const salaryMonthLabel = salaryMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const currentPayrollPeriodClosed = closedPayrollPeriods.some(period => period.status === 'closed' && String(period.start_date).slice(0, 10) === payrollPeriodStartDate && String(period.end_date).slice(0, 10) === payrollPeriodEndDate);
 
   // Admin ko tamam sites ke workers dikhayein
@@ -3197,33 +3204,44 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
   });
 
   payrollWorkers.forEach(worker => {
-    // Include only records in the Admin-selected salary period.
     const workerJoinDate = String(worker.joining_date || '').slice(0, 10);
     const payrollAsOfDate = formatPayrollDate(new Date());
-    const effectivePayrollEndDate = payrollPeriodEndDate < payrollAsOfDate ? payrollPeriodEndDate : payrollAsOfDate;
-    const monthlyRecordsByDate = new Map();
+    const effectiveSalaryEndDate = salaryMonthEndDate < payrollAsOfDate ? salaryMonthEndDate : payrollAsOfDate;
+    const effectiveOTEndDate = payrollPeriodEndDate < payrollAsOfDate ? payrollPeriodEndDate : payrollAsOfDate;
+
+    // Calendar-month attendance is used only for base salary / paid days.
+    const salaryRecordsByDate = new Map();
     attendance.forEach(a => {
       const recordDate = String(a.date || '').slice(0, 10);
-      if (String(a.worker_id) === String(worker.id) && recordDate >= payrollPeriodStartDate && recordDate <= effectivePayrollEndDate && (!workerJoinDate || recordDate >= workerJoinDate)) {
-        monthlyRecordsByDate.set(recordDate, a);
+      if (String(a.worker_id) === String(worker.id) && recordDate >= salaryMonthStartDate && recordDate <= effectiveSalaryEndDate && (!workerJoinDate || recordDate >= workerJoinDate)) {
+        salaryRecordsByDate.set(recordDate, a);
       }
     });
-    const monthlyRecords = Array.from(monthlyRecordsByDate.values());
+    const salaryRecords = Array.from(salaryRecordsByDate.values());
 
-    // Sundays and admin-marked holidays count as paid days once per date.
+    // The existing 16th-to-15th closing range is used only for all overtime categories.
+    const otRecordsByDate = new Map();
+    attendance.forEach(a => {
+      const recordDate = String(a.date || '').slice(0, 10);
+      if (String(a.worker_id) === String(worker.id) && recordDate >= payrollPeriodStartDate && recordDate <= effectiveOTEndDate && (!workerJoinDate || recordDate >= workerJoinDate)) {
+        otRecordsByDate.set(recordDate, a);
+      }
+    });
+    const otRecords = Array.from(otRecordsByDate.values());
+
+    // Sundays and admin-marked holidays count as paid days once per date in the calendar salary month.
     const monthHolidayDates = new Set();
-    for (let cursor = new Date(payrollPeriodStart); cursor <= payrollPeriodEnd && formatPayrollDate(cursor) <= payrollAsOfDate; cursor.setDate(cursor.getDate() + 1)) {
+    for (let cursor = new Date(salaryMonthStart); cursor <= salaryMonthEnd && formatPayrollDate(cursor) <= payrollAsOfDate; cursor.setDate(cursor.getDate() + 1)) {
       const d = formatPayrollDate(cursor);
-      // For an open/current period, don't count future Sundays or future holidays before they occur.
       if ((!workerJoinDate || d >= workerJoinDate) && (cursor.getDay() === 0 || holidayDates.some(h => String(h.holiday_date).slice(0, 10) === d))) monthHolidayDates.add(d);
     }
-    const workedPresentDays = monthlyRecords.filter(a =>
+    const workedPresentDays = salaryRecords.filter(a =>
       String(a.status || '').trim().toLowerCase() === 'present' && !monthHolidayDates.has(String(a.date || '').slice(0, 10))
     ).length;
     const presentDays = workedPresentDays + monthHolidayDates.size;
 
-    // Normal OT + Contract OT + Extra (management-awarded) OT
-    const totalOT = monthlyRecords.reduce((total, record) => {
+    // Normal OT + Contract OT + Extra OT use the independent 16th-to-15th closing period.
+    const totalOT = otRecords.reduce((total, record) => {
       if (!isPresentAttendanceStatus(record.status) || getAnnualLeaveForWorker(worker.id, record.date)) return total;
       const normalOT = Number(record.overtime_hours) || 0;
       const contractOT = Number(record.contract_overtime_hours) || 0;
@@ -3231,18 +3249,18 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       return total + normalOT + contractOT + extraOT;
     }, 0);
 
-    const extraOTTotal = monthlyRecords.reduce((total, record) => {
+    const extraOTTotal = otRecords.reduce((total, record) => {
       if (!isPresentAttendanceStatus(record.status) || getAnnualLeaveForWorker(worker.id, record.date)) return total;
       return total + (Number(record.extra_ot_hours) || 0);
     }, 0);
 
     const monthlySal = Number(
       worker.monthly_salary ||
-      (Number(worker.daily_rate || 0) * payrollMonthDays) ||
+      (Number(worker.daily_rate || 0) * salaryMonthDays) ||
       0
     );
 
-    const dailyRateNum = monthlySal / payrollMonthDays;
+    const dailyRateNum = monthlySal / salaryMonthDays;
     const hourlyRate = dailyRateNum / 8;
 
     const baseSalary = dailyRateNum * presentDays;
@@ -5025,7 +5043,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
       boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
     }}
   >
-<div className="nda-page-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><div className="brand-title">NDA-PK — Payroll Sheet</div><div className="brand-subtitle">Period: {payrollPeriodStartDate} to {payrollPeriodEndDate}</div></div></div>
+<div className="nda-page-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><div className="brand-title">NDA-PK — Payroll Sheet</div><div className="brand-subtitle">Salary Month: {salaryMonthLabel} ({salaryMonthStartDate} to {salaryMonthEndDate}) · OT Period: {payrollPeriodStartDate} to {payrollPeriodEndDate}</div></div></div>
  <style>{`
   @page {
     size: A4 landscape;
@@ -5105,7 +5123,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
     </div>
 
     <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 15, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
-      <div style={{ minWidth: 220, fontWeight: 'bold' }}>Monthly Salary & Overtime Sheet<br/><span style={{fontSize:12,color:'#475569'}}>Selected Salary Period: {payrollPeriodStartDate} to {payrollPeriodEndDate} ({payrollMonthDays} days)</span><br/><span style={{fontSize:12,color:currentPayrollPeriodClosed?'#b91c1c':'#047857'}}>{currentPayrollPeriodClosed ? 'CLOSED — editing blocked' : 'OPEN — attendance and OT can be entered'}</span></div>
+      <div style={{ minWidth: 260, fontWeight: 'bold' }}>Monthly Salary & Overtime Sheet<br/><span style={{fontSize:12,color:'#475569'}}>Salary Month: {salaryMonthLabel} ({salaryMonthDays} days) · {salaryMonthStartDate} to {salaryMonthEndDate}</span><br/><span style={{fontSize:12,color:'#475569'}}>OT Closing Period: {payrollPeriodStartDate} to {payrollPeriodEndDate}</span><br/><span style={{fontSize:12,color:currentPayrollPeriodClosed?'#b91c1c':'#047857'}}>{currentPayrollPeriodClosed ? 'CLOSED — editing blocked' : 'OPEN — attendance and OT can be entered'}</span></div>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Start Date:
         <input type="date" value={payrollStartDate} disabled={!userRole.is_admin} onChange={e => setPayrollStartDate(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6 }} />
       </label>
