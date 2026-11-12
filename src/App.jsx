@@ -578,6 +578,10 @@ const [newDesignation, setNewDesignation] = useState('');
   const [bulkContractOnlyHours, setBulkContractOnlyHours] = useState('10');
   const [bulkContractOnlySite, setBulkContractOnlySite] = useState('Sharjah Mamzar');
   const [bulkContractOnlySaving, setBulkContractOnlySaving] = useState(false);
+  const [bulkExtraOTDepartment, setBulkExtraOTDepartment] = useState('All');
+  const [bulkExtraOTSite, setBulkExtraOTSite] = useState('Sharjah Mamzar');
+  const [bulkExtraOTHours, setBulkExtraOTHours] = useState('2');
+  const [bulkExtraOTSaving, setBulkExtraOTSaving] = useState(false);
   
   // Quick Attendance States
   const [quickWorkerId, setQuickWorkerId] = useState('');
@@ -1521,6 +1525,7 @@ async function fetchAttendance() {
         ot: Number(record.overtime_hours) || 0,
         contract_ot: Number(record.contract_overtime_hours) || 0,
         contract_overtime_hours: Number(record.contract_overtime_hours) || 0,
+        extra_ot_hours: Number(record.extra_ot_hours) || 0,
         site: record.work_site || '',
         work_site: record.work_site || ''
       };
@@ -2336,11 +2341,11 @@ async function handleToggleHolidayDate() {
       }
     }
     const workerAttendance = reportDates.filter(d => (!workerJoinDate || d >= workerJoinDate) && (attendanceByDate.has(d) || isHolidayDate(d) || getAnnualLeaveForWorker(worker.id, d))).map(d => {
-      const row = attendanceByDate.get(d) || { worker_id: worker.id, date: d, overtime_hours: 0, contract_overtime_hours: 0, work_site: worker.work_site || '' };
+      const row = attendanceByDate.get(d) || { worker_id: worker.id, date: d, overtime_hours: 0, contract_overtime_hours: 0, extra_ot_hours: 0, work_site: worker.work_site || '' };
       const annualLeave = getAnnualLeaveForWorker(worker.id, d);
       const status = annualLeave ? 'Annual Leave' : (isHolidayDate(d) ? (isPresentAttendanceStatus(row.status) ? 'Holiday Present' : 'Holiday') : (row.status || '—'));
       const canCountOT = isPresentAttendanceStatus(status);
-      return { ...row, date: d, status, overtime_hours: canCountOT ? (Number(row.overtime_hours) || 0) : 0, contract_overtime_hours: canCountOT ? (Number(row.contract_overtime_hours) || 0) : 0 };
+      return { ...row, date: d, status, overtime_hours: canCountOT ? (Number(row.overtime_hours) || 0) : 0, contract_overtime_hours: canCountOT ? (Number(row.contract_overtime_hours) || 0) : 0, extra_ot_hours: canCountOT ? (Number(row.extra_ot_hours) || 0) : 0 };
     });
 
     const printWindow = window.open('', '_blank');
@@ -2474,7 +2479,8 @@ async function handleToggleHolidayDate() {
                         <td>${att.status || ''}</td>                       
 <td>${Number(att.overtime_hours) || 0} Hours</td>
 <td>${Number(att.contract_overtime_hours) || 0} Hours</td>
-<td>${(Number(att.overtime_hours) || 0) + (Number(att.contract_overtime_hours) || 0)} Hours</td>
+<td>${Number(att.extra_ot_hours) || 0} Hours</td>
+<td>${(Number(att.overtime_hours) || 0) + (Number(att.contract_overtime_hours) || 0) + (Number(att.extra_ot_hours) || 0)} Hours</td>
                         <td>${att.work_site || worker.work_site || 'N/A'}</td>
                       </tr>
                     `).join('')
@@ -2646,6 +2652,59 @@ async function handleBulkContractOnlyOT(e) {
   }
 }
 
+// Bulk Extra OT: assign management-awarded Extra OT to every eligible worker in a department.
+async function handleBulkExtraOT(e) {
+  e.preventDefault();
+  if (!requireHrEditMode('Bulk Extra OT save')) return;
+  if (!userRole.is_admin && !userRole.can_use_bulk) return alert('Aapko Bulk OT ki permission nahi hai.');
+  if (isPayrollDateClosed(selectedTimesheetDate)) return alert('Yeh salary period close hai. Admin pehle period reopen kare.');
+  const hours = Number(bulkExtraOTHours);
+  if (!Number.isFinite(hours) || hours < 0) return alert('Extra OT hours sahi enter karein.');
+  if (!bulkExtraOTDepartment || bulkExtraOTDepartment === 'All') return alert('Pehle aik specific department select karein.');
+  const normalize = value => String(value || '').normalize('NFKC').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  const siteKey = normalize(bulkExtraOTSite);
+  const allowedWorkers = userRole.is_admin ? workers : filteredWorkers;
+  const existingByWorker = new Map(attendance
+    .filter(a => String(a.date || '').slice(0, 10) === selectedTimesheetDate)
+    .map(a => [String(a.worker_id), a]));
+  const eligible = allowedWorkers.filter(w => {
+    if (normalize(w.department) !== normalize(bulkExtraOTDepartment)) return false;
+    const row = existingByWorker.get(String(w.id));
+    return row && normalize(row.work_site || row.site) === siteKey &&
+      isPresentAttendanceStatus(row.status) &&
+      !getAnnualLeaveForWorker(w.id, selectedTimesheetDate) &&
+      (selectedSiteFilter === 'All' || normalize(row.work_site || row.site) === normalize(selectedSiteFilter));
+  });
+  if (!eligible.length) return alert(`Is date aur site par ${bulkExtraOTDepartment} department ka koi Present / Holiday Present worker nahi mila. Pehle attendance save karein.`);
+  const records = eligible.map(w => {
+    const old = existingByWorker.get(String(w.id));
+    return {
+      worker_id: old.worker_id,
+      date: selectedTimesheetDate,
+      status: old.status,
+      overtime_hours: Number(old.overtime_hours) || 0,
+      contract_overtime_hours: Number(old.contract_overtime_hours) || 0,
+      extra_ot_hours: hours,
+      department: old.department || w.department || '',
+      work_site: old.work_site || old.site || bulkExtraOTSite
+    };
+  });
+  setBulkExtraOTSaving(true);
+  try {
+    for (let i = 0; i < records.length; i += 500) {
+      const { error } = await supabase.from('attendance').upsert(records.slice(i, i + 500), { onConflict: 'worker_id,date' });
+      if (error) throw error;
+    }
+    void logActivity('Bulk Extra OT', `${selectedTimesheetDate}: ${eligible.length} workers; department ${bulkExtraOTDepartment}; site ${bulkExtraOTSite}; Extra OT ${hours} hours each`);
+    await fetchAttendance();
+    alert(`Extra OT save ho gaya: ${eligible.length} workers (${bulkExtraOTDepartment}) ko ${hours} hours each. Normal OT aur Contract OT bilkul mehfooz rakha gaya.`);
+  } catch (err) {
+    alert('Bulk Extra OT save nahi hua: ' + (err?.message || String(err)));
+  } finally {
+    setBulkExtraOTSaving(false);
+  }
+}
+
  // 3. Handle Single Attendance & OT Change (Auto-saves to DB and updates Monthly Timesheet)
 async function handleSingleAttendanceChange(
   workerId,
@@ -2653,7 +2712,8 @@ async function handleSingleAttendanceChange(
   newStatus,
   newOt,
   newSite,
-  newContractOT = 0
+  newContractOT = 0,
+  newExtraOT = null
 ) {
   if (!requireHrEditMode('Attendance / OT update')) throw new Error('Admin Edit Mode OFF hai.');
   if (isPayrollDateClosed(dateStr)) throw new Error('Yeh salary period close hai. Is date ki attendance/OT edit nahi ho sakti. Admin pehle period reopen kare.');
@@ -2679,12 +2739,15 @@ async function handleSingleAttendanceChange(
   const canCountOT = isPresentAttendanceStatus(savedStatus) && !getAnnualLeaveForWorker(workerId, dateStr);
   const savedNormalOT = canCountOT ? (Number(newOt) || 0) : 0;
   const savedContractOT = canCountOT ? (Number(newContractOT) || 0) : 0;
+  // Extra OT is a separate management-awarded amount; preserve it unless explicitly supplied.
+  const savedExtraOT = canCountOT ? (newExtraOT === null ? (Number(existingDbRecord?.extra_ot_hours ?? previousRecord.extra_ot_hours) || 0) : (Number(newExtraOT) || 0)) : 0;
   const updatedRecord = {
     ...previousRecord,
     status: savedStatus,
     ot: savedNormalOT,
     contract_ot: savedContractOT,
     contract_overtime_hours: savedContractOT,
+    extra_ot_hours: savedExtraOT,
     site: assignedSite
   };
 
@@ -2705,6 +2768,7 @@ async function handleSingleAttendanceChange(
         status: savedStatus,
         overtime_hours: savedNormalOT,
         contract_overtime_hours: savedContractOT,
+        extra_ot_hours: savedExtraOT,
         department: worker?.department,
         work_site: assignedSite
       }], { onConflict: 'worker_id,date' });
@@ -2713,7 +2777,7 @@ async function handleSingleAttendanceChange(
 if (error) {
   throw new Error(error.message);
 }
-    void logActivity('Attendance entry', `${dateStr}: worker #${workerId}, status ${newStatus}, normal OT ${Number(newOt) || 0}, contract OT ${Number(newContractOT) || 0}`);
+    void logActivity('Attendance entry', `${dateStr}: worker #${workerId}, status ${newStatus}, normal OT ${Number(newOt) || 0}, contract OT ${Number(newContractOT) || 0}, extra OT ${savedExtraOT}`);
 
   } catch (err) {
     alert('Save karte waqt error: ' + err.message);
@@ -2894,8 +2958,10 @@ async function handleQuickAttendance(e) {
     return;
   }
 
-  const normalOT = quickOTType === 'Normal OT' ? hours : 0;
-  const contractOT = quickOTType === 'Contract OT' ? hours : 0;
+  const existingQuickAttendance = attendance.find(a => String(a.worker_id) === String(worker.id) && String(a.date).slice(0, 10) === String(selectedTimesheetDate).slice(0, 10));
+  const normalOT = quickOTType === 'Normal OT' ? hours : (Number(existingQuickAttendance?.overtime_hours) || 0);
+  const contractOT = quickOTType === 'Contract OT' ? hours : (Number(existingQuickAttendance?.contract_overtime_hours) || 0);
+  const extraOT = quickOTType === 'Extra OT' ? hours : (Number(existingQuickAttendance?.extra_ot_hours) || 0);
 
   setQuickSaving(true);
 
@@ -2906,7 +2972,8 @@ async function handleQuickAttendance(e) {
       'Present',
       normalOT,
       quickSite,
-      contractOT
+      contractOT,
+      extraOT
     );
 
     setQuickWorkerId('');
@@ -3145,12 +3212,18 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     ).length;
     const presentDays = workedPresentDays + monthHolidayDates.size;
 
-    // Normal OT + Contract OT
+    // Normal OT + Contract OT + Extra (management-awarded) OT
     const totalOT = monthlyRecords.reduce((total, record) => {
       if (!isPresentAttendanceStatus(record.status) || getAnnualLeaveForWorker(worker.id, record.date)) return total;
       const normalOT = Number(record.overtime_hours) || 0;
       const contractOT = Number(record.contract_overtime_hours) || 0;
-      return total + normalOT + contractOT;
+      const extraOT = Number(record.extra_ot_hours) || 0;
+      return total + normalOT + contractOT + extraOT;
+    }, 0);
+
+    const extraOTTotal = monthlyRecords.reduce((total, record) => {
+      if (!isPresentAttendanceStatus(record.status) || getAnnualLeaveForWorker(worker.id, record.date)) return total;
+      return total + (Number(record.extra_ot_hours) || 0);
     }, 0);
 
     const monthlySal = Number(
@@ -3169,6 +3242,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     salaryDataMap[worker.id] = {
       presentDays,
       totalOT,
+      extraOT: extraOTTotal,
       baseSalary,
       otSalary,
       totalPayable,
@@ -3866,6 +3940,7 @@ style={{
         <option value="quickAttendance">⚡ Quick Bulk Attendance</option>
         <option value="contractOT">🧾 Bulk Contract OT — Site + Multiple Designations</option>
         <option value="bulkOT">⏱️ Bulk Overtime Only — Department / Designation</option>
+        <option value="bulkExtraOT">➕ Bulk Extra OT — Whole Department</option>
         <option value="siteAttendance">🟢 Site Attendance by Worker ID</option>
         <option value="individualAttendance">👥 Individual Attendance List</option>
       </select>
@@ -3976,11 +4051,12 @@ style={{
         >
           <option value="Normal OT">Normal OT</option>
           <option value="Contract OT">Contract OT</option>
+          <option value="Extra OT">Extra OT (Management)</option>
         </select>
       </div>
 
       <div>
-        <label>OT Hours</label>
+        <label>{quickOTType === 'Extra OT' ? 'Extra OT Hours' : 'OT Hours'}</label>
         <input
           type="number"
           min="0"
@@ -4108,6 +4184,41 @@ style={{
       </div>
     </div></div>}
     </div>
+
+<div style={{ marginBottom: 10, border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden', background: '#fff', display: bulkOpenSection === 'bulkExtraOT' ? 'block' : 'none' }}>
+  {bulkOpenSection === 'bulkExtraOT' && <div style={{ padding: 16, borderTop: '1px solid #e2e8f0' }}>
+    <h3 style={{ margin: '0 0 8px', color: '#166534' }}>➕ Bulk Extra OT — Whole Department</h3>
+    <p style={{ margin: '0 0 14px', fontSize: 12, color: '#475569' }}>Department select karein: us department ke tamam Present / Holiday Present workers (Carpenter, Helper, Foreman sab) par Extra OT aik sath apply hoga. Normal OT aur Contract OT change nahi honge. Enter kiye gaye hours har worker ke Extra OT mein set honge.</p>
+    <form onSubmit={handleBulkExtraOT}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
+        <div>
+          <label style={{ display: 'block', marginBottom: 5, fontSize: 12, fontWeight: 700 }}>Select Date</label>
+          <input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} style={{ width: '100%', padding: 9, border: '1px solid #cbd5e1', borderRadius: 6 }} />
+        </div>
+        <div>
+          <label style={{ display: 'block', marginBottom: 5, fontSize: 12, fontWeight: 700 }}>Department</label>
+          <select value={bulkExtraOTDepartment} onChange={e => setBulkExtraOTDepartment(e.target.value)} required style={{ width: '100%', padding: 9, border: '1px solid #cbd5e1', borderRadius: 6 }}>
+            <option value="">Select Department</option>
+            {Array.from(new Set([...(departmentsList || []), ...(workers || []).map(w => w.department).filter(Boolean)])).filter(d => userRole.is_admin || String(d).trim().toLowerCase() === String(userRole.assigned_department || '').trim().toLowerCase()).map((d, idx) => <option key={idx} value={d}>{d}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ display: 'block', marginBottom: 5, fontSize: 12, fontWeight: 700 }}>Working Site</label>
+          <select value={bulkExtraOTSite} onChange={e => setBulkExtraOTSite(e.target.value)} style={{ width: '100%', padding: 9, border: '1px solid #cbd5e1', borderRadius: 6 }}>
+            {sitesList.map((site, idx) => <option key={idx} value={site}>{site}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ display: 'block', marginBottom: 5, fontSize: 12, fontWeight: 700 }}>Extra OT Hours (each worker)</label>
+          <input type="number" min="0" step="0.5" value={bulkExtraOTHours} onChange={e => setBulkExtraOTHours(e.target.value)} required style={{ width: '100%', padding: 9, border: '1px solid #cbd5e1', borderRadius: 6 }} />
+        </div>
+        <div>
+          <button type="submit" disabled={bulkExtraOTSaving} style={{ width: '100%', padding: 11, background: '#16a34a', color: '#fff', border: 0, borderRadius: 6, fontWeight: 700, cursor: bulkExtraOTSaving ? 'wait' : 'pointer' }}>{bulkExtraOTSaving ? 'Saving...' : 'Apply Extra OT to Department'}</button>
+        </div>
+      </div>
+    </form>
+  </div>}
+</div>
 
 <div style={{ marginBottom: 10, border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden', background: '#fff', display: bulkOpenSection === 'siteAttendance' ? 'block' : 'none' }}>
       <button type="button" onClick={() => setBulkOpenSection(bulkOpenSection === 'siteAttendance' ? '' : 'siteAttendance')} style={{ width: '100%', display: 'none', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px', border: 0, background: bulkOpenSection === 'siteAttendance' ? '#eaf2ff' : '#f8fafc', color: '#12345a', fontWeight: 800, fontSize: 14, textAlign: 'left', cursor: 'pointer' }}>
@@ -5039,6 +5150,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
             <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>ID</th>
             <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Total Present</th>
             <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Total Overtime</th>
+            <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Extra OT Hours</th>
             <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Overtime Pay</th>
             <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Salary Pay</th>
             <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Total Salary</th>
@@ -5069,6 +5181,9 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
                 <td style={{ border: '1px solid #cbd5e1', padding: '8px' }}>
                   {totalOT} hrs
                 </td>
+                <td style={{ border: '1px solid #cbd5e1', padding: '8px', color: '#b45309', fontWeight: 700 }}>
+                  {Number(s.extraOT || 0)} hrs
+                </td>
                 <td style={{ border: '1px solid #cbd5e1', padding: '8px' }}>
                   {Math.round(overtimePay).toLocaleString()} {selectedCurrency}
                 </td>
@@ -5086,7 +5201,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
         <tfoot>
           <tr style={{ backgroundColor: '#f1f5f9', fontWeight: 'bold' }}>
             <td
-              colSpan={7}
+              colSpan={8}
               style={{
                 border: '1px solid #94a3b8',
                 padding: '10px',
@@ -5925,6 +6040,7 @@ accruedDays = balance.toFixed(1);
               <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Status</th>
              <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Normal OT</th>
 <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Contract OT</th>
+<th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Extra OT</th>
 <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Total OT</th>
               <th style={{ padding: '10px', borderBottom: '2px solid #cbd5e1' }}>Site</th>
             </tr>
@@ -5960,6 +6076,7 @@ const monthlyRows = allPeriodDates
       status: 'Holiday',
       overtime_hours: 0,
       contract_overtime_hours: 0,
+      extra_ot_hours: 0,
       work_site: viewingWorkerTimesheet.work_site || ''
     };
     const annualLeave = getAnnualLeaveForWorker(viewingWorkerTimesheet.id, date);
@@ -5972,7 +6089,8 @@ const monthlyRows = allPeriodDates
       status,
       overtime_hours: canCountOT ? (Number(att.overtime_hours) || 0) : 0,
       contract_overtime_hours: canCountOT ? (Number(att.contract_overtime_hours) || 0) : 0,
-      total_overtime_hours: canCountOT ? ((Number(att.overtime_hours) || 0) + (Number(att.contract_overtime_hours) || 0)) : 0
+      extra_ot_hours: canCountOT ? (Number(att.extra_ot_hours) || 0) : 0,
+      total_overtime_hours: canCountOT ? ((Number(att.overtime_hours) || 0) + (Number(att.contract_overtime_hours) || 0) + (Number(att.extra_ot_hours) || 0)) : 0
     };
   });
 
@@ -6036,9 +6154,13 @@ return monthlyRows.map((att, idx) => {
 <td style={{ padding: '8px 10px', color: '#7c3aed' }}>
   {Number(att.contract_overtime_hours) || 0} Hours
 </td>
+<td style={{ padding: '8px 10px', color: '#b45309', fontWeight: 700 }}>
+  {Number(att.extra_ot_hours) || 0} Hours
+</td>
 <td style={{ padding: '8px 10px', fontWeight: 'bold' }}>
   {(Number(att.overtime_hours) || 0) +
-   (Number(att.contract_overtime_hours) || 0)} Hours
+   (Number(att.contract_overtime_hours) || 0) +
+   (Number(att.extra_ot_hours) || 0)} Hours
 </td>
       <td style={{ padding: '8px 10px', color: '#64748b' }}>
         {att.work_site || viewingWorkerTimesheet.work_site || 'N/A'}
