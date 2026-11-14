@@ -2351,6 +2351,20 @@ async function handleToggleHolidayDate() {
       return { ...row, date: d, status, overtime_hours: canCountOT ? (Number(row.overtime_hours) || 0) : 0, contract_overtime_hours: canCountOT ? (Number(row.contract_overtime_hours) || 0) : 0, extra_ot_hours: canCountOT ? (Number(row.extra_ot_hours) || 0) : 0 };
     });
 
+    // Per-worker summary for the individual Monthly Timesheet print page.
+    // Keep the same report-period rows and include all three OT categories.
+    const workerPresentRows = workerAttendance.filter(att => isPresentAttendanceStatus(att.status));
+    const workerAbsentDays = workerAttendance.filter(att => String(att.status || '').trim().toLowerCase() === 'absent').length;
+    const workerZeroOTDays = workerPresentRows.filter(att =>
+      (Number(att.overtime_hours) || 0) +
+      (Number(att.contract_overtime_hours) || 0) +
+      (Number(att.extra_ot_hours) || 0) <= 0
+    ).length;
+    const workerMonthlyOT = workerAttendance.reduce((sum, att) => sum +
+      (Number(att.overtime_hours) || 0) +
+      (Number(att.contract_overtime_hours) || 0) +
+      (Number(att.extra_ot_hours) || 0), 0);
+
     const printWindow = window.open('', '_blank');
 
     if (!printWindow) {
@@ -2423,6 +2437,30 @@ async function handleToggleHolidayDate() {
               background: #e2e8f0;
             }
 
+            .worker-summary {
+              display: grid;
+              grid-template-columns: repeat(4, minmax(0, 1fr));
+              gap: 9px;
+              margin-top: 18px;
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
+            .worker-summary-card {
+              border: 1px solid #cbd5e1;
+              border-left: 4px solid #2563eb;
+              border-radius: 7px;
+              padding: 11px;
+              background: #f8fafc;
+              min-width: 0;
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
+            .worker-summary-label { font-size: 10px; font-weight: 800; color: #475569; margin-bottom: 7px; }
+            .worker-summary-value { font-size: 21px; font-weight: 900; color: #0b2853; }
+            .worker-summary-note { font-size: 9px; color: #64748b; margin-top: 5px; }
+            @media print {
+              .worker-summary-card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            }
             .report-footer {
               display: block !important;
               width: 100%;
@@ -2493,6 +2531,29 @@ async function handleToggleHolidayDate() {
               }
             </tbody>
           </table>
+
+          <section class="worker-summary">
+            <div class="worker-summary-card" style="border-left-color:#047857">
+              <div class="worker-summary-label">TOTAL PRESENT DAYS</div>
+              <div class="worker-summary-value" style="color:#047857">${workerPresentRows.length}</div>
+              <div class="worker-summary-note">Present + Holiday Present</div>
+            </div>
+            <div class="worker-summary-card" style="border-left-color:#b91c1c">
+              <div class="worker-summary-label">TOTAL ABSENT DAYS</div>
+              <div class="worker-summary-value" style="color:#b91c1c">${workerAbsentDays}</div>
+              <div class="worker-summary-note">Recorded absent entries</div>
+            </div>
+            <div class="worker-summary-card" style="border-left-color:#b45309">
+              <div class="worker-summary-label">0 OVERTIME DAYS</div>
+              <div class="worker-summary-value" style="color:#b45309">${workerZeroOTDays}</div>
+              <div class="worker-summary-note">Present days with zero OT</div>
+            </div>
+            <div class="worker-summary-card" style="border-left-color:#1d4ed8">
+              <div class="worker-summary-label">MONTHLY TOTAL OT</div>
+              <div class="worker-summary-value" style="color:#1d4ed8">${workerMonthlyOT.toFixed(2)} HRS</div>
+              <div class="worker-summary-note">Normal + Contract + Extra OT</div>
+            </div>
+          </section>
 
           <div class="report-footer">
           </div>
