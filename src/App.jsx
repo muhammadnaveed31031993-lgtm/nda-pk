@@ -6077,7 +6077,14 @@ accruedDays = balance.toFixed(1);
         </table>
       </div>
 
-      {/* Monthly attendance and all-category OT summary included at the end of the printed report. */}
+      {/* Monthly Timesheet Summary Boxes - always included at the very end of the printed report. */}
+      <style>{`
+        .monthly-timesheet-summary { display:block !important; width:100%; margin-top:24px; padding-top:16px; border-top:2px solid #cbd5e1; break-inside:avoid !important; page-break-inside:avoid !important; }
+        .monthly-timesheet-summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+        .monthly-timesheet-summary-card { min-width:0; border:1px solid #cbd5e1; border-radius:9px; padding:13px 14px; background:#f8fafc !important; break-inside:avoid !important; page-break-inside:avoid !important; }
+        @media screen and (max-width:700px) { .monthly-timesheet-summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+        @media print { .monthly-timesheet-summary { display:block !important; visibility:visible !important; margin-top:18px !important; } .monthly-timesheet-summary-grid { grid-template-columns:repeat(4,minmax(0,1fr)) !important; } .monthly-timesheet-summary-card { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; } }
+      `}</style>
       {(() => {
         const reportDepartment = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
         const reportSite = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
@@ -6102,23 +6109,23 @@ accruedDays = balance.toFixed(1);
         const presentRows = reportRows.filter(a => isPresentAttendanceStatus(a.status));
         const absentDays = reportRows.filter(a => String(a.status || '').trim().toLowerCase() === 'absent').length;
         const zeroOTDays = presentRows.filter(a => (Number(a.overtime_hours) || 0) + (Number(a.contract_overtime_hours) || 0) + (Number(a.extra_ot_hours) || 0) <= 0).length;
-        const monthlyOT = presentRows.reduce((sum, a) => sum + (Number(a.overtime_hours) || 0) + (Number(a.contract_overtime_hours) || 0) + (Number(a.extra_ot_hours) || 0), 0);
+        const monthlyOT = reportRows.reduce((sum, a) => sum + (Number(a.overtime_hours) || 0) + (Number(a.contract_overtime_hours) || 0) + (Number(a.extra_ot_hours) || 0), 0);
         const summaryItems = [
-          { label: 'Total Present Days', value: presentRows.length, accent: '#047857', note: 'Present + Holiday Present' },
-          { label: 'Total Absent Days', value: absentDays, accent: '#b91c1c', note: 'Recorded absent entries' },
-          { label: '0 Overtime Days', value: zeroOTDays, accent: '#b45309', note: 'Present days with zero OT' },
-          { label: 'Monthly Total OT', value: `${monthlyOT.toFixed(2)} hrs`, accent: '#1d4ed8', note: 'Normal + Contract + Extra OT' }
+          { label: 'TOTAL PRESENT DAYS', value: presentRows.length, accent: '#047857', note: 'Present + Holiday Present' },
+          { label: 'TOTAL ABSENT DAYS', value: absentDays, accent: '#b91c1c', note: 'Recorded absent entries' },
+          { label: '0 OVERTIME DAYS', value: zeroOTDays, accent: '#b45309', note: 'Present days with zero OT' },
+          { label: 'MONTHLY TOTAL OT', value: `${monthlyOT.toFixed(2)} HRS`, accent: '#1d4ed8', note: 'Normal + Contract + Extra OT' }
         ];
-        return <div style={{ marginTop: 22, paddingTop: 16, borderTop: '2px solid #cbd5e1' }}>
-          <h3 style={{ margin: '0 0 12px', color: '#0b2853', fontSize: 16 }}>Monthly Attendance & Overtime Summary</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
-            {summaryItems.map(item => <div key={item.label} style={{ border: `1px solid ${item.accent}55`, borderLeft: `5px solid ${item.accent}`, borderRadius: 8, padding: '12px 13px', background: '#f8fafc', minHeight: 78 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: '#475569', marginBottom: 7 }}>{item.label}</div>
-              <div style={{ fontSize: 22, fontWeight: 900, color: item.accent, lineHeight: 1.15 }}>{item.value}</div>
-              <div style={{ fontSize: 10, color: '#64748b', marginTop: 5 }}>{item.note}</div>
+        return <div className="monthly-timesheet-summary">
+          <h3 style={{ margin: '0 0 12px', color: '#0b2853', fontSize: 16, fontWeight: 900 }}>MONTHLY ATTENDANCE & OVERTIME SUMMARY</h3>
+          <div className="monthly-timesheet-summary-grid">
+            {summaryItems.map(item => <div className="monthly-timesheet-summary-card" key={item.label} style={{ borderColor: `${item.accent}66`, borderLeft: `5px solid ${item.accent}` }}>
+              <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: '.35px', color: '#475569', marginBottom: 8 }}>{item.label}</div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: item.accent, lineHeight: 1.1 }}>{item.value}</div>
+              <div style={{ fontSize: 10, color: '#64748b', marginTop: 6 }}>{item.note}</div>
             </div>)}
           </div>
-          <div style={{ fontSize: 10, color: '#64748b', marginTop: 8 }}>Report Period: {payrollStartDate} to {payrollEndDate} · Workers included: {reportWorkers.length}</div>
+          <div style={{ fontSize: 10, color: '#64748b', marginTop: 9 }}>Report Period: {payrollStartDate} to {payrollEndDate} · Workers included: {reportWorkers.length}</div>
         </div>;
       })()}
 
