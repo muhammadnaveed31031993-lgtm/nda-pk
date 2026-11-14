@@ -3240,6 +3240,9 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       return total + normalOT + contractOT + extraOT;
     }, 0);
 
+    const normalOTTotal = otRecords.reduce((total, record) => total + (isPresentAttendanceStatus(record.status) && !getAnnualLeaveForWorker(worker.id, record.date) ? (Number(record.overtime_hours) || 0) : 0), 0);
+    const contractOTTotal = otRecords.reduce((total, record) => total + (isPresentAttendanceStatus(record.status) && !getAnnualLeaveForWorker(worker.id, record.date) ? (Number(record.contract_overtime_hours) || 0) : 0), 0);
+
     const extraOTTotal = otRecords.reduce((total, record) => {
       if (!isPresentAttendanceStatus(record.status) || getAnnualLeaveForWorker(worker.id, record.date)) return total;
       return total + (Number(record.extra_ot_hours) || 0);
@@ -3261,6 +3264,8 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     salaryDataMap[worker.id] = {
       presentDays,
       totalOT,
+      normalOT: normalOTTotal,
+      contractOT: contractOTTotal,
       extraOT: extraOTTotal,
       baseSalary,
       otSalary,
@@ -3285,6 +3290,68 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     (total, worker) => total + worker.totalPayable,
     0
   );
+
+  // Print a professional, single-worker payroll slip using the same payroll calculations.
+  function handlePrintWorkerPayrollSlip(worker) {
+    const payroll = salaryDataMap[worker.id] || {};
+    const normalOT = Number(payroll.normalOT || 0);
+    const contractOT = Number(payroll.contractOT || 0);
+    const extraOT = Number(payroll.extraOT || 0);
+    const currency = selectedCurrency || worker.currency || 'AED';
+    const monthlySalary = Number(payroll.monthlySal || worker.monthly_salary || 0);
+    const payableDays = Number(payroll.presentDays || 0);
+    const basicPay = Number(payroll.baseSalary || 0);
+    const totalOT = normalOT + contractOT + extraOT;
+    const overtimePay = Number(payroll.otSalary || 0);
+    const totalPay = Number(payroll.totalPayable || (basicPay + overtimePay));
+    const dailyRate = salaryMonthDays ? monthlySalary / salaryMonthDays : 0;
+    const hourlyRate = dailyRate / 8;
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const moneyText = value => `${Math.round(Number(value) || 0).toLocaleString('en-US')} ${esc(currency)}`;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Print window blocked. Please allow pop-ups and try again.');
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(`
+      <!DOCTYPE html><html><head><meta charset="UTF-8"><title>Salary Slip - ${esc(worker.name)} - ${esc(salaryMonthLabel)}</title>
+      <style>
+        @page{size:A4 portrait;margin:14mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#172033;margin:0;background:#fff}
+        .brand{display:flex;align-items:center;gap:16px;border-bottom:3px solid #c69227;padding:0 0 13px;margin-bottom:18px}
+        .brand img{width:105px;height:66px;object-fit:contain}.brand h1{font-size:21px;color:#0b2853;margin:0 0 5px}.brand p{font-size:12px;color:#475569;margin:0}
+        .heading{display:flex;justify-content:space-between;align-items:center;margin:16px 0}.heading h2{margin:0;font-size:20px;color:#0f172a}.period{font-size:11px;color:#475569;text-align:right;line-height:1.6}
+        .employee{display:grid;grid-template-columns:1fr 1fr;gap:9px 18px;padding:14px 16px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;margin-bottom:18px;font-size:13px}.employee b{color:#334155}
+        table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #cbd5e1;padding:11px 12px;font-size:13px}th{background:#eaf0f7;text-align:left;color:#24364b}.amount{text-align:right;font-weight:700;white-space:nowrap}
+        .total td{background:#eaf7ef;font-weight:800;font-size:15px}.section-title{font-size:14px;color:#0b2853;margin:18px 0 7px}.note{font-size:11px;color:#64748b;margin-top:12px}
+        .signatures{display:grid;grid-template-columns:1fr 1fr;gap:55px;margin-top:58px}.sign{border-top:1px solid #64748b;text-align:center;padding-top:8px;font-size:12px;color:#475569}
+        .footer{border-top:1px solid #cbd5e1;margin-top:28px;padding-top:9px;text-align:center;font-size:10px;color:#64748b}
+      </style></head><body>
+        <div class="brand"><img src="/nda-naveed-logo.png" alt="Company Logo"><div><h1>NDA-PK</h1><p>Payroll & Human Resources Department</p><p>Individual Employee Salary Statement</p></div></div>
+        <div class="heading"><h2>SALARY SLIP</h2><div class="period"><b>Salary Month:</b> ${esc(salaryMonthLabel)}<br><b>OT Closing Period:</b> ${esc(payrollPeriodStartDate)} to ${esc(payrollPeriodEndDate)}</div></div>
+        <div class="employee">
+          <div><b>Employee Name:</b> ${esc(worker.name || '—')}</div><div><b>Employee ID:</b> #${esc(worker.id)}</div>
+          <div><b>Department:</b> ${esc(worker.department || '—')}</div><div><b>Designation:</b> ${esc(worker.designation || '—')}</div>
+          <div><b>Working Site:</b> ${esc(worker.work_site || '—')}</div><div><b>Currency:</b> ${esc(currency)}</div>
+          <div><b>Monthly Basic Salary:</b> ${moneyText(monthlySalary)}</div><div><b>Payable Days:</b> ${payableDays} / ${salaryMonthDays}</div>
+        </div>
+        <div class="section-title">Salary & Overtime Breakdown</div>
+        <table><thead><tr><th>Description</th><th>Hours / Days</th><th class="amount">Amount (${esc(currency)})</th></tr></thead><tbody>
+          <tr><td>Basic Salary (${payableDays} payable days)</td><td>${payableDays} days</td><td class="amount">${moneyText(basicPay)}</td></tr>
+          <tr><td>Normal Overtime</td><td>${normalOT.toFixed(2)} hrs</td><td class="amount">—</td></tr>
+          <tr><td>Contract Overtime</td><td>${contractOT.toFixed(2)} hrs</td><td class="amount">—</td></tr>
+          <tr><td>Extra Overtime</td><td>${extraOT.toFixed(2)} hrs</td><td class="amount">—</td></tr>
+          <tr><td><b>Total Overtime</b></td><td><b>${totalOT.toFixed(2)} hrs</b></td><td class="amount">—</td></tr>
+          <tr><td>Overtime Pay (1.25 × hourly rate)</td><td>${hourlyRate.toFixed(2)} ${esc(currency)}/hr × 1.25</td><td class="amount">${moneyText(overtimePay)}</td></tr>
+          <tr class="total"><td colspan="2">NET TOTAL PAYABLE</td><td class="amount">${moneyText(totalPay)}</td></tr>
+        </tbody></table>
+        <p class="note">Overtime includes Normal OT, Contract OT and Extra OT recorded within the stated OT closing period. Basic salary is calculated using the salary month's calendar days and payable days.</p>
+        <div class="signatures"><div class="sign">Prepared By</div><div class="sign">Employee Signature</div></div>
+        <div class="footer">Computer-generated salary slip · ${esc(salaryMonthLabel)} · ${esc(worker.name || '')}</div>
+        <script>window.onload=function(){var logo=document.querySelector('.brand img');var go=function(){setTimeout(function(){window.focus();window.print();},250);};if(logo&&!logo.complete){logo.onload=go;logo.onerror=go;}else{go();}};<\/script>
+      </body></html>`);
+    printWindow.document.close();
+  }
 
   if (!selectedSystem) {
     return (
@@ -5156,6 +5223,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
             <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Overtime Pay</th>
             <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Salary Pay</th>
             <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Total Salary</th>
+            <th className="no-print" style={{ border: '1px solid #94a3b8', padding: '9px' }}>Salary Slip</th>
           </tr>
         </thead>
 
@@ -5195,6 +5263,9 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
                 <td style={{ border: '1px solid #cbd5e1', padding: '8px', fontWeight: 'bold' }}>
                   {Math.round(totalSalary).toLocaleString()} {selectedCurrency}
                 </td>
+                <td className="no-print" style={{ border: '1px solid #cbd5e1', padding: '8px', whiteSpace: 'nowrap' }}>
+                  <button type="button" onClick={() => handlePrintWorkerPayrollSlip(s)} style={{ padding: '7px 10px', background: '#047857', color: '#fff', border: 0, borderRadius: 6, fontWeight: 700, cursor: 'pointer' }}>🧾 Print / PDF</button>
+                </td>
               </tr>
             );
           })}
@@ -5215,6 +5286,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
             <td style={{ border: '1px solid #94a3b8', padding: '10px' }}>
               {Math.round(grandTotalPayroll).toLocaleString()} {selectedCurrency}
             </td>
+            <td className="no-print" style={{ border: '1px solid #94a3b8', padding: '10px' }}></td>
           </tr>
         </tfoot>
       </table>
@@ -6004,6 +6076,51 @@ accruedDays = balance.toFixed(1);
           </tbody>
         </table>
       </div>
+
+      {/* Monthly attendance and all-category OT summary included at the end of the printed report. */}
+      {(() => {
+        const reportDepartment = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
+        const reportSite = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
+        const reportWorkers = (userRole.is_admin ? workers : filteredWorkers).filter(w => {
+          const matchesDept = reportDepartment === 'All' || !reportDepartment || String(w.department || '').trim().toLowerCase() === String(reportDepartment).trim().toLowerCase();
+          const matchesSite = reportSite === 'All' || !reportSite || String(w.work_site || '').trim().toLowerCase() === String(reportSite).trim().toLowerCase();
+          const matchesSearch = !timesheetSearchQuery || String(w.id).toLowerCase().includes(timesheetSearchQuery.toLowerCase()) || String(w.name || '').toLowerCase().includes(timesheetSearchQuery.toLowerCase());
+          return matchesDept && matchesSite && matchesSearch;
+        });
+        const workerMap = new Map(reportWorkers.map(w => [String(w.id), w]));
+        const uniqueRows = new Map();
+        attendance.forEach(a => {
+          const workerId = String(a.worker_id);
+          const date = String(a.date || '').slice(0, 10);
+          const worker = workerMap.get(workerId);
+          if (!worker || date < payrollStartDate || date > payrollEndDate) return;
+          const joinDate = String(worker.joining_date || '').slice(0, 10);
+          if (joinDate && date < joinDate) return;
+          uniqueRows.set(`${workerId}-${date}`, a);
+        });
+        const reportRows = Array.from(uniqueRows.values());
+        const presentRows = reportRows.filter(a => isPresentAttendanceStatus(a.status));
+        const absentDays = reportRows.filter(a => String(a.status || '').trim().toLowerCase() === 'absent').length;
+        const zeroOTDays = presentRows.filter(a => (Number(a.overtime_hours) || 0) + (Number(a.contract_overtime_hours) || 0) + (Number(a.extra_ot_hours) || 0) <= 0).length;
+        const monthlyOT = presentRows.reduce((sum, a) => sum + (Number(a.overtime_hours) || 0) + (Number(a.contract_overtime_hours) || 0) + (Number(a.extra_ot_hours) || 0), 0);
+        const summaryItems = [
+          { label: 'Total Present Days', value: presentRows.length, accent: '#047857', note: 'Present + Holiday Present' },
+          { label: 'Total Absent Days', value: absentDays, accent: '#b91c1c', note: 'Recorded absent entries' },
+          { label: '0 Overtime Days', value: zeroOTDays, accent: '#b45309', note: 'Present days with zero OT' },
+          { label: 'Monthly Total OT', value: `${monthlyOT.toFixed(2)} hrs`, accent: '#1d4ed8', note: 'Normal + Contract + Extra OT' }
+        ];
+        return <div style={{ marginTop: 22, paddingTop: 16, borderTop: '2px solid #cbd5e1' }}>
+          <h3 style={{ margin: '0 0 12px', color: '#0b2853', fontSize: 16 }}>Monthly Attendance & Overtime Summary</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
+            {summaryItems.map(item => <div key={item.label} style={{ border: `1px solid ${item.accent}55`, borderLeft: `5px solid ${item.accent}`, borderRadius: 8, padding: '12px 13px', background: '#f8fafc', minHeight: 78 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: '#475569', marginBottom: 7 }}>{item.label}</div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: item.accent, lineHeight: 1.15 }}>{item.value}</div>
+              <div style={{ fontSize: 10, color: '#64748b', marginTop: 5 }}>{item.note}</div>
+            </div>)}
+          </div>
+          <div style={{ fontSize: 10, color: '#64748b', marginTop: 8 }}>Report Period: {payrollStartDate} to {payrollEndDate} · Workers included: {reportWorkers.length}</div>
+        </div>;
+      })()}
 
     <div className="no-print" style={{display:'flex',justifyContent:'flex-end',marginTop:18,paddingTop:14,borderTop:'1px solid #e2e8f0'}}>
       {userRole.is_admin && <button type="button" onClick={() => printNdaPage('hr-monthly-timesheet-print')} style={{padding:'10px 18px',background:'#2563eb',color:'#fff',border:0,borderRadius:7,fontWeight:800,cursor:'pointer'}}>🖨️ Print Full Report / Save PDF</button>}
