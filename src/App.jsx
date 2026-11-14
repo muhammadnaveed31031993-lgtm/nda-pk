@@ -3206,20 +3206,10 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
   payrollWorkers.forEach(worker => {
     const workerJoinDate = String(worker.joining_date || '').slice(0, 10);
     const payrollAsOfDate = formatPayrollDate(new Date());
-    const effectiveSalaryEndDate = salaryMonthEndDate < payrollAsOfDate ? salaryMonthEndDate : payrollAsOfDate;
     const effectiveOTEndDate = payrollPeriodEndDate < payrollAsOfDate ? payrollPeriodEndDate : payrollAsOfDate;
 
-    // Calendar-month attendance is used only for base salary / paid days.
-    const salaryRecordsByDate = new Map();
-    attendance.forEach(a => {
-      const recordDate = String(a.date || '').slice(0, 10);
-      if (String(a.worker_id) === String(worker.id) && recordDate >= salaryMonthStartDate && recordDate <= effectiveSalaryEndDate && (!workerJoinDate || recordDate >= workerJoinDate)) {
-        salaryRecordsByDate.set(recordDate, a);
-      }
-    });
-    const salaryRecords = Array.from(salaryRecordsByDate.values());
-
-    // The existing 16th-to-15th closing range is used only for all overtime categories.
+    // The existing 16th-to-15th closing range is used for absence deductions
+    // as well as all overtime categories. Only explicit Absent records deduct days.
     const otRecordsByDate = new Map();
     attendance.forEach(a => {
       const recordDate = String(a.date || '').slice(0, 10);
@@ -3229,16 +3219,17 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     });
     const otRecords = Array.from(otRecordsByDate.values());
 
-    // Sundays and admin-marked holidays count as paid days once per date in the calendar salary month.
-    const monthHolidayDates = new Set();
-    for (let cursor = new Date(salaryMonthStart); cursor <= salaryMonthEnd && formatPayrollDate(cursor) <= payrollAsOfDate; cursor.setDate(cursor.getDate() + 1)) {
-      const d = formatPayrollDate(cursor);
-      if ((!workerJoinDate || d >= workerJoinDate) && (cursor.getDay() === 0 || holidayDates.some(h => String(h.holiday_date).slice(0, 10) === d))) monthHolidayDates.add(d);
-    }
-    const workedPresentDays = salaryRecords.filter(a =>
-      String(a.status || '').trim().toLowerCase() === 'present' && !monthHolidayDates.has(String(a.date || '').slice(0, 10))
-    ).length;
-    const presentDays = workedPresentDays + monthHolidayDates.size;
+    // Payable days are the full calendar salary-month days minus unique Absent
+    // dates in the 16th-to-15th closing period. Joining date is respected.
+    const salaryEligibleDays = workerJoinDate && workerJoinDate > salaryMonthStartDate
+      ? Math.max(0, Math.floor((salaryMonthEnd - new Date(`${workerJoinDate}T12:00:00`)) / 86400000) + 1)
+      : salaryMonthDays;
+    const absentDays = new Set(
+      otRecords
+        .filter(a => String(a.status || '').trim().toLowerCase() === 'absent')
+        .map(a => String(a.date || '').slice(0, 10))
+    ).size;
+    const presentDays = Math.max(0, salaryEligibleDays - absentDays);
 
     // Normal OT + Contract OT + Extra OT use the independent 16th-to-15th closing period.
     const totalOT = otRecords.reduce((total, record) => {
@@ -5159,7 +5150,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
             <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>S.No.</th>
             <th style={{ border: '1px solid #94a3b8', padding: '9px', textAlign: 'left' }}>Name</th>
             <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>ID</th>
-            <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Total Present</th>
+            <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Payable Days</th>
             <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Total Overtime</th>
             <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Extra OT Hours</th>
             <th style={{ border: '1px solid #94a3b8', padding: '9px' }}>Overtime Pay</th>
