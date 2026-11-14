@@ -504,7 +504,6 @@ export default function App() {
   const [joiningDate, setJoiningDate] = useState('');
   const [name, setName] = useState('');
   const [department, setDepartment] = useState('Plumbing');
-  const [workSite, setWorkSite] = useState('Sharjah Mamzar');
   const [designation, setDesignation] = useState('Plumber');
   const [designationsList, setDesignationsList] = useState([
   'Carpenter',
@@ -1684,7 +1683,6 @@ async function handleToggleHolidayDate() {
     const updated = sitesList.filter(x => x.toLowerCase() !== siteToDelete.toLowerCase());
     setSitesList(updated);
     if (selectedSiteFilter === siteToDelete) setSelectedSiteFilter('All');
-    if (workSite === siteToDelete) setWorkSite(updated[0] || '');
     void logActivity('Working site deleted', siteToDelete);
     alert(`Site '${siteToDelete}' delete ho gayi aur database mein save kar di gayi.`);
   }
@@ -2205,7 +2203,6 @@ async function handleToggleHolidayDate() {
     setJoiningDate(worker.joining_date || '');
     setName(worker.name);
     setDepartment(worker.department || departmentsList[0]);
-    setWorkSite(worker.work_site || sitesList[0]);
     const workerDesignation = String(worker.designation || 'Worker').trim() || 'Worker';
     setDesignation(workerDesignation);
     // Do not re-add deleted designations to the global active list. The worker's
@@ -2228,7 +2225,6 @@ async function handleToggleHolidayDate() {
     setJoiningDate('');
     setName('');
     setDepartment(departmentsList[0]);
-    setWorkSite(sitesList[0]);
     setDesignation('Worker');
     setMonthlySalary('');
     setReligion('Muslim');
@@ -2253,10 +2249,6 @@ async function handleToggleHolidayDate() {
           department.toLowerCase() !== userRole.assigned_department.toLowerCase()) {
         return alert('Aap sirf apne assigned department mein worker add/edit kar sakte hain.');
       }
-      if (userRole.assigned_site && userRole.assigned_site !== 'All' &&
-          workSite.toLowerCase() !== userRole.assigned_site.toLowerCase()) {
-        return alert('Aap sirf apni assigned site select kar sakte hain.');
-      }
     }
     if (!name.trim() || !monthlySalary) return alert('Name and Salary required!');
 
@@ -2266,7 +2258,6 @@ async function handleToggleHolidayDate() {
     const workerData = {
       name: name.trim(),
       department: department.trim(),
-      work_site: workSite.trim(),
       designation: designation.trim(),
       monthly_salary: monthlyNum,
       daily_rate: dailyRateCalc,
@@ -2344,7 +2335,7 @@ async function handleToggleHolidayDate() {
       }
     }
     const workerAttendance = reportDates.filter(d => (!workerJoinDate || d >= workerJoinDate) && (attendanceByDate.has(d) || isHolidayDate(d) || getAnnualLeaveForWorker(worker.id, d))).map(d => {
-      const row = attendanceByDate.get(d) || { worker_id: worker.id, date: d, overtime_hours: 0, contract_overtime_hours: 0, extra_ot_hours: 0, work_site: worker.work_site || '' };
+      const row = attendanceByDate.get(d) || { worker_id: worker.id, date: d, overtime_hours: 0, contract_overtime_hours: 0, extra_ot_hours: 0, work_site: '' };
       const annualLeave = getAnnualLeaveForWorker(worker.id, d);
       const status = annualLeave ? 'Annual Leave' : (isHolidayDate(d) ? (isPresentAttendanceStatus(row.status) ? 'Holiday Present' : 'Holiday') : (row.status || '—'));
       const canCountOT = isPresentAttendanceStatus(status);
@@ -2491,8 +2482,7 @@ async function handleToggleHolidayDate() {
           <div class="box">
             <p><strong>Worker ID:</strong> #${worker.id}</p>
             <p><strong>Name:</strong> ${worker.name || ''}</p>
-            <p><strong>Department:</strong> ${worker.department || 'N/A'}
-              | <strong>Site:</strong> ${worker.work_site || 'N/A'}</p>
+            <p><strong>Department:</strong> ${worker.department || 'N/A'}</p>
             <p><strong>Monthly Salary:</strong>
               ${monthlySalary} ${currency}</p>
           </div>
@@ -2523,9 +2513,9 @@ async function handleToggleHolidayDate() {
 <td>${Number(att.overtime_hours) || 0} Hours</td>
 <td>${Number(att.contract_overtime_hours) || 0} Hours</td>
 <td>${Number(att.extra_ot_hours) || 0} Hours</td>
-<td>${att.extra_ot_site || (Number(att.extra_ot_hours) > 0 ? (att.work_site || worker.work_site || 'N/A') : '—')}</td>
+<td>${att.extra_ot_site || (Number(att.extra_ot_hours) > 0 ? (att.work_site || 'N/A') : '—')}</td>
 <td>${(Number(att.overtime_hours) || 0) + (Number(att.contract_overtime_hours) || 0) + (Number(att.extra_ot_hours) || 0)} Hours</td>
-                        <td>${att.work_site || worker.work_site || 'N/A'}</td>
+                        <td>${att.work_site || 'N/A'}</td>
                       </tr>
                     `).join('')
               }
@@ -2887,9 +2877,9 @@ async function handleBulkDesignationAttendance(e) {
     return actual === chosenDesignation;
   };
   const departmentMatches = w => normalize(bulkMarkDepartment) === 'all' || normalize(w.department) === normalize(bulkMarkDepartment);
-  const globalSiteMatches = w => {
+  const globalSiteMatches = () => {
     const scope = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
-    return !scope || normalize(scope) === 'all' || normalize(w.work_site) === normalize(scope);
+    return !scope || normalize(scope) === 'all' || normalize(bulkMarkSite) === normalize(scope);
   };
   const candidates = workers.filter(w => departmentMatches(w) && designationMatches(w) && globalSiteMatches(w));
   if (!candidates.length) return alert('Selected department/designation mein koi worker nahi mila. Workers Directory mein designation check karein.');
@@ -2985,7 +2975,7 @@ async function handleBulkExtraOT(e) {
       contract_overtime_hours: Number(old.contract_overtime_hours) || 0,
       extra_ot_hours: hours, extra_ot_site: bulkExtraOTSite,
       department: old.department || w.department || '',
-      work_site: old.work_site || old.site || w.work_site || ''
+      work_site: old.work_site || old.site || ''
     };
   });
   setBulkExtraOTSaving(true);
@@ -3152,17 +3142,14 @@ const otHours = Number(
         (userRole.can_view_workers || userRole.can_view_timesheet || userRole.can_view_payroll) ||
         String(d).trim().toLowerCase() === String(userRole.assigned_department || '').trim().toLowerCase());
 
+  // Workers are not permanently assigned to a site. Site selection applies only
+  // to daily attendance / overtime records, never to the Workers Dictionary.
   const filteredWorkers = workers.filter(w => {
     const userDeptScope = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
-    const userSiteScope = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
-    
-    let deptMatch = (!userDeptScope || userDeptScope === 'All' || String(w.department || '').trim().toLowerCase() === String(userDeptScope).trim().toLowerCase());
-    let siteMatch = (!userSiteScope || userSiteScope === 'All' || String(w.work_site || '').trim().toLowerCase() === String(userSiteScope).trim().toLowerCase());
-    
-    return deptMatch && siteMatch;
+    return !userDeptScope || userDeptScope === 'All' || String(w.department || '').trim().toLowerCase() === String(userDeptScope).trim().toLowerCase();
   });
 
-  // Annual Leave records follow the same selected department/site scope as the worker list.
+  // Annual Leave records follow the worker's department scope.
   const annualLeaveScopedWorkerIds = new Set(filteredWorkers.map(w => String(w.id)));
   const annualLeaveScopedList = annualLeaveList.filter(leave => annualLeaveScopedWorkerIds.has(String(leave.worker_id)));
 
@@ -3255,13 +3242,18 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     const selectedPayrollDepartment = String(payrollDepartment || 'All').trim().toLowerCase();
     const assignedDept = String(userRole.assigned_department || 'All').trim().toLowerCase();
     const assignedSite = String(userRole.assigned_site || 'All').trim().toLowerCase();
-    const selectedSite = String(userRole.is_admin ? selectedSiteFilter : userRole.assigned_site || 'All').trim().toLowerCase();
-    const workerSite = String(worker.work_site || '').trim().toLowerCase();
+    const siteScope = String(userRole.is_admin ? selectedSiteFilter : userRole.assigned_site || 'All').trim().toLowerCase();
     const payrollDeptMatch = selectedPayrollDepartment === 'all' || workerDepartment === selectedPayrollDepartment;
     const staffDeptMatch = userRole.is_admin || assignedDept === 'all' || workerDepartment === assignedDept;
-    const selectedSiteMatch = selectedSite === 'all' || workerSite === selectedSite;
-    const staffSiteMatch = userRole.is_admin || assignedSite === 'all' || workerSite === assignedSite;
-    return payrollDeptMatch && staffDeptMatch && selectedSiteMatch && staffSiteMatch;
+    // Site access is checked against the worker's attendance rows in the OT
+    // closing period, because workers can move between sites day by day.
+    const siteAttendanceMatch = siteScope === 'all' || attendance.some(a =>
+      String(a.worker_id) === String(worker.id) &&
+      String(a.date || '').slice(0, 10) >= payrollPeriodStartDate &&
+      String(a.date || '').slice(0, 10) <= payrollPeriodEndDate &&
+      String(a.work_site || a.site || '').trim().toLowerCase() === siteScope
+    );
+    return payrollDeptMatch && staffDeptMatch && siteAttendanceMatch;
   });
 
   payrollWorkers.forEach(worker => {
@@ -3393,7 +3385,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         <div class="employee">
           <div><b>Employee Name:</b> ${esc(worker.name || '—')}</div><div><b>Employee ID:</b> #${esc(worker.id)}</div>
           <div><b>Department:</b> ${esc(worker.department || '—')}</div><div><b>Designation:</b> ${esc(worker.designation || '—')}</div>
-          <div><b>Working Site:</b> ${esc(worker.work_site || '—')}</div><div><b>Currency:</b> ${esc(currency)}</div>
+          <div><b>Currency:</b> ${esc(currency)}</div>
           <div><b>Monthly Basic Salary:</b> ${moneyText(monthlySalary)}</div><div><b>Payable Days:</b> ${payableDays} / ${salaryMonthDays}</div>
         </div>
         <div class="section-title">Salary & Overtime Breakdown</div>
@@ -3833,7 +3825,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
                       const attendanceRecord =
                         attendanceData[selectedTimesheetDate]?.[w.id];
 
-                      const workerSite = attendanceRecord?.site || attendanceRecord?.work_site || w.work_site;
+                      const workerSite = attendanceRecord?.site || attendanceRecord?.work_site;
                       return String(workerSite || '').trim().toLowerCase() === String(site || '').trim().toLowerCase();
                     }).length;
 
@@ -3944,7 +3936,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
              </div>
              {attendanceListModal.workers.length === 0 ? <p>{isHolidayDate(selectedTimesheetDate) ? 'Holiday hai; is date par Present/Absent/Leave count nahi hota.' : 'Is status mein koi worker nahi.'}</p> : (
                <div style={{ overflowX: 'auto', marginTop: 14 }}><table style={tableStyle}><thead><tr><th style={thStyle}>ID</th><th style={thStyle}>Worker Name</th><th style={thStyle}>Designation</th><th style={thStyle}>Department</th><th style={thStyle}>Site</th></tr></thead><tbody>
-                 {attendanceListModal.workers.map(w => <tr key={w.id}><td style={tdStyle}>{w.worker_id || w.employee_id || w.id_no || w.id}</td><td style={tdStyle}>{w.name || w.worker_name || '—'}</td><td style={tdStyle}>{w.designation || '—'}</td><td style={tdStyle}>{w.department || '—'}</td><td style={tdStyle}>{attendanceData[selectedTimesheetDate]?.[w.id]?.site || attendanceData[selectedTimesheetDate]?.[w.id]?.work_site || w.work_site || w.site || '—'}</td></tr>)}
+                 {attendanceListModal.workers.map(w => <tr key={w.id}><td style={tdStyle}>{w.worker_id || w.employee_id || w.id_no || w.id}</td><td style={tdStyle}>{w.name || w.worker_name || '—'}</td><td style={tdStyle}>{w.designation || '—'}</td><td style={tdStyle}>{w.department || '—'}</td><td style={tdStyle}>{attendanceData[selectedTimesheetDate]?.[w.id]?.site || attendanceData[selectedTimesheetDate]?.[w.id]?.work_site || '—'}</td></tr>)}
                </tbody></table></div>
              )}
            </div>
@@ -4405,13 +4397,11 @@ style={{
             {(userRole.is_admin ? workers : filteredWorkers)
               .filter(w => {
                 const deptMatch = bulkDepartment === 'All' || String(w.department || '').toLowerCase() === String(bulkDepartment).toLowerCase();
-                const siteScope = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
-                const siteMatch = !siteScope || siteScope === 'All' || String(w.work_site || '').toLowerCase() === String(siteScope).toLowerCase();
-                return deptMatch && siteMatch;
+                return deptMatch;
               })
               .map((worker) => {
                 const record = attendanceData[selectedTimesheetDate]?.[worker.id] || { status: 'Present', ot: 0 };
-                const currentSite = record.site || worker.work_site || sitesList[0] || 'Sharjah Mamzar';
+                const currentSite = record.site || record.work_site || sitesList[0] || 'Sharjah Mamzar';
 
                 return (
                   <tr key={worker.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
@@ -4515,7 +4505,7 @@ style={{
                       <button
                         onClick={async () => {
                           const latestRecord = attendanceData[selectedTimesheetDate]?.[worker.id] || record;
-                          const siteToSave = latestRecord.site || worker.work_site || sitesList[0] || 'Sharjah Mamzar';
+                          const siteToSave = latestRecord.site || latestRecord.work_site || sitesList[0] || 'Sharjah Mamzar';
 
                          
 await handleSingleAttendanceChange(
@@ -4592,12 +4582,6 @@ await handleSingleAttendanceChange(
   ))}
 </select>
 
-            </div>
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Working Site</label>
-              <select value={workSite} onChange={e => setWorkSite(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
-              </select>
             </div>
             <div>
               <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Monthly Salary *</label>
@@ -4706,7 +4690,7 @@ await handleSingleAttendanceChange(
      const siteScope = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
      const deptMatch = !deptScope || deptScope === 'All' ||
        w.department?.toLowerCase() === deptScope.toLowerCase();
-     const dailySite = getRecord(w).work_site || getRecord(w).site || w.work_site || '';
+     const dailySite = getRecord(w).work_site || getRecord(w).site || '';
      const siteMatch = !siteScope || siteScope === 'All' ||
        dailySite.toLowerCase() === siteScope.toLowerCase();
      return deptMatch && siteMatch;
@@ -4718,7 +4702,6 @@ await handleSingleAttendanceChange(
    const getSite = worker =>
      getRecord(worker).site ||
      getRecord(worker).work_site ||
-     worker.work_site ||
      'Unassigned';
 
   const reportIsHoliday = isHolidayDate(selectedTimesheetDate);
@@ -4965,7 +4948,7 @@ await handleSingleAttendanceChange(
   style={{ padding: '20px', background: '#fff', borderRadius: '8px' }}
 >
   
-  <div className="nda-page-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><div className="brand-title">NDA-PK — Daily Timesheet</div><div className="brand-subtitle">Date: {selectedTimesheetDate} · Site: {dailyTimesheetSite} · Department: {selectedDeptFilter}</div></div></div>
+  <div className="nda-page-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><div className="brand-title">NDA-PK — Daily Timesheet</div><div className="brand-subtitle">Date: {selectedTimesheetDate} · Department: {selectedDeptFilter}</div></div></div>
   <style>{dailyTimesheetPrintStyle}</style>
 
             <h2 className="no-print">📄 Daily Timesheet</h2>
@@ -5035,7 +5018,7 @@ await handleSingleAttendanceChange(
                         ) ||
                         {};
                     
-const workerSite = record.site || record.work_site || worker.work_site || '';
+const workerSite = record.site || record.work_site || '';
                       const workerDept = String(worker.department || '').trim().toLowerCase();
                       const departmentMatches = selectedDeptFilter === 'All' || workerDept === selectedDeptFilter.toLowerCase().trim();
                       const siteMatches = dailyTimesheetSite === 'All' || dailyTimesheetSite === 'All Workers' || workerSite.toLowerCase().trim() === dailyTimesheetSite.toLowerCase().trim();
@@ -5096,7 +5079,7 @@ const workerSite = record.site || record.work_site || worker.work_site || '';
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>{worker.name || '-'}</td>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>{worker.designation || '-'}</td>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{worker.id || '-'}</td>
-                          <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>{record.work_site || record.site || worker.work_site || '—'}</td>
+                          <td style={{ padding: '8px', border: '1px solid #cbd5e1' }}>{record.work_site || record.site || '—'}</td>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{status}</td>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{normalHours}</td>
                           <td style={{ padding: '8px', border: '1px solid #cbd5e1', textAlign: 'center' }}>{ot}</td>
@@ -6085,7 +6068,7 @@ accruedDays = balance.toFixed(1);
             <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
               <th style={{ padding: '10px' }}>Worker ID & Name</th>
               <th style={{ padding: '10px' }}>Department</th>
-              <th style={{ padding: '10px' }}>Working Site</th>
+              <th style={{ padding: '10px' }}>Attendance Sites</th>
               <th style={{ padding: '10px' }}>Extra OT / OT Site</th>
               {userRole.is_admin && <th className="monthly-timesheet-actions" style={{ padding: '10px', textAlign: 'center' }}>Actions (View / Print / PDF)</th>}
             </tr>
@@ -6096,7 +6079,8 @@ accruedDays = balance.toFixed(1);
                 const reportDepartment = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
                 const reportSite = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
                 const matchesDept = reportDepartment === 'All' || !reportDepartment || String(w.department || '').trim().toLowerCase() === String(reportDepartment).trim().toLowerCase();
-                const matchesSite = reportSite === 'All' || !reportSite || String(w.work_site || '').trim().toLowerCase() === String(reportSite).trim().toLowerCase();
+                const workerSiteRows = attendance.filter(a => String(a.worker_id) === String(w.id) && String(a.date || '').slice(0,10) >= payrollStartDate && String(a.date || '').slice(0,10) <= payrollEndDate);
+                const matchesSite = reportSite === 'All' || !reportSite || workerSiteRows.some(a => String(a.work_site || a.site || '').trim().toLowerCase() === String(reportSite).trim().toLowerCase());
                 const matchesSearch = !timesheetSearchQuery || 
                   String(w.id).toLowerCase().includes(timesheetSearchQuery.toLowerCase()) || 
                   w.name.toLowerCase().includes(timesheetSearchQuery.toLowerCase());
@@ -6106,7 +6090,7 @@ accruedDays = balance.toFixed(1);
               <tr key={w.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                 <td style={{ padding: '10px', fontWeight: 'bold' }}>#{w.id} - {w.name}</td>
                 <td style={{ padding: '10px' }}>{w.department}</td>
-                <td style={{ padding: '10px' }}>{w.work_site || sitesList[0]}</td>
+                <td style={{ padding: '10px' }}>{[...new Set(attendance.filter(a => String(a.worker_id) === String(w.id) && String(a.date || '').slice(0,10) >= payrollStartDate && String(a.date || '').slice(0,10) <= payrollEndDate).map(a => a.work_site || a.site).filter(Boolean))].join(', ') || '—'}</td>
                 <td style={{ padding: '10px', minWidth: 180 }}>
                   {(() => {
                     const extraRows = attendance.filter(a => String(a.worker_id) === String(w.id) && String(a.date || '').slice(0,10) >= payrollStartDate && String(a.date || '').slice(0,10) <= payrollEndDate && (Number(a.extra_ot_hours) || 0) > 0);
@@ -6151,7 +6135,7 @@ accruedDays = balance.toFixed(1);
         const reportSite = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
         const reportWorkers = (userRole.is_admin ? workers : filteredWorkers).filter(w => {
           const matchesDept = reportDepartment === 'All' || !reportDepartment || String(w.department || '').trim().toLowerCase() === String(reportDepartment).trim().toLowerCase();
-          const matchesSite = reportSite === 'All' || !reportSite || String(w.work_site || '').trim().toLowerCase() === String(reportSite).trim().toLowerCase();
+          const matchesSite = reportSite === 'All' || !reportSite || attendance.some(a => String(a.worker_id) === String(w.id) && String(a.date || '').slice(0,10) >= payrollStartDate && String(a.date || '').slice(0,10) <= payrollEndDate && String(a.work_site || a.site || '').trim().toLowerCase() === String(reportSite).trim().toLowerCase());
           const matchesSearch = !timesheetSearchQuery || String(w.id).toLowerCase().includes(timesheetSearchQuery.toLowerCase()) || String(w.name || '').toLowerCase().includes(timesheetSearchQuery.toLowerCase());
           return matchesDept && matchesSite && matchesSearch;
         });
@@ -6220,7 +6204,7 @@ accruedDays = balance.toFixed(1);
       <div style={{ padding: '15px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '15px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', fontSize: '13px' }}>
           <div><b>Designation:</b> {viewingWorkerTimesheet.designation || 'Worker'}</div>
-          <div><b>Working Site:</b> {viewingWorkerTimesheet.work_site || 'N/A'}</div>
+          
           <div><b>Monthly Salary:</b> {viewingWorkerTimesheet.monthly_salary || 'N/A'} {viewingWorkerTimesheet.currency || 'AED'}</div>
         </div>
       </div>
