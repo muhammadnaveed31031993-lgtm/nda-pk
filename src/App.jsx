@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
-function printNdaPage(targetId) {
+function printNdaPage(targetId, isAdmin = false) {
+  if (!isAdmin) { alert('Print / PDF ki permission sirf Admin ko hai.'); return; }
   const target = document.getElementById(targetId);
   if (!target) { alert('Print page nahi mil saka. Page refresh karke dobara try karein.'); return; }
   document.querySelectorAll('.nda-print-target').forEach(node => node.classList.remove('nda-print-target'));
@@ -364,7 +365,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
         </details>
       </section>
       {!businessId?<section style={card}><h3>Abhi koi business mojood nahi</h3><p>Admin pehle upar se business create karein, phir Vehicle Files mein apni gaari add karein. Staff ko admin se access milne ke baad hi business nazar aayega.</p></section>:<>
-      <div className="business-no-print" style={{display:'flex',justifyContent:'flex-end',marginBottom:10}}><button type="button" onClick={() => printNdaPage('business-current-print')} style={{...btn,background:'#b98519'}}>🖨️ Print Current Business Page</button></div>
+      {userRole.is_admin && <div className="business-no-print" style={{display:'flex',justifyContent:'flex-end',marginBottom:10}}><button type="button" onClick={() => printNdaPage('business-current-print', userRole.is_admin)} style={{...btn,background:'#b98519'}}>🖨️ Print Current Business Page</button></div>}
 
       <div id="business-current-print">
       <div className="business-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><strong>NDA-PK BUSINESS SYSTEM</strong><div>{panelTitle} · {view==='daily'?'Daily Roznamcha':view==='vehicles'?'Vehicle Files':view==='workers'?'Workers & Salary':view==='monthly'?'Monthly Sheet':'Staff Access'}</div></div></div>
@@ -377,8 +378,8 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
       {view==='workers'&&(admin||access?.can_view_workers||can('can_manage_workers'))&&<><section style={{...card,marginBottom:16}}><h3 style={{marginTop:0}}>Workers, Drivers & Salary / Profit Share</h3>{can('can_manage_workers')&&<form onSubmit={addPerson} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:10}}><input style={inputStyle} value={personName} onChange={e=>setPersonName(e.target.value)} placeholder="Full name" required/><input style={inputStyle} value={personRole} onChange={e=>setPersonRole(e.target.value)} placeholder="Driver / Worker / Mechanic"/><input style={inputStyle} value={personPhone} onChange={e=>setPersonPhone(e.target.value)} placeholder="Phone number"/><select style={inputStyle} value={payType} onChange={e=>setPayType(e.target.value)}><option value="fixed">Fixed monthly salary</option><option value="profit_percent">Profit percentage</option></select>{payType==='fixed'?<input style={inputStyle} type="number" min="0" step="0.01" value={payAmount} onChange={e=>setPayAmount(e.target.value)} placeholder="Monthly salary"/>:<input style={inputStyle} type="number" min="0" max="100" step="0.01" value={profitPercent} onChange={e=>setProfitPercent(e.target.value)} placeholder="Profit %"/>}<button style={btn}>Add Worker</button></form>}</section><section style={{...card,overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Name','Role','Phone','Payment Type','Monthly Salary','Profit %','This Month Share'].map(h=><th key={h} style={{padding:9,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead><tbody>{profitShare.map(p=><tr key={p.id}>{[p.person_name,p.job_title,p.phone||'—',p.pay_type==='fixed'?'Fixed salary':'Profit share',money(p.monthly_salary),`${p.profit_percent||0}%`,money(p.share)].map((v,i)=><td key={i} style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{v}</td>)}</tr>)}{!people.length&&<tr><td colSpan="7" style={{padding:14}}>No workers added yet.</td></tr>}</tbody></table><p style={{fontSize:12,color:'#64748b'}}>Profit share is calculated from positive net profit for the selected month (income minus recorded expenses). Fixed salaries are shown as a set amount; salary payments and monthly accruals are not automatically posted by this screen.</p></section></>}
       {view==='monthly'&&(admin||access?.can_view_monthly)&&<>
         <div className="business-no-print" style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
-          <button type="button" onClick={()=>printNdaPage('business-driver-monthly-print')} style={{...btn,background:'#1d4ed8'}}>🖨️ Print Driver Monthly Sheet</button>
-          <button type="button" onClick={()=>printNdaPage('business-owner-monthly-print')} style={{...btn,background:'#047857'}}>🖨️ Print Owner Monthly Sheet</button>
+          {userRole.is_admin && <button type="button" onClick={()=>printNdaPage('business-driver-monthly-print', userRole.is_admin)} style={{...btn,background:'#1d4ed8'}}>🖨️ Print Driver Monthly Sheet</button>}
+          {userRole.is_admin && <button type="button" onClick={()=>printNdaPage('business-owner-monthly-print', userRole.is_admin)} style={{...btn,background:'#047857'}}>🖨️ Print Owner Monthly Sheet</button>}
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:16}}>{[['Total Income',mIncome],['Cash Received',mCashIncome],['Credit / Udhaar',mCreditIncome],['Total Expenses',mExpense],['Net Before Driver Share',mNet],['Driver Salary / Share',totalDriverPay],['Owner Final Profit',ownerMonthlyProfit]].map(([l,n])=><section key={l} style={card}><div style={{fontSize:12,color:'#64748b'}}>{l}</div><div style={{fontSize:21,fontWeight:900,marginTop:6,color:l==='Owner Final Profit'?(ownerMonthlyProfit>=0?'#047857':'#b91c1c'):'#0f172a'}}>{money(n)}</div></section>)}</div>
         <section style={{...card,overflowX:'auto',marginBottom:16}}><h3 style={{marginTop:0}}>Monthly Daily Sheet — {month}</h3><p style={{fontSize:12,color:'#64748b'}}>Har din ka status automatic hai: no entry = OFF; garage/repair/maintenance detail = MAINTENANCE. Future dates current month mein pehle se show nahi hotin.</p><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Date','Status','Cash Income','Credit Income','Total Expense','Daily Profit / Loss','Automatic Explanation'].map(h=><th key={h} style={{padding:9,textAlign:'left',borderBottom:'1px solid #e2e8f0',whiteSpace:'nowrap'}}>{h}</th>)}</tr></thead><tbody>{monthlyDayRows.map(d=><tr key={d.date}><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{d.date}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9',fontWeight:800,color:d.status==='OFF'?'#64748b':d.status==='MAINTENANCE'?'#b45309':'#047857'}}>{d.status}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{money(sum(d.rows,'income','Cash'))}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{money(sum(d.rows,'income','Credit'))}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{money(d.expense)}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9',fontWeight:800,color:d.net<0?'#b91c1c':'#047857'}}>{money(d.net)}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{d.reason|| (d.status==='OFF'?'No daily entry — counted as OFF':'Daily activity saved')}</td></tr>)}{!monthlyDayRows.length&&<tr><td colSpan="7" style={{padding:14}}>No days available for this month.</td></tr>}</tbody></table></section>
@@ -882,7 +883,7 @@ const [newDesignation, setNewDesignation] = useState('');
   }
 
   async function editDailyWorkDetail(row) {
-    if (!userRole.is_admin && !userRole.can_use_bulk && !userRole.can_edit_timesheet) return alert('Edit permission nahi hai.');
+    if (!userRole.is_admin) return alert('Daily work details edit sirf Admin kar sakta hai. Staff sirf nayi entry kar sakta hai.');
     const next = window.prompt('Daily Work Details edit karein:', row.work_details || '');
     if (next === null) return;
     if (!next.trim()) return alert('Details khali nahi ho sakti.');
@@ -892,7 +893,7 @@ const [newDesignation, setNewDesignation] = useState('');
   }
 
   async function deleteDailyWorkDetail(row) {
-    if (!userRole.is_admin && !userRole.can_use_bulk && !userRole.can_edit_timesheet) return alert('Delete permission nahi hai.');
+    if (!userRole.is_admin) return alert('Daily work details delete sirf Admin kar sakta hai.');
     if (!window.confirm(`${row.work_date} / ${row.work_site} / ${row.work_department} ki details delete karni hain?`)) return;
     const { error } = await supabase.from('daily_work_details').delete().eq('work_date', row.work_date).eq('work_site', row.work_site).eq('work_department', row.work_department);
     if (error) return alert('Details delete nahi hui: ' + error.message);
@@ -1646,7 +1647,7 @@ async function fetchHolidayDates() {
 // supplied with this code before relying on notifications.
 async function logActivity(action, details = '', actorEmailOverride = '') {
   const actorEmail = String(actorEmailOverride || session?.user?.email || email || 'unknown').trim().toLowerCase();
-  if (!actorEmail || actorEmail === 'unknown') return;
+  if (!actorEmail || actorEmail === 'unknown') return false;
   const { error } = await supabase.from('activity_notifications').insert([{
     actor_email: actorEmail,
     actor_name: actorEmail.split('@')[0],
@@ -1654,7 +1655,16 @@ async function logActivity(action, details = '', actorEmailOverride = '') {
     details: String(details || '').slice(0, 500),
     is_read: false
   }]);
-  if (error) console.warn('Activity notification save failed:', error.message);
+  if (error) { console.warn('Activity notification save failed:', error.message); return false; }
+  return true;
+}
+
+async function testActivityNotification() {
+  if (!userRole.is_admin) return;
+  const saved = await logActivity('Notification test', 'Admin ne notification system test kiya.');
+  if (!saved) { alert('Test notification save nahi hui. Supabase SQL setup / permissions check karein.'); return; }
+  await fetchActivityNotifications();
+  alert('Test notification save ho gayi. Staff Activity list check karein.');
 }
 
 async function fetchActivityNotifications() {
@@ -1693,6 +1703,27 @@ async function deleteSelectedActivityNotifications() {
   setActivityNotifications(prev => prev.filter(n => !ids.includes(n.id)));
   setSelectedNotificationIds([]);
 }
+
+useEffect(() => {
+  const staffMode = Boolean(session && !userRole.is_admin);
+  document.body.classList.toggle('nda-staff-mode', staffMode);
+  if (!staffMode) return () => document.body.classList.remove('nda-staff-mode');
+  const blockPrintShortcut = event => {
+    const key = String(event.key || '').toLowerCase();
+    if ((event.ctrlKey || event.metaKey) && key === 'p') {
+      event.preventDefault(); event.stopPropagation();
+      alert('Print / PDF sirf Admin ke liye allowed hai.');
+    }
+  };
+  const blockContextMenu = event => event.preventDefault();
+  document.addEventListener('keydown', blockPrintShortcut, true);
+  document.addEventListener('contextmenu', blockContextMenu, true);
+  return () => {
+    document.body.classList.remove('nda-staff-mode');
+    document.removeEventListener('keydown', blockPrintShortcut, true);
+    document.removeEventListener('contextmenu', blockContextMenu, true);
+  };
+}, [session, userRole.is_admin]);
 
 useEffect(() => {
   if (!session || !userRole.is_admin || selectedSystem !== 'hr') return;
@@ -2231,9 +2262,9 @@ async function handleToggleHolidayDate() {
         assigned_department: String(resolvedAccount.assigned_department || '').trim() || 'Unassigned',
         assigned_site: resolvedAccount.assigned_site || 'All',
         can_view_dashboard: resolvedAccount.can_view_dashboard ?? true,
-        can_use_bulk: resolvedAccount.can_use_bulk ?? false,
+        can_use_bulk: false,
         can_view_workers: resolvedAccount.can_view_workers ?? true,
-        can_add_workers: resolvedAccount.can_add_workers ?? false,
+        can_add_workers: false,
         can_edit_workers: false,
         can_delete_workers: false,
         can_view_timesheet: resolvedAccount.can_view_timesheet ?? true,
@@ -2424,6 +2455,7 @@ async function handleToggleHolidayDate() {
 
    // Print Individual Worker Monthly Report
   function handlePrintWorkerMonthlyReport(worker) {
+    if (!userRole.is_admin) { alert('Worker monthly report Print / PDF sirf Admin kar sakta hai.'); return; }
     const workerJoinDate = String(worker.joining_date || '').slice(0, 10);
     const reportAsOfDate = formatPayrollDate(new Date());
     const reportEndDate = payrollPeriodEndDate < reportAsOfDate ? payrollPeriodEndDate : reportAsOfDate;
@@ -3212,11 +3244,11 @@ const otHours = Number(
       assigned_department: targetDept,
       assigned_site: targetSite,
       can_view_dashboard: permDashboard,
-      can_use_bulk: permBulk,
+      can_use_bulk: false,
       can_view_workers: permViewWorkers,
-      can_add_workers: permAddWorkers,
-      can_edit_workers: permEditWorkers,
-      can_delete_workers: permDeleteWorkers,
+      can_add_workers: false,
+      can_edit_workers: false,
+      can_delete_workers: false,
       can_view_timesheet: permTimesheetView,
       can_view_daily_timesheet: permDailyTimesheetView,
       can_edit_timesheet: permTimesheetEdit,
@@ -3453,6 +3485,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
 
   // Print a professional, single-worker payroll slip using the same payroll calculations.
   function handlePrintWorkerPayrollSlip(worker) {
+    if (!userRole.is_admin) { alert('Payroll Print / PDF sirf Admin kar sakta hai.'); return; }
     const payroll = salaryDataMap[worker.id] || {};
     const normalOT = Number(payroll.normalOT || 0);
     const contractOT = Number(payroll.contractOT || 0);
@@ -3587,6 +3620,9 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
   }
 
   return (
+    <>
+    <style>{`@media print { body.nda-staff-mode * { display: none !important; visibility: hidden !important; } body.nda-staff-mode::after { content: 'STAFF PRINTING DISABLED — ADMIN ONLY'; display: block !important; visibility: visible !important; font: bold 24px Arial; padding: 40px; color: #b91c1c; } } .nda-staff-watermark { position: fixed; inset: 0; z-index: 9990; pointer-events: none; display: flex; align-items: center; justify-content: center; overflow: hidden; opacity: .075; color: #0f172a; font-size: clamp(24px, 5vw, 58px); font-weight: 900; transform: rotate(-28deg); text-align: center; }`}</style>
+    {!userRole.is_admin && session && <div className="nda-staff-watermark">CONFIDENTIAL · {session.user?.email || 'STAFF'} · NDA-PK</div>}
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: '#f4f7fc', fontFamily: "'Segoe UI', Tahoma, sans-serif" }}>
       
      {/* Compact top bar: system identity lives here; dashboard banner below is the only dashboard hero */}
@@ -3608,7 +3644,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
           {userRole.is_admin && selectedSystem === 'hr' && <div style={{ position: 'relative' }}>
             <button type="button" onClick={() => { setNotificationPanelOpen(v => !v); if (!notificationPanelOpen) void markActivityNotificationsRead(); }} style={{ position: 'relative', padding: '8px 11px', background: notificationPanelOpen ? '#f8fafc' : 'rgba(255,255,255,.14)', color: notificationPanelOpen ? '#0f172a' : '#fff', border: '1px solid rgba(255,255,255,.35)', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 800 }} title="Staff activity notifications">🔔 Notifications {activityNotifications.filter(n => !n.is_read).length > 0 ? `(${activityNotifications.filter(n => !n.is_read).length})` : ''}</button>
             {notificationPanelOpen && <div style={{ position: 'absolute', right: 0, top: '44px', width: 'min(390px, 88vw)', maxHeight: 420, overflowY: 'auto', background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 12px 30px rgba(0,0,0,.25)', zIndex: 10001, padding: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}><b>Staff Activity</b><button type="button" onClick={() => fetchActivityNotifications()} style={{ border: 0, background: '#e2e8f0', borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}>Refresh</button></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}><b>Staff Activity</b><div style={{display:'flex',gap:6}}><button type="button" onClick={() => void testActivityNotification()} style={{ border: 0, background: '#dbeafe', color:'#1d4ed8', borderRadius: 6, padding: '5px 8px', cursor: 'pointer', fontWeight:700 }}>Test</button><button type="button" onClick={() => fetchActivityNotifications()} style={{ border: 0, background: '#e2e8f0', borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}>Refresh</button></div></div>
               {notificationLoadError && <div style={{ padding: 9, color: '#991b1b', background: '#fee2e2', borderRadius: 6, fontSize: 12 }}>Notifications database setup required: {notificationLoadError}</div>}
               {!!activityNotifications.length && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '7px 0', borderBottom: '1px solid #e2e8f0', marginBottom: 4 }}><label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700 }}><input type="checkbox" checked={activityNotifications.length > 0 && activityNotifications.every(n => selectedNotificationIds.includes(n.id))} onChange={e => setSelectedNotificationIds(e.target.checked ? activityNotifications.map(n => n.id) : [])} /> Select All</label><button type="button" disabled={!selectedNotificationIds.length} onClick={deleteSelectedActivityNotifications} style={{ border: 0, background: selectedNotificationIds.length ? '#dc2626' : '#e2e8f0', color: selectedNotificationIds.length ? '#fff' : '#64748b', borderRadius: 6, padding: '6px 9px', cursor: selectedNotificationIds.length ? 'pointer' : 'not-allowed', fontWeight: 700 }}>Delete Selected ({selectedNotificationIds.length})</button></div>}
               {!activityNotifications.length && !notificationLoadError && <p style={{ fontSize: 13, color: '#64748b' }}>Abhi koi activity notification nahi.</p>}
@@ -4726,7 +4762,7 @@ await handleSingleAttendanceChange(
       <h3 style={{ margin: '0 0 15px 0' }}>👷 Workers Dictionary</h3>
       <div className="no-print" style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
         {[['all','All Workers'],['steel','All Steel Fixers'],['carpenter','All Carpenters'],['departments','All Departments']].map(([key,label])=><button key={key} type="button" onClick={()=>setWorkerDirectoryFilter(key)} style={{padding:'9px 13px',border:0,borderRadius:8,background:workerDirectoryFilter===key?'#0b2d5c':'#e8eef8',color:workerDirectoryFilter===key?'#fff':'#17345f',fontWeight:800,cursor:'pointer'}}>{label}</button>)}
-        <button type="button" onClick={()=>printNdaPage('hr-workers-print')} style={{padding:'9px 14px',border:0,borderRadius:8,background:'#b98519',color:'#fff',fontWeight:800,cursor:'pointer'}}>🖨️ Print / Save PDF</button>
+        {userRole.is_admin && <button type="button" onClick={()=>printNdaPage('hr-workers-print', userRole.is_admin)} style={{padding:'9px 14px',border:0,borderRadius:8,background:'#b98519',color:'#fff',fontWeight:800,cursor:'pointer'}}>🖨️ Print / Save PDF</button>}
       </div>
       <div style={{fontSize:12,color:'#64748b',marginBottom:10}}>Selected list: <b>{({all:'All Workers',steel:'All Steel Fixers',carpenter:'All Carpenters',departments:'All Departments'})[workerDirectoryFilter]}</b> · {(userRole.is_admin&&workerDirectoryFilter==='departments'?workers:filteredWorkers).filter(w=>{const d=(String(w.department||'')+' '+String(w.designation||'')).toLowerCase();return workerDirectoryFilter==='all'||workerDirectoryFilter==='departments'||(workerDirectoryFilter==='steel'&&d.includes('steel'))||(workerDirectoryFilter==='carpenter'&&d.includes('carpenter'));}).length} workers</div>
       <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
@@ -5220,7 +5256,7 @@ const workerSite = record.site || record.work_site || '';
                 {dailyWorkDetailRows.filter(r => (dailyTimesheetSite==='All Workers'||dailyTimesheetSite==='All'||String(r.work_site||'').toLowerCase()===String(dailyTimesheetSite).toLowerCase()) && (selectedDeptFilter==='All'||String(r.work_department||'').toLowerCase()===String(selectedDeptFilter).toLowerCase()) && (userRole.is_admin || ((userRole.assigned_site==='All'||String(r.work_site).toLowerCase()===String(userRole.assigned_site).toLowerCase()) && (userRole.assigned_department==='All'||String(r.work_department).toLowerCase()===String(userRole.assigned_department).toLowerCase())))).map(row=><div key={`${row.work_date}-${row.work_site}-${row.work_department}`} style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:7,padding:11}}>
                   <div style={{fontSize:12,color:'#64748b',fontWeight:700}}>{row.work_date} · {row.work_site} · {row.work_department}</div>
                   <p style={{whiteSpace:'pre-wrap',margin:'7px 0'}}>{row.work_details}</p>
-                  {(userRole.is_admin||userRole.can_use_bulk||userRole.can_edit_timesheet) && <div style={{display:'flex',gap:7}}><button type="button" onClick={()=>editDailyWorkDetail(row)} style={{...primaryStyle,width:'auto',padding:'6px 12px',background:'#1d4ed8'}}>Edit</button><button type="button" onClick={()=>deleteDailyWorkDetail(row)} style={{...primaryStyle,width:'auto',padding:'6px 12px',background:'#b91c1c'}}>Delete</button></div>}
+                  {userRole.is_admin && <div style={{display:'flex',gap:7}}><button type="button" onClick={()=>editDailyWorkDetail(row)} style={{...primaryStyle,width:'auto',padding:'6px 12px',background:'#1d4ed8'}}>Edit</button><button type="button" onClick={()=>deleteDailyWorkDetail(row)} style={{...primaryStyle,width:'auto',padding:'6px 12px',background:'#b91c1c'}}>Delete</button></div>}
                 </div>)}
                 {!dailyWorkDetailRows.length && <p style={{color:'#64748b',margin:0}}>Is date ka koi saved Work Details record nahi.</p>}
               </div>
@@ -5228,7 +5264,7 @@ const workerSite = record.site || record.work_site || '';
 
             <div style={{ marginTop: '15px' }}>
               {userRole.is_admin && <button
-                onClick={() => printNdaPage('hr-daily-timesheet-print')}
+                onClick={() => printNdaPage('hr-daily-timesheet-print', userRole.is_admin)}
                 style={{
                   padding: '10px 18px',
                   background: '#2563eb',
@@ -5320,7 +5356,7 @@ const workerSite = record.site || record.work_site || '';
       <h3 style={{ margin: 0 }}>📋 Monthly Sheet</h3>
 
       {userRole.is_admin && <button
-        onClick={() => printNdaPage('hr-payroll-print')}
+        onClick={() => printNdaPage('hr-payroll-print', userRole.is_admin)}
         style={{
           backgroundColor: '#2563eb',
           color: '#fff',
@@ -5418,7 +5454,7 @@ const workerSite = record.site || record.work_site || '';
                   {Math.round(totalSalary).toLocaleString()} {selectedCurrency}
                 </td>
                 <td className="no-print" style={{ border: '1px solid #cbd5e1', padding: '8px', whiteSpace: 'nowrap' }}>
-                  <button type="button" onClick={() => handlePrintWorkerPayrollSlip(s)} style={{ padding: '7px 10px', background: '#047857', color: '#fff', border: 0, borderRadius: 6, fontWeight: 700, cursor: 'pointer' }}>🧾 Print / PDF</button>
+                  {userRole.is_admin && <button type="button" onClick={() => handlePrintWorkerPayrollSlip(s)} style={{ padding: '7px 10px', background: '#047857', color: '#fff', border: 0, borderRadius: 6, fontWeight: 700, cursor: 'pointer' }}>🧾 Print / PDF</button>}
                 </td>
               </tr>
             );
@@ -6135,7 +6171,7 @@ accruedDays = balance.toFixed(1);
                       {[['Joining date', edit.joining_date || 'Not entered'],['Last working / cancellation date', endDate || 'Not entered'],['Calculation date', finalCalcDate],['Basic monthly salary', `AED ${money(edit.basic_salary)}`],['Daily basic wage (basic ÷ 30)', `AED ${money(calc.dailyBasic)}`],['Total service days', calc.serviceDays],['Unpaid absence days deducted', calc.adjustedServiceDays === 0 ? calc.serviceDays : Math.max(0, calc.serviceDays - calc.adjustedServiceDays)],['Service counted after unpaid absence', `${calc.serviceYears.toFixed(4)} years`],['First 5 years: 21 days per year', `${calc.firstFiveDays.toFixed(2)} gratuity days`],['After 5 years: 30 days per year', `${calc.additionalDays.toFixed(2)} gratuity days`],['Total gratuity days', `${calc.gratuityDays.toFixed(2)} days`],['Gratuity before 2-year cap', `AED ${money(calc.dailyBasic * calc.gratuityDays)}`],['Maximum legal cap (24 basic salaries)', `AED ${money(Number(edit.basic_salary || 0) * 24)}`],['Final estimated gratuity', `AED ${money(calc.amount)}`]].map(([label,value]) => <tr key={label}><td style={{ ...tdStyle, width: '56%', fontWeight: 700 }}>{label}</td><td style={tdStyle}>{value}</td></tr>)}
                     </tbody></table>
                     <p style={{ fontSize: 12, color: '#64748b', marginTop: 12 }}>Estimate for a full-time foreign worker under UAE Labour Law Article 51. Unpaid absence days are deducted only from the number entered above. Part-time contracts, UAE nationals, alternative savings schemes, employer deductions and individual contract terms may require a different calculation.</p>
-                    <button onClick={() => printNdaPage('nda-gratuity-worker-detail')} style={{ marginTop: 8, padding: '9px 14px', background: '#1d4ed8', color: '#fff', border: 0, borderRadius: 7, cursor: 'pointer', fontWeight: 800 }}>Print Details</button>
+                    {userRole.is_admin && <button onClick={() => printNdaPage('nda-gratuity-worker-detail', userRole.is_admin)} style={{ marginTop: 8, padding: '9px 14px', background: '#1d4ed8', color: '#fff', border: 0, borderRadius: 7, cursor: 'pointer', fontWeight: 800 }}>Print Details</button>}
                   </div>
                 </div>;
               })()}
@@ -6317,7 +6353,7 @@ accruedDays = balance.toFixed(1);
       })()}
 
     <div className="no-print" style={{display:'flex',justifyContent:'flex-end',marginTop:18,paddingTop:14,borderTop:'1px solid #e2e8f0'}}>
-      {userRole.is_admin && <button type="button" onClick={() => printNdaPage('hr-monthly-timesheet-print')} style={{padding:'10px 18px',background:'#2563eb',color:'#fff',border:0,borderRadius:7,fontWeight:800,cursor:'pointer'}}>🖨️ Print Full Report / Save PDF</button>}
+      {userRole.is_admin && <button type="button" onClick={() => printNdaPage('hr-monthly-timesheet-print', userRole.is_admin)} style={{padding:'10px 18px',background:'#2563eb',color:'#fff',border:0,borderRadius:7,fontWeight:800,cursor:'pointer'}}>🖨️ Print Full Report / Save PDF</button>}
     </div>
   </section>
 )}
@@ -6533,5 +6569,6 @@ return monthlyRows.map((att, idx) => {
 >
 </div>
     </div>
+    </>
   );
 }
