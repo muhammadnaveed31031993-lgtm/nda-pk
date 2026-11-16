@@ -55,6 +55,31 @@ function getPayrollMonthFromEndDate(endDateStr) {
   return `${y}-${String(m).padStart(2, '0')}`;
 }
 
+function calculateUAEGratuity(joiningDate, endDate, basicSalary, unpaidAbsenceDays = 0) {
+  if (!joiningDate || !endDate) return { serviceDays: 0, adjustedServiceDays: 0, serviceYears: 0, firstFiveDays: 0, additionalDays: 0, gratuityDays: 0, dailyBasic: Math.max(0, Number(basicSalary || 0)) / 30, amount: 0, capped: false };
+  const start = new Date(`${String(joiningDate).slice(0,10)}T00:00:00Z`);
+  const end = new Date(`${String(endDate).slice(0,10)}T00:00:00Z`);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end < start) return { serviceDays: 0, adjustedServiceDays: 0, serviceYears: 0, firstFiveDays: 0, additionalDays: 0, gratuityDays: 0, dailyBasic: Math.max(0, Number(basicSalary || 0)) / 30, amount: 0, capped: false };
+  const serviceDays = Math.floor((end - start) / 86400000);
+  const adjustedServiceDays = Math.max(0, serviceDays - Math.max(0, Math.floor(Number(unpaidAbsenceDays) || 0)));
+  let wholeYears = end.getUTCFullYear() - start.getUTCFullYear();
+  let anniversary = new Date(Date.UTC(start.getUTCFullYear() + wholeYears, start.getUTCMonth(), start.getUTCDate()));
+  if (anniversary > end) wholeYears -= 1;
+  anniversary = new Date(Date.UTC(start.getUTCFullYear() + wholeYears, start.getUTCMonth(), start.getUTCDate()));
+  const nextAnniversary = new Date(Date.UTC(start.getUTCFullYear() + wholeYears + 1, start.getUTCMonth(), start.getUTCDate()));
+  const yearLength = Math.max(1, (nextAnniversary - anniversary) / 86400000);
+  const fraction = Math.max(0, Math.min(1, (end - anniversary) / 86400000 / yearLength));
+  const rawYears = Math.max(0, wholeYears + fraction - (Math.max(0, Number(unpaidAbsenceDays) || 0) / 365.2425));
+  const serviceYears = adjustedServiceDays > 0 ? Math.max(0, rawYears) : 0;
+  const firstFiveDays = Math.min(serviceYears, 5) * 21;
+  const additionalDays = Math.max(0, serviceYears - 5) * 30;
+  const gratuityDays = serviceYears < 1 ? 0 : firstFiveDays + additionalDays;
+  const dailyBasic = Math.max(0, Number(basicSalary || 0)) / 30;
+  const uncappedAmount = dailyBasic * gratuityDays;
+  const cap = Math.max(0, Number(basicSalary || 0)) * 24;
+  return { serviceDays, adjustedServiceDays, serviceYears, firstFiveDays: serviceYears < 1 ? 0 : firstFiveDays, additionalDays: serviceYears < 1 ? 0 : additionalDays, gratuityDays, dailyBasic, amount: Math.min(cap, uncappedAmount), capped: uncappedAmount > cap && cap > 0 };
+}
+
 function shiftPayrollDateOneMonth(dateText) {
   const [year, month, day] = String(dateText || '').slice(0, 10).split('-').map(Number);
   if (!year || !month || !day) return '';
@@ -450,6 +475,8 @@ export default function App() {
   const [leaveSalaryAmount, setLeaveSalaryAmount] = useState('');
   const [finalCalcWorkerId, setFinalCalcWorkerId] = useState('');
   const [finalCalcDate, setFinalCalcDate] = useState(new Date().toISOString().slice(0,10));
+  const [gratuityViewWorkerId, setGratuityViewWorkerId] = useState(null);
+  const [lastReturnDateEdit, setLastReturnDateEdit] = useState({});
   
   // Manual & Custom Deduction States
   const [hasDeduction, setHasDeduction] = useState(true);
@@ -505,6 +532,7 @@ export default function App() {
   const [attendanceListModal, setAttendanceListModal] = useState(null);
   const [holidayDates, setHolidayDates] = useState([]);
   const [activityNotifications, setActivityNotifications] = useState([]);
+  const [selectedNotificationIds, setSelectedNotificationIds] = useState([]);
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const [notificationLoadError, setNotificationLoadError] = useState('');
   const isHolidayDate = dateStr => Boolean(dateStr && (new Date(`${String(dateStr).slice(0, 10)}T12:00:00`).getDay() === 0 || holidayDates.some(h => String(h.holiday_date || '').slice(0, 10) === String(dateStr).slice(0, 10))));
@@ -1120,9 +1148,27 @@ const [newDesignation, setNewDesignation] = useState('');
   }
 
   async function fetchEmploymentRecords() {
-    const { data, error } = await supabase.from('worker_employment_records').select('*');
-    if (error) { console.warn('Employment records table not ready:', error.message); return; }
-    setEmploymentRecords(data || []);
+    const { data: workerRows, error: workerError } = await supabase
+      .from('workers').select('id,joining_date,cancellation_date,basic_salary,unpaid_absence_days');
+    const { data: legacyRows, error: legacyError } = await supabase.from('worker_employment_records').select('*');
+    if (!workerError && workerRows) {
+      const legacyByWorker = Object.fromEntries((legacyRows || []).map(r => [String(r.worker_id), r]));
+      setEmploymentRecords(workerRows.map(w => {
+        const old = legacyByWorker[String(w.id)] || {};
+        return {
+          ...old, worker_id: String(w.id),
+          joining_date: w.joining_date || old.joining_date || '',
+          cancellation_date: w.cancellation_date || old.cancellation_date || '',
+          basic_salary: w.basic_salary ?? old.basic_salary ?? '',
+          unpaid_absence_days: w.unpaid_absence_days ?? old.unpaid_absence_days ?? 0
+        };
+      }));
+      if (legacyError) console.info('Legacy employment table not available; using workers table fields.');
+      return;
+    }
+    // Keep older installations readable until the workers-column migration is applied.
+    if (legacyError) console.warn('Employment details load failed:', workerError?.message || legacyError.message);
+    else setEmploymentRecords(legacyRows || []);
   }
 
   async function fetchLeaveSalaryRecords() {
@@ -1137,12 +1183,29 @@ const [newDesignation, setNewDesignation] = useState('');
     if (!userRole.is_admin) return alert('Sirf admin employment details update kar sakta hai.');
     const row = employmentEdit[String(workerId)] || {};
     if (!row.joining_date) return alert('Worker ki joining/start date enter karein.');
-    const payload = { worker_id: String(workerId), joining_date: row.joining_date, cancellation_date: row.cancellation_date || null, basic_salary: Number(row.basic_salary || 0) };
-    const { error } = await supabase.from('worker_employment_records').upsert([payload], { onConflict: 'worker_id' });
-    if (error) return alert('Employment record save nahi hua: ' + error.message + '\nPehle neeche diya SQL Supabase mein run karein.');
+    const payload = {
+      joining_date: row.joining_date,
+      cancellation_date: row.cancellation_date || null,
+      basic_salary: Number(row.basic_salary || 0),
+      unpaid_absence_days: Math.max(0, Math.floor(Number(row.unpaid_absence_days || 0)))
+    };
+    const { error } = await supabase.from('workers').update(payload).eq('id', workerId);
+    if (error) return alert('Employment details save nahi huin: ' + error.message + '\nSupabase SQL migration file run karein; workers table mein joining_date, cancellation_date, basic_salary aur unpaid_absence_days columns required hain.');
+    await fetchWorkers();
     await fetchEmploymentRecords();
-    void logActivity('Employment record updated', `Worker #${workerId}, joining date ${row.joining_date}`);
-    alert('Joining date / final calculation details save ho gayi hain.');
+    void logActivity('Employment record updated', `Worker #${workerId}, joining date ${row.joining_date}, basic salary AED ${payload.basic_salary}`);
+    alert('Joining date, cancellation date, basic salary aur unpaid absence details save ho gayi hain.');
+  }
+
+  async function saveLastVacationReturnDate(workerId) {
+    if (!userRole.is_admin) return alert('Sirf Admin last vacation return date save kar sakta hai.');
+    const dateValue = lastReturnDateEdit[String(workerId)] ?? workers.find(w => String(w.id) === String(workerId))?.last_return_date ?? '';
+    if (!dateValue) return alert('Last vacation se wapsi ki date select karein.');
+    const { error } = await supabase.from('workers').update({ last_return_date: dateValue }).eq('id', workerId);
+    if (error) return alert('Last vacation return date save nahi hui: ' + error.message + '\nSupabase SQL migration run karein: ALTER TABLE public.workers ADD COLUMN IF NOT EXISTS last_return_date date;');
+    setWorkers(prev => prev.map(w => String(w.id) === String(workerId) ? { ...w, last_return_date: dateValue } : w));
+    void logActivity('Last vacation return date saved', `Worker #${workerId}, return date ${dateValue}`);
+    alert('Last vacation se wapsi ki date save ho gayi. Leave count dobara calculate ho gaya.');
   }
 
   async function saveLeaveSalaryReceived(e) {
@@ -1614,6 +1677,21 @@ async function markActivityNotificationsRead() {
   const { error } = await supabase.from('activity_notifications').update({ is_read: true }).in('id', unreadIds);
   if (error) { console.warn('Notifications could not be marked read:', error.message); return; }
   setActivityNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+}
+
+function toggleActivityNotification(id, checked) {
+  setSelectedNotificationIds(prev => checked ? [...new Set([...prev, id])] : prev.filter(x => x !== id));
+}
+
+async function deleteSelectedActivityNotifications() {
+  if (!userRole.is_admin) return alert('Notifications sirf Admin delete kar sakta hai.');
+  const ids = selectedNotificationIds.filter(Boolean);
+  if (!ids.length) return alert('Pehle notifications select karein.');
+  if (!window.confirm(`${ids.length} selected notification(s) delete karni hain?`)) return;
+  const { error } = await supabase.from('activity_notifications').delete().in('id', ids);
+  if (error) return alert('Notifications delete nahi huin: ' + error.message);
+  setActivityNotifications(prev => prev.filter(n => !ids.includes(n.id)));
+  setSelectedNotificationIds([]);
 }
 
 useEffect(() => {
@@ -2227,6 +2305,7 @@ async function handleToggleHolidayDate() {
       return alert('Permission denied!');
     }
     setEditingWorkerId(worker.id);
+    void logActivity('Viewed worker record', `Worker #${worker.worker_id || worker.id} — ${worker.name || 'Unnamed'}, ${worker.department || ''} / ${worker.designation || ''}`);
     setWorkerIdInput(worker.id);
     setJoiningDate(worker.joining_date || '');
     setName(worker.name);
@@ -3529,10 +3608,11 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
           {userRole.is_admin && selectedSystem === 'hr' && <div style={{ position: 'relative' }}>
             <button type="button" onClick={() => { setNotificationPanelOpen(v => !v); if (!notificationPanelOpen) void markActivityNotificationsRead(); }} style={{ position: 'relative', padding: '8px 11px', background: notificationPanelOpen ? '#f8fafc' : 'rgba(255,255,255,.14)', color: notificationPanelOpen ? '#0f172a' : '#fff', border: '1px solid rgba(255,255,255,.35)', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 800 }} title="Staff activity notifications">🔔 Notifications {activityNotifications.filter(n => !n.is_read).length > 0 ? `(${activityNotifications.filter(n => !n.is_read).length})` : ''}</button>
             {notificationPanelOpen && <div style={{ position: 'absolute', right: 0, top: '44px', width: 'min(390px, 88vw)', maxHeight: 420, overflowY: 'auto', background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 12px 30px rgba(0,0,0,.25)', zIndex: 10001, padding: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}><b>Staff Activity</b><button type="button" onClick={() => fetchActivityNotifications()} style={{ border: 0, background: '#e2e8f0', borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}>Refresh</button></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}><b>Staff Activity</b><button type="button" onClick={() => fetchActivityNotifications()} style={{ border: 0, background: '#e2e8f0', borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}>Refresh</button></div>
               {notificationLoadError && <div style={{ padding: 9, color: '#991b1b', background: '#fee2e2', borderRadius: 6, fontSize: 12 }}>Notifications database setup required: {notificationLoadError}</div>}
+              {!!activityNotifications.length && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '7px 0', borderBottom: '1px solid #e2e8f0', marginBottom: 4 }}><label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700 }}><input type="checkbox" checked={activityNotifications.length > 0 && activityNotifications.every(n => selectedNotificationIds.includes(n.id))} onChange={e => setSelectedNotificationIds(e.target.checked ? activityNotifications.map(n => n.id) : [])} /> Select All</label><button type="button" disabled={!selectedNotificationIds.length} onClick={deleteSelectedActivityNotifications} style={{ border: 0, background: selectedNotificationIds.length ? '#dc2626' : '#e2e8f0', color: selectedNotificationIds.length ? '#fff' : '#64748b', borderRadius: 6, padding: '6px 9px', cursor: selectedNotificationIds.length ? 'pointer' : 'not-allowed', fontWeight: 700 }}>Delete Selected ({selectedNotificationIds.length})</button></div>}
               {!activityNotifications.length && !notificationLoadError && <p style={{ fontSize: 13, color: '#64748b' }}>Abhi koi activity notification nahi.</p>}
-              {activityNotifications.map(n => <div key={n.id} style={{ padding: '9px 4px', borderBottom: '1px solid #e2e8f0', background: n.is_read ? '#fff' : '#eff6ff' }}><div style={{ fontWeight: 800, fontSize: 12 }}>{n.actor_name || n.actor_email} — {n.action}</div><div style={{ fontSize: 12, marginTop: 3 }}>{n.details || ''}</div><div style={{ fontSize: 10, color: '#64748b', marginTop: 4 }}>{n.actor_email} · {n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div></div>)}
+              {activityNotifications.map(n => <div key={n.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '9px 4px', borderBottom: '1px solid #e2e8f0', background: selectedNotificationIds.includes(n.id) ? '#fee2e2' : (n.is_read ? '#fff' : '#eff6ff') }}><input type="checkbox" checked={selectedNotificationIds.includes(n.id)} onChange={e => toggleActivityNotification(n.id, e.target.checked)} style={{ marginTop: 2 }} /><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontWeight: 800, fontSize: 12 }}>{n.actor_name || n.actor_email} — {n.action}</div><div style={{ fontSize: 12, marginTop: 3 }}>{n.details || ''}</div><div style={{ fontSize: 10, color: '#64748b', marginTop: 4 }}>{n.actor_email} · {n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div></div></div>)}
             </div>}
           </div>}
           <button onClick={() => setSelectedSystem(null)} style={{ padding: '8px 11px', backgroundColor: 'rgba(255,255,255,.14)', color: '#ffffff', border: '1px solid rgba(255,255,255,.35)', borderRadius: '7px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Switch System</button>
@@ -3543,7 +3623,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       {/* NDA-PK CORPORATE SIDEBAR — existing tabs and handlers are retained */}
       <aside className="nda-sidebar" style={{background:'linear-gradient(180deg,#071d3d 0%,#0b2b55 100%)',color:'#fff',padding:'18px 14px',display:'flex',flexDirection:'column',gap:7,position:'fixed',left:0,top:86,bottom:0,width:278,overflowY:'auto',zIndex:30,boxSizing:'border-box',boxShadow:'5px 0 20px #071d3d18'}}>
         <div style={{display:'flex',alignItems:'center',gap:10,padding:'4px 7px 18px',borderBottom:'1px solid #ffffff35',marginBottom:8}}><img src="/nda-naveed-logo.png" alt="NDA-PK" style={{width:62,height:52,objectFit:'contain',background:'#fff',borderRadius:8}}/><div><b style={{fontSize:20,letterSpacing:1}}>NDA-PK</b><div style={{fontSize:11,color:'#dbeafe'}}>HR Management System</div></div></div>
-        {[["dashboard","⌂","Dashboard",true],["bulk","⚡","Bulk & OCR",userRole.is_admin||userRole.can_use_bulk],["workers","♙","Workers Directory",userRole.is_admin||userRole.can_view_workers],["attendance","▣","Timesheet Entry",userRole.is_admin||userRole.can_view_timesheet],["daily-timesheet","▤","Daily Timesheet",userRole.is_admin||userRole.can_view_daily_timesheet],["monthly-timesheet","▦","Monthly Timesheet",userRole.is_admin||userRole.can_view_timesheet||userRole.can_view_payroll],["changepass","⚿","Change Password",userRole.is_admin],["sites","⌖","Working Sites",userRole.is_admin],["departments","▥","Departments",userRole.is_admin],["designations","⚒","Designations",userRole.is_admin],["payroll","＄","Payroll",userRole.is_admin||userRole.can_view_payroll],["permissions","♙","Permissions",userRole.is_admin],["annualLeave","🌴","Annual Leave",userRole.is_admin],["data-cleanup","▧","Data Cleanup",userRole.is_admin]].filter(x=>x[3]).map(([id,ico,label])=><button key={id} onClick={()=>{setActiveTab(id);if(id==='monthly-timesheet')setShowMonthlyTimesheetModal(true);}} style={{display:'flex',alignItems:'center',gap:13,textAlign:'left',padding:'12px 14px',border:0,borderRadius:10,background:activeTab===id?'linear-gradient(90deg,#0878f9,#1762d6)':'transparent',color:'#fff',fontWeight:activeTab===id?800:600,fontSize:14,cursor:'pointer',boxShadow:activeTab===id?'0 5px 14px #001b4b55':'none'}}><span style={{fontSize:21,width:25,textAlign:'center'}}>{ico}</span>{label}</button>)}
+        {[["dashboard","⌂","Dashboard",true],["bulk","⚡","Bulk & OCR",userRole.is_admin||userRole.can_use_bulk],["workers","♙","Workers Directory",userRole.is_admin||userRole.can_view_workers],["attendance","▣","Timesheet Entry",userRole.is_admin||userRole.can_view_timesheet],["daily-timesheet","▤","Daily Timesheet",userRole.is_admin||userRole.can_view_daily_timesheet],["monthly-timesheet","▦","Monthly Timesheet",userRole.is_admin||userRole.can_view_timesheet||userRole.can_view_payroll],["changepass","⚿","Change Password",userRole.is_admin],["sites","⌖","Working Sites",userRole.is_admin],["departments","▥","Departments",userRole.is_admin],["designations","⚒","Designations",userRole.is_admin],["payroll","＄","Payroll",userRole.is_admin||userRole.can_view_payroll],["permissions","♙","Permissions",userRole.is_admin],["annualLeave","🌴","Annual Leave",userRole.is_admin],["data-cleanup","▧","Data Cleanup",userRole.is_admin]].filter(x=>x[3]).map(([id,ico,label])=><button key={id} onClick={()=>{setActiveTab(id);if(!userRole.is_admin) void logActivity('Viewed module', `Staff opened ${label}`);if(id==='monthly-timesheet')setShowMonthlyTimesheetModal(true);}} style={{display:'flex',alignItems:'center',gap:13,textAlign:'left',padding:'12px 14px',border:0,borderRadius:10,background:activeTab===id?'linear-gradient(90deg,#0878f9,#1762d6)':'transparent',color:'#fff',fontWeight:activeTab===id?800:600,fontSize:14,cursor:'pointer',boxShadow:activeTab===id?'0 5px 14px #001b4b55':'none'}}><span style={{fontSize:21,width:25,textAlign:'center'}}>{ico}</span>{label}</button>)}
         <div style={{flex:1,minHeight:12}}/>
         <button onClick={handleLogout} style={{padding:'13px',background:'#dc2626',color:'#fff',border:0,borderRadius:10,fontWeight:800,fontSize:14,cursor:'pointer'}}>⇥ Logout</button>
       </aside>
@@ -5977,20 +6057,38 @@ accruedDays = balance.toFixed(1);
             {annualManagementView === 'count' && <div style={{ display: 'grid', gap: 18 }}>
               <section style={{ background: '#fff', padding: 18, border: '1px solid #cbd5e1', borderRadius: 10, overflowX: 'auto' }}>
                 <h3 style={{ marginTop: 0 }}>Leave Count — All Workers</h3>
-                <p style={{ color: '#475569', fontSize: 13 }}>Calculation: 30 days per year (2.5 days per month). Leave salary receive hone ki last date se balance zero samjha jayega; us ke baad nayi leave accrual shuru hoti hai. Har worker ki joining date pehle save karein.</p>
-                <table style={tableStyle}><thead><tr><th style={thStyle}>Worker</th><th style={thStyle}>Joining Date</th><th style={thStyle}>Last Leave Salary Date</th><th style={thStyle}>Earned Days</th><th style={thStyle}>Leave Used</th><th style={thStyle}>Available Balance</th></tr></thead><tbody>
+                <p style={{ color: '#475569', fontSize: 13 }}>Annual leave count last vacation se wapsi ki date se dobara shuru hota hai. Leave salary paid-up date agar is se baad ho to woh date use hogi. UAE rule: 6 mahine se zyada aur 1 saal se kam service par 2 din per month; 1 saal complete hone ke baad 30 din per year. Har worker ki last return date yahan save karein.</p>
+                <table style={tableStyle}><thead><tr><th style={thStyle}>Worker</th><th style={thStyle}>Joining Date</th><th style={thStyle}>Last Leave Salary Date</th><th style={thStyle}>Last Vacation Return Date</th><th style={thStyle}>Earned Days</th><th style={thStyle}>Leave Used</th><th style={thStyle}>Available Balance</th></tr></thead><tbody>
                   {filteredWorkers.map(w => {
                     const emp = employmentRecords.find(r => String(r.worker_id) === String(w.id)) || {};
                     const salaryRecords = leaveSalaryRecords.filter(r => String(r.worker_id) === String(w.id)).sort((a,b) => String(b.leave_salary_last_date || '').localeCompare(String(a.leave_salary_last_date || '')));
                     const latestSalaryRecord = salaryRecords[0];
                     const joinDate = emp.joining_date || w.joining_date || w.start_date || (w.created_at ? String(w.created_at).slice(0,10) : '');
-                    const accrualStart = latestSalaryRecord?.leave_salary_last_date || joinDate;
+                    const workerLeaveRows = annualLeaveList.filter(l => String(l.worker_id) === String(w.id));
+                    const latestRecordedReturn = workerLeaveRows.filter(l => l.actual_return && l.actual_return !== 'On Leave').map(l => String(l.actual_return).slice(0,10)).sort().at(-1) || '';
+                    const savedLastReturn = lastReturnDateEdit[String(w.id)] ?? ([w.last_return_date, latestRecordedReturn].filter(Boolean).map(x => String(x).slice(0,10)).sort().at(-1) || '');
+                    const accrualCandidates = [joinDate, savedLastReturn, latestSalaryRecord?.leave_salary_last_date].filter(Boolean).sort();
+                    const accrualStart = accrualCandidates.at(-1) || '';
                     const todayString = new Date().toISOString().slice(0,10);
-                    const accrued = accrualStart && accrualStart <= todayString ? Math.max(0, ((new Date(todayString + 'T00:00:00') - new Date(accrualStart + 'T00:00:00')) / 86400000) * (30 / 365)) : 0;
-                    const used = annualLeaveList.filter(l => String(l.worker_id) === String(w.id) && l.start_date && l.start_date >= (accrualStart || '9999-12-31') && l.start_date <= todayString).reduce((sum,l) => { const end = l.actual_return && l.actual_return !== 'On Leave' ? l.actual_return : todayString; return sum + Math.max(0, Math.floor((new Date(end + 'T00:00:00') - new Date(l.start_date + 'T00:00:00')) / 86400000) + 1); }, 0);
-                    const balance = latestSalaryRecord ? Math.max(0, accrued - used) : Math.max(0, accrued - used);
-                    const edit = employmentEdit[String(w.id)] || { joining_date: joinDate, cancellation_date: emp.cancellation_date || '', basic_salary: emp.basic_salary || w.basic_salary || '' };
-                    return <tr key={w.id}><td style={tdStyle}><b>#{w.worker_id || w.id} — {w.name}</b><div style={{ color: '#64748b', fontSize: 12 }}>{w.department} / {w.designation}</div></td><td style={tdStyle}><input type="date" value={edit.joining_date || ''} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, joining_date: e.target.value } }))} style={{ ...fieldStyle, minWidth: 145, padding: 7 }} /><button onClick={() => saveEmploymentRecord(w.id)} style={{ marginTop: 5, padding: '5px 8px', background: '#2563eb', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer' }}>Save Date</button></td><td style={tdStyle}>{latestSalaryRecord?.leave_salary_last_date || 'Never recorded'}</td><td style={tdStyle}>{accrued.toFixed(1)} days</td><td style={tdStyle}>{used.toFixed(1)} days</td><td style={tdStyle}><b style={{ color: '#15803d', background: '#dcfce7', padding: '5px 8px', borderRadius: 6 }}>{balance.toFixed(1)} days</b></td></tr>;
+                    const join = joinDate ? new Date(joinDate + 'T00:00:00') : null;
+                    const accrualFrom = accrualStart ? new Date(accrualStart + 'T00:00:00') : null;
+                    const todayDate = new Date(todayString + 'T00:00:00');
+                    const activeLeave = workerLeaveRows.filter(l => l.start_date && l.start_date <= todayString && (!l.actual_return || l.actual_return === 'On Leave')).sort((a,b) => String(b.start_date).localeCompare(String(a.start_date)))[0];
+                    const accrualEndDate = activeLeave ? new Date(String(activeLeave.start_date).slice(0,10) + 'T00:00:00') : todayDate;
+                    let accrued = 0;
+                    if (join && accrualFrom && accrualFrom <= accrualEndDate) {
+                      const sixMonthDate = new Date(join); sixMonthDate.setMonth(sixMonthDate.getMonth() + 6);
+                      const firstYearDate = new Date(join); firstYearDate.setFullYear(firstYearDate.getFullYear() + 1);
+                      const earlyStart = new Date(Math.max(accrualFrom.getTime(), sixMonthDate.getTime()));
+                      const earlyEnd = new Date(Math.min(accrualEndDate.getTime(), firstYearDate.getTime()));
+                      if (earlyEnd > earlyStart) accrued += ((earlyEnd - earlyStart) / 86400000) * (24 / 365);
+                      const laterStart = new Date(Math.max(accrualFrom.getTime(), firstYearDate.getTime()));
+                      if (accrualEndDate > laterStart) accrued += ((accrualEndDate - laterStart) / 86400000) * (30 / 365);
+                    }
+                    const used = workerLeaveRows.filter(l => l.start_date && l.start_date >= (accrualStart || '9999-12-31') && l.start_date <= todayString).reduce((sum,l) => { const end = l.actual_return && l.actual_return !== 'On Leave' ? l.actual_return : todayString; return sum + Math.max(0, Math.floor((new Date(end + 'T00:00:00') - new Date(l.start_date + 'T00:00:00')) / 86400000) + 1); }, 0);
+                    const balance = Math.max(0, accrued - used);
+                    const edit = employmentEdit[String(w.id)] || { joining_date: joinDate, cancellation_date: emp.cancellation_date || '', basic_salary: emp.basic_salary || w.basic_salary || '', unpaid_absence_days: emp.unpaid_absence_days || w.unpaid_absence_days || 0 };
+                    return <tr key={w.id}><td style={tdStyle}><b>#{w.worker_id || w.id} — {w.name}</b><div style={{ color: '#64748b', fontSize: 12 }}>{w.department} / {w.designation}</div></td><td style={tdStyle}><input type="date" value={edit.joining_date || ''} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, joining_date: e.target.value } }))} style={{ ...fieldStyle, minWidth: 145, padding: 7 }} /><button onClick={() => saveEmploymentRecord(w.id)} style={{ marginTop: 5, padding: '5px 8px', background: '#2563eb', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer' }}>Save Joining Date</button></td><td style={tdStyle}>{latestSalaryRecord?.leave_salary_last_date || 'Never recorded'}</td><td style={tdStyle}><input type="date" value={savedLastReturn || ''} onChange={e => setLastReturnDateEdit(prev => ({ ...prev, [String(w.id)]: e.target.value }))} style={{ ...fieldStyle, minWidth: 145, padding: 7 }} /><button onClick={() => saveLastVacationReturnDate(w.id)} style={{ marginTop: 5, padding: '5px 8px', background: '#047857', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer' }}>Save Return Date</button></td><td style={tdStyle}>{accrued.toFixed(1)} days</td><td style={tdStyle}>{used.toFixed(1)} days</td><td style={tdStyle}><b style={{ color: '#15803d', background: '#dcfce7', padding: '5px 8px', borderRadius: 6 }}>{balance.toFixed(1)} days</b></td></tr>;
                   })}
                 </tbody></table>
               </section>
@@ -6010,22 +6108,37 @@ accruedDays = balance.toFixed(1);
             {annualManagementView === 'final' && <div style={{ background: '#fff', padding: 18, border: '1px solid #cbd5e1', borderRadius: 10, overflowX: 'auto' }}>
               <h3 style={{ marginTop: 0 }}>Final Calculation — UAE Private-Sector Gratuity Estimate</h3>
               <p style={{ color: '#475569', fontSize: 13 }}>Estimate basic salary par hota hai, total salary par zaroori nahi. App mein joining date, cancellation/last working date aur basic salary save karein. General full-time formula: 1 saal se kam service par gratuity nahi; pehle 5 saal ke liye har saal 21 din basic wage, 5 saal ke baad har additional saal 30 din, aur total cap 2 saal ki basic wage. Final payment se pehle HR/UAE labour guidance se verify karein.</p>
-              <table style={tableStyle}><thead><tr><th style={thStyle}>Worker</th><th style={thStyle}>Joining Date</th><th style={thStyle}>Cancellation / Last Date</th><th style={thStyle}>Basic Salary AED</th><th style={thStyle}>Service</th><th style={thStyle}>Gratuity Days</th><th style={thStyle}>Estimated Gratuity AED</th><th style={thStyle}>Save</th></tr></thead><tbody>
+              <table style={tableStyle}><thead><tr><th style={thStyle}>Worker</th><th style={thStyle}>Joining Date</th><th style={thStyle}>Cancellation / Last Date</th><th style={thStyle}>Basic Salary AED</th><th style={thStyle}>Unpaid Absence Days</th><th style={thStyle}>Service</th><th style={thStyle}>Gratuity Days</th><th style={thStyle}>Estimated Gratuity AED</th><th style={thStyle}>Actions</th></tr></thead><tbody>
                 {filteredWorkers.map(w => {
                   const emp = employmentRecords.find(r => String(r.worker_id) === String(w.id)) || {};
-                  const edit = employmentEdit[String(w.id)] || { joining_date: emp.joining_date || w.joining_date || w.start_date || (w.created_at ? String(w.created_at).slice(0,10) : ''), cancellation_date: emp.cancellation_date || '', basic_salary: emp.basic_salary || w.basic_salary || '' };
+                  const edit = employmentEdit[String(w.id)] || { joining_date: emp.joining_date || w.joining_date || w.start_date || (w.created_at ? String(w.created_at).slice(0,10) : ''), cancellation_date: emp.cancellation_date || '', basic_salary: emp.basic_salary || w.basic_salary || '', unpaid_absence_days: emp.unpaid_absence_days ?? w.unpaid_absence_days ?? 0 };
                   const endDate = edit.cancellation_date || finalCalcDate;
-                  const start = edit.joining_date ? new Date(edit.joining_date + 'T00:00:00') : null;
-                  const end = endDate ? new Date(endDate + 'T00:00:00') : null;
-                  const serviceDays = start && end && end >= start ? Math.floor((end - start) / 86400000) : 0;
-                  const serviceYears = serviceDays / 365;
                   const basic = Math.max(0, Number(edit.basic_salary || 0));
-                  const gratuityDays = serviceYears < 1 ? 0 : Math.min(730, Math.max(0, Math.min(serviceYears, 5) * 21 + Math.max(0, serviceYears - 5) * 30));
-                  const gratuityAmount = Math.min(basic * 2, (basic / 30) * gratuityDays);
-                  return <tr key={w.id}><td style={tdStyle}><b>#{w.worker_id || w.id} — {w.name}</b></td><td style={tdStyle}><input type="date" value={edit.joining_date || ''} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, joining_date: e.target.value } }))} style={{ ...fieldStyle, minWidth: 140, padding: 7 }} /></td><td style={tdStyle}><input type="date" value={edit.cancellation_date || ''} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, cancellation_date: e.target.value } }))} style={{ ...fieldStyle, minWidth: 140, padding: 7 }} /><div style={{ fontSize: 11, color: '#64748b' }}>Blank = current date</div></td><td style={tdStyle}><input type="number" min="0" step="0.01" value={edit.basic_salary || ''} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, basic_salary: e.target.value } }))} style={{ ...fieldStyle, minWidth: 110, padding: 7 }} /></td><td style={tdStyle}>{(serviceDays / 365).toFixed(2)} years</td><td style={tdStyle}>{gratuityDays.toFixed(1)}</td><td style={tdStyle}><b>{gratuityAmount.toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} AED</b></td><td style={tdStyle}><button onClick={() => saveEmploymentRecord(w.id)} style={{ padding: '7px 10px', background: '#2563eb', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer' }}>Save</button></td></tr>;
+                  const calc = calculateUAEGratuity(edit.joining_date, endDate, basic, edit.unpaid_absence_days || 0);
+                  return <tr key={w.id}><td style={tdStyle}><b>#{w.worker_id || w.id} — {w.name}</b></td><td style={tdStyle}><input type="date" value={edit.joining_date || ''} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, joining_date: e.target.value } }))} style={{ ...fieldStyle, minWidth: 140, padding: 7 }} /></td><td style={tdStyle}><input type="date" value={edit.cancellation_date || ''} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, cancellation_date: e.target.value } }))} style={{ ...fieldStyle, minWidth: 140, padding: 7 }} /><div style={{ fontSize: 11, color: '#64748b' }}>Blank = current date</div></td><td style={tdStyle}><input type="number" min="0" step="0.01" value={edit.basic_salary || ''} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, basic_salary: e.target.value } }))} style={{ ...fieldStyle, minWidth: 110, padding: 7 }} /></td><td style={tdStyle}><input type="number" min="0" step="1" value={edit.unpaid_absence_days || 0} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, unpaid_absence_days: e.target.value } }))} style={{ ...fieldStyle, minWidth: 90, padding: 7 }} /></td><td style={tdStyle}>{calc.serviceYears.toFixed(2)} years</td><td style={tdStyle}>{calc.gratuityDays.toFixed(1)}</td><td style={tdStyle}><b>{calc.amount.toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} AED</b></td><td style={tdStyle}><div style={{ display: 'flex', gap: 6 }}><button onClick={() => setGratuityViewWorkerId(String(w.id))} style={{ padding: '7px 10px', background: '#0f766e', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer' }}>View</button><button onClick={() => saveEmploymentRecord(w.id)} style={{ padding: '7px 10px', background: '#2563eb', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer' }}>Save</button></div></td></tr>;
                 })}
               </tbody></table>
               <p style={{ color: '#64748b', fontSize: 12, marginTop: 12 }}>Current calculation date: {finalCalcDate}. <label>Calculation date <input type="date" value={finalCalcDate} onChange={e => setFinalCalcDate(e.target.value)} style={{ ...fieldStyle, width: 180, display: 'inline-block' }} /></label></p>
+              {gratuityViewWorkerId && (() => {
+                const worker = workers.find(x => String(x.id) === String(gratuityViewWorkerId));
+                if (!worker) return null;
+                const emp = employmentRecords.find(r => String(r.worker_id) === String(worker.id)) || {};
+                const edit = employmentEdit[String(worker.id)] || { joining_date: emp.joining_date || worker.joining_date || worker.start_date || (worker.created_at ? String(worker.created_at).slice(0,10) : ''), cancellation_date: emp.cancellation_date || '', basic_salary: emp.basic_salary || worker.basic_salary || '', unpaid_absence_days: emp.unpaid_absence_days ?? worker.unpaid_absence_days ?? 0 };
+                const endDate = edit.cancellation_date || finalCalcDate;
+                const calc = calculateUAEGratuity(edit.joining_date, endDate, edit.basic_salary, edit.unpaid_absence_days || 0);
+                const money = n => Number(n || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                return <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.58)', zIndex: 10020, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+                  <div id="nda-gratuity-worker-detail" style={{ width: 'min(760px, 96vw)', maxHeight: '90vh', overflowY: 'auto', background: '#fff', borderRadius: 14, padding: 22, boxShadow: '0 20px 60px #0005' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}><h3 style={{ margin: 0 }}>Final Gratuity Details</h3><button onClick={() => setGratuityViewWorkerId(null)} style={{ border: 0, borderRadius: 7, padding: '7px 12px', background: '#e2e8f0', cursor: 'pointer' }}>Close</button></div>
+                    <h2 style={{ margin: '14px 0 4px' }}>#{worker.worker_id || worker.id} — {worker.name}</h2><div style={{ color: '#64748b', fontSize: 13 }}>{worker.department || '—'} / {worker.designation || '—'}</div>
+                    <table style={{ ...tableStyle, marginTop: 16 }}><tbody>
+                      {[['Joining date', edit.joining_date || 'Not entered'],['Last working / cancellation date', endDate || 'Not entered'],['Calculation date', finalCalcDate],['Basic monthly salary', `AED ${money(edit.basic_salary)}`],['Daily basic wage (basic ÷ 30)', `AED ${money(calc.dailyBasic)}`],['Total service days', calc.serviceDays],['Unpaid absence days deducted', calc.adjustedServiceDays === 0 ? calc.serviceDays : Math.max(0, calc.serviceDays - calc.adjustedServiceDays)],['Service counted after unpaid absence', `${calc.serviceYears.toFixed(4)} years`],['First 5 years: 21 days per year', `${calc.firstFiveDays.toFixed(2)} gratuity days`],['After 5 years: 30 days per year', `${calc.additionalDays.toFixed(2)} gratuity days`],['Total gratuity days', `${calc.gratuityDays.toFixed(2)} days`],['Gratuity before 2-year cap', `AED ${money(calc.dailyBasic * calc.gratuityDays)}`],['Maximum legal cap (24 basic salaries)', `AED ${money(Number(edit.basic_salary || 0) * 24)}`],['Final estimated gratuity', `AED ${money(calc.amount)}`]].map(([label,value]) => <tr key={label}><td style={{ ...tdStyle, width: '56%', fontWeight: 700 }}>{label}</td><td style={tdStyle}>{value}</td></tr>)}
+                    </tbody></table>
+                    <p style={{ fontSize: 12, color: '#64748b', marginTop: 12 }}>Estimate for a full-time foreign worker under UAE Labour Law Article 51. Unpaid absence days are deducted only from the number entered above. Part-time contracts, UAE nationals, alternative savings schemes, employer deductions and individual contract terms may require a different calculation.</p>
+                    <button onClick={() => printNdaPage('nda-gratuity-worker-detail')} style={{ marginTop: 8, padding: '9px 14px', background: '#1d4ed8', color: '#fff', border: 0, borderRadius: 7, cursor: 'pointer', fontWeight: 800 }}>Print Details</button>
+                  </div>
+                </div>;
+              })()}
             </div>}
           </div>
         )}
@@ -6130,7 +6243,7 @@ accruedDays = balance.toFixed(1);
                   
                   {/* View Timesheet Button */}
                   <button 
-                    onClick={() => setViewingWorkerTimesheet(w)} 
+                    onClick={() => { setViewingWorkerTimesheet(w); if (!userRole.is_admin) void logActivity('Viewed worker timesheet', `Worker #${w.worker_id || w.id} — ${w.name || ''}`); }} 
                     style={{ padding: '6px 10px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
                   >
                     👁️ View Timesheet
