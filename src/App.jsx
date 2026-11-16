@@ -41,6 +41,20 @@ function getInitialPayrollRange() {
   return { startDate: dateToInputValue(start), endDate: dateToInputValue(end) };
 }
 
+function getPayrollRangeFromMonth(monthStr) {
+  const [y, m] = String(monthStr || '').split('-').map(Number);
+  if (!y || !m) return getInitialPayrollRange();
+  const start = new Date(y, m - 2, 16, 12, 0, 0);
+  const end = new Date(y, m - 1, 15, 12, 0, 0);
+  return { startDate: dateToInputValue(start), endDate: dateToInputValue(end) };
+}
+
+function getPayrollMonthFromEndDate(endDateStr) {
+  const [y, m] = String(endDateStr || '').slice(0, 10).split('-').map(Number);
+  if (!y || !m) return new Date().toISOString().slice(0, 7);
+  return `${y}-${String(m).padStart(2, '0')}`;
+}
+
 function shiftPayrollDateOneMonth(dateText) {
   const [year, month, day] = String(dateText || '').slice(0, 10).split('-').map(Number);
   if (!year || !month || !day) return '';
@@ -409,6 +423,15 @@ export default function App() {
   const [showMonthlyTimesheetModal, setShowMonthlyTimesheetModal] = useState(false);
   const [payrollStartDate, setPayrollStartDate] = useState(() => getInitialPayrollRange().startDate);
   const [payrollEndDate, setPayrollEndDate] = useState(() => getInitialPayrollRange().endDate);
+  const [payrollMonth, setPayrollMonth] = useState(() => getPayrollMonthFromEndDate(payrollEndDate));
+
+  function handlePayrollMonthChange(e) {
+    const val = e.target.value;
+    setPayrollMonth(val);
+    const range = getPayrollRangeFromMonth(val);
+    setPayrollStartDate(range.startDate);
+    setPayrollEndDate(range.endDate);
+  }
   const [savingPayrollPeriodSettings, setSavingPayrollPeriodSettings] = useState(false);
   const [closedPayrollPeriods, setClosedPayrollPeriods] = useState([]);
   const [closingPayrollPeriod, setClosingPayrollPeriod] = useState(false);
@@ -992,6 +1015,7 @@ const [newDesignation, setNewDesignation] = useState('');
       if (error) throw error;
       setPayrollStartDate(startDate);
       setPayrollEndDate(endDate);
+      setPayrollMonth(getPayrollMonthFromEndDate(endDate));
       void logActivity('Payroll period changed', `${startDate} to ${endDate}`);
       if (showMessage) alert(`Payroll period save ho gaya: ${startDate} se ${endDate}. HR payroll reports ab isi date range ke mutabiq hain.`);
       return true;
