@@ -986,8 +986,11 @@ const [newDesignation, setNewDesignation] = useState('');
       return;
     }
     if (data?.start_date && data?.end_date) {
-      setPayrollStartDate(String(data.start_date).slice(0, 10));
-      setPayrollEndDate(String(data.end_date).slice(0, 10));
+      const savedStart = String(data.start_date).slice(0, 10);
+      const savedEnd = String(data.end_date).slice(0, 10);
+      setPayrollStartDate(savedStart);
+      setPayrollEndDate(savedEnd);
+      setPayrollMonth(getPayrollMonthFromEndDate(savedEnd));
     }
   }
 
@@ -1077,6 +1080,7 @@ const [newDesignation, setNewDesignation] = useState('');
       const nextEndDate = shiftPayrollDateOneMonth(payrollPeriodEndDate);
       setPayrollStartDate(nextStartDate);
       setPayrollEndDate(nextEndDate);
+      setPayrollMonth(getPayrollMonthFromEndDate(nextEndDate));
       setSelectedTimesheetDate(nextStartDate);
       const settingsSaved = await savePayrollPeriodSettings(nextStartDate, nextEndDate, false);
       alert(`Salary period close ho gaya: ${payload.start_date} se ${payload.end_date}. Agla period ${nextStartDate} se ${nextEndDate} set kar diya hai.${settingsSaved ? '' : '\nNote: dates is session mein set hain, lekin global settings save nahi huin. SQL/table permission check karein.'}`);
@@ -3639,9 +3643,12 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       <div style={{display:'flex',alignItems:'center',gap:18,minWidth:260}}><img src="/muhammad-naveed-profile.jpg" alt="Muhammad Naveed" style={{width:112,height:112,borderRadius:'50%',objectFit:'cover',border:'5px solid #d9a62d',boxShadow:'0 5px 18px #0003'}}/><div><div style={{fontSize:11,letterSpacing:3,fontWeight:800,color:'#f7d77b'}}>NDA-PK · HR CONTROL CENTER</div><h2 style={{fontSize:'clamp(23px,3vw,32px)',margin:'8px 0'}}>Welcome Back,<br/>Muhammad Naveed</h2><p style={{margin:0,color:'#dbeafe',fontSize:14}}>NDA-PK HR &amp; Business System · Administrator</p><p style={{margin:'8px 0 0',color:'#f8d77c',fontStyle:'italic',fontWeight:700}}>Together for a Better Workplace</p></div></div>
       <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'end'}}>
         <label style={{fontSize:12,color:'#dbeafe'}}>Dashboard Date<input type="date" value={selectedTimesheetDate} onChange={e=>setSelectedTimesheetDate(e.target.value)} style={{display:'block',marginTop:5,padding:'9px 10px',borderRadius:8,border:'1px solid #93c5fd',background:'#fff',color:'#0f172a'}}/></label>
-        <label style={{fontSize:12,color:'#dbeafe'}}>Payroll Start Date<input type="date" value={payrollStartDate} onChange={e=>setPayrollStartDate(e.target.value)} disabled={!userRole.is_admin} style={{display:'block',marginTop:5,padding:'9px 10px',borderRadius:8,border:'1px solid #93c5fd',background:'#fff',color:'#0f172a'}}/></label>
-        <label style={{fontSize:12,color:'#dbeafe'}}>Payroll Closing Date<input type="date" value={payrollEndDate} min={payrollStartDate || undefined} onChange={e=>setPayrollEndDate(e.target.value)} disabled={!userRole.is_admin} style={{display:'block',marginTop:5,padding:'9px 10px',borderRadius:8,border:'1px solid #93c5fd',background:'#fff',color:'#0f172a'}}/></label>
-        {userRole.is_admin && <button type="button" disabled={savingPayrollPeriodSettings} onClick={()=>savePayrollPeriodSettings()} style={{alignSelf:'end',padding:'10px 13px',background:'#047857',color:'#fff',border:0,borderRadius:9,fontWeight:800,cursor:savingPayrollPeriodSettings?'wait':'pointer',opacity:savingPayrollPeriodSettings?0.7:1}}>{savingPayrollPeriodSettings?'Saving…':'Save Payroll Dates'}</button>}
+        <label style={{fontSize:12,color:'#dbeafe'}}>Payroll Month
+          <input type="month" value={payrollMonth} onChange={handlePayrollMonthChange} style={{display:'block',marginTop:5,padding:'9px 10px',borderRadius:8,border:'1px solid #93c5fd',background:'#fff',color:'#0f172a'}}/>
+        </label>
+        <div style={{fontSize:12,color:'#dbeafe',padding:'8px 10px',border:'1px solid #93c5fd',borderRadius:8,background:'#ffffff18'}}>
+          Salary Period: <b>{payrollStartDate} to {payrollEndDate}</b>
+        </div>
 
       </div>
     </section>
@@ -5250,13 +5257,12 @@ const workerSite = record.site || record.work_site || '';
 
     <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 15, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
       <div style={{ minWidth: 260, fontWeight: 'bold' }}>Monthly Salary & Overtime Sheet<br/><span style={{fontSize:12,color:'#475569'}}>Salary Month: {salaryMonthLabel} ({salaryMonthDays} days) · {salaryMonthStartDate} to {salaryMonthEndDate}</span><br/><span style={{fontSize:12,color:'#475569'}}>OT Closing Period: {payrollPeriodStartDate} to {payrollPeriodEndDate}</span><br/><span style={{fontSize:12,color:currentPayrollPeriodClosed?'#b91c1c':'#047857'}}>{currentPayrollPeriodClosed ? 'CLOSED — editing blocked' : 'OPEN — attendance and OT can be entered'}</span></div>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Start Date:
-        <input type="date" value={payrollStartDate} disabled={!userRole.is_admin} onChange={e => setPayrollStartDate(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6 }} />
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Payroll Month:
+        <input type="month" value={payrollMonth} onChange={handlePayrollMonthChange} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6 }} />
       </label>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Closing Date:
-        <input type="date" value={payrollEndDate} min={payrollStartDate || undefined} disabled={!userRole.is_admin} onChange={e => setPayrollEndDate(e.target.value)} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6 }} />
-      </label>
-      {userRole.is_admin && <button type="button" disabled={savingPayrollPeriodSettings} onClick={() => savePayrollPeriodSettings()} style={{ padding: '9px 12px', background: '#1d4ed8', color: '#fff', border: 0, borderRadius: 6, fontWeight: 800, cursor: 'pointer' }}>Save Dates</button>}
+      <div style={{fontSize:12,color:'#475569',padding:'8px 10px',background:'#fff',border:'1px solid #cbd5e1',borderRadius:6}}>
+        Selected Period: <b>{payrollPeriodStartDate} to {payrollPeriodEndDate}</b>
+      </div>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Department (Top Filter):
         <span style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', minWidth: 120 }}>{userRole.is_admin ? selectedDeptFilter : userRole.assigned_department}</span>
       </label>
@@ -6072,14 +6078,13 @@ accruedDays = balance.toFixed(1);
           </div>
 
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Payroll Start Date</label>
-            <input type="date" value={payrollStartDate} disabled={!userRole.is_admin} onChange={e => setPayrollStartDate(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Payroll Month</label>
+            <input type="month" value={payrollMonth} onChange={handlePayrollMonthChange} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
           </div>
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Payroll Closing Date</label>
-            <input type="date" value={payrollEndDate} min={payrollStartDate || undefined} disabled={!userRole.is_admin} onChange={e => setPayrollEndDate(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+          <div style={{fontSize:12,color:'#475569',padding:'8px 10px',background:'#fff',border:'1px solid #cbd5e1',borderRadius:6}}>
+            Salary Period: <b>{payrollPeriodStartDate} to {payrollPeriodEndDate}</b>
+            <span style={{display:'block',marginTop:3,fontWeight:700,color:currentPayrollPeriodClosed?'#b91c1c':'#047857'}}>{currentPayrollPeriodClosed?'CLOSED — view / print only':'OPEN — current period'}</span>
           </div>
-          {userRole.is_admin && <button type="button" onClick={() => savePayrollPeriodSettings()} disabled={savingPayrollPeriodSettings} style={{ padding: '8px 12px', background: '#047857', color: '#fff', border: 0, borderRadius: 6, fontWeight: 700, cursor: 'pointer' }}>Save Dates</button>}
         </div>
 
 
