@@ -102,21 +102,29 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [access, setAccess] = useState(null);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState('daily');
-  const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0,10));
-  const [month, setMonth] = useState(new Date().toISOString().slice(0,7));
+  const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+
+  // New Business Form
   const [newBusinessName, setNewBusinessName] = useState('');
   const [newBusinessKind, setNewBusinessKind] = useState('transport');
+
+  // New Vehicle File Form
   const [vehiclePlate, setVehiclePlate] = useState('');
   const [vehicleName, setVehicleName] = useState('');
   const [vehicleNotes, setVehicleNotes] = useState('');
+
+  // Staff / Driver Profile Form
   const [personName, setPersonName] = useState('');
-  const [personRole, setPersonRole] = useState('Worker');
+  const [personRole, setPersonRole] = useState('Driver');
   const [personPhone, setPersonPhone] = useState('');
   const [payType, setPayType] = useState('fixed');
   const [payAmount, setPayAmount] = useState('');
   const [profitPercent, setProfitPercent] = useState('30');
+
+  // Daily Entry Form
   const [entryKind, setEntryKind] = useState('income');
-  const [category, setCategory] = useState('Daily Income');
+  const [category, setCategory] = useState('Daily Trip / Income');
   const [amount, setAmount] = useState('');
   const [paymentMode, setPaymentMode] = useState('Cash');
   const [vehicleId, setVehicleId] = useState('');
@@ -124,124 +132,334 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [description, setDescription] = useState('');
   const [remarks, setRemarks] = useState('');
   const [billFile, setBillFile] = useState(null);
+
+  // Staff Login & Permissions Form
   const [accessEmail, setAccessEmail] = useState('');
   const [accessPassword, setAccessPassword] = useState('');
   const [accessBusinessId, setAccessBusinessId] = useState('');
-  const [accessFlags, setAccessFlags] = useState({can_view:true,can_view_daily:true,can_view_vehicles:true,can_view_workers:true,can_view_monthly:true,can_add:false,can_edit:false,can_delete:false,can_manage_vehicles:false,can_manage_workers:false,can_manage_access:false});
+  const [accessFlags, setAccessFlags] = useState({
+    can_view: true,
+    can_view_daily: true,
+    can_add: true,
+    can_edit: false,
+    can_delete: false,
+    can_view_vehicles: true,
+    can_manage_vehicles: false,
+    can_view_workers: false,
+    can_manage_workers: false,
+    can_view_monthly: false,
+    can_manage_access: false
+  });
   const [editingAccessRow, setEditingAccessRow] = useState(null);
   const [currency, setCurrency] = useState('AED');
+
   const admin = !!userRole?.is_admin;
   const can = (key) => admin || !!access?.[key];
   const currentBusiness = businesses.find(b => String(b.id) === String(businessId));
-  const money = n => `${currency} ${Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-  const inputStyle = {width:'100%',boxSizing:'border-box',padding:'10px 12px',border:'1px solid #cbd5e1',borderRadius:8,background:'#fff',color:'#0f172a'};
-  const btn = {padding:'10px 14px',border:0,borderRadius:8,background:'#047857',color:'#fff',fontWeight:700,cursor:'pointer'};
-  const card = {background:'#fff',borderRadius:14,padding:16,boxShadow:'0 5px 22px #0f172a0b',minWidth:0};
+  const isTransportBusiness = (currentBusiness?.business_kind || 'transport') === 'transport';
+  const money = n => `${currency} ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const inputStyle = {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '12px 14px',
+    border: '1px solid #cbd5e1',
+    borderRadius: 10,
+    background: '#fff',
+    color: '#0f172a',
+    fontSize: 15
+  };
+  const btn = {
+    padding: '12px 16px',
+    border: 0,
+    borderRadius: 10,
+    background: '#047857',
+    color: '#fff',
+    fontWeight: 700,
+    fontSize: 14,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6
+  };
+  const card = {
+    background: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    boxShadow: '0 4px 18px #0f172a0d',
+    border: '1px solid #e2e8f0',
+    minWidth: 0
+  };
+
+  const quickIncomeCategories = isTransportBusiness
+    ? ['Daily Trip / Income', 'Contract / Monthly Rent', 'Extra Trip', 'Other Income']
+    : ['Daily Sales / Income', 'Client Payment', 'Service Fee', 'Other Income'];
+
+  const quickExpenseCategories = isTransportBusiness
+    ? ['Diesel / Petrol', 'Garage / Maintenance', 'Toll / Salik', 'Traffic Fine', 'Driver Food / Tea', 'Spare Parts', 'Other Expense']
+    : ['Stock / Material', 'Shop Rent / Bills', 'Staff Expense', 'Maintenance / Repair', 'Transport / Delivery', 'Other Expense'];
+
+  function resolveFirstAllowedView(accRow, isAdminUser) {
+    if (isAdminUser) return 'daily';
+    if (!accRow) return 'daily';
+    if (accRow.can_view_daily || accRow.can_add || accRow.can_edit || accRow.can_delete) return 'daily';
+    if (accRow.can_view_vehicles || accRow.can_manage_vehicles) return 'vehicles';
+    if (accRow.can_view_monthly) return 'monthly';
+    if (accRow.can_view_workers || accRow.can_manage_workers) return 'workers';
+    if (accRow.can_manage_access) return 'access';
+    return 'daily';
+  }
 
   async function loadBusinesses(preferredId) {
     setLoading(true);
     try {
       if (admin) {
-        const {data,error} = await supabase.from('business_profiles').select('*').eq('active',true).order('name');
+        const { data, error } = await supabase.from('business_profiles').select('*').eq('active', true).order('name');
         if (error) throw error;
-        const rows=data||[]; setBusinesses(rows);
-        const next=String(preferredId || businessId || rows[0]?.id || ''); setBusinessId(next);
-        if (next) setAccess({can_view:true,can_add:true,can_edit:true,can_delete:true,can_manage_vehicles:true,can_manage_workers:true,can_manage_access:true});
-        const {data:ar,error:ae}=await supabase.from('business_access').select('*,business_profiles(name)').order('user_email');
-        if (!ae) setAccessRows(ar||[]);
+        const rows = data || [];
+        setBusinesses(rows);
+        const next = String(preferredId || businessId || rows[0]?.id || '');
+        setBusinessId(next);
+        if (next) {
+          setAccess({
+            can_view: true, can_view_daily: true, can_add: true, can_edit: true, can_delete: true,
+            can_view_vehicles: true, can_manage_vehicles: true, can_view_workers: true,
+            can_manage_workers: true, can_view_monthly: true, can_manage_access: true
+          });
+        }
+        const { data: ar, error: ae } = await supabase.from('business_access').select('*,business_profiles(name)').order('user_email');
+        if (!ae) setAccessRows(ar || []);
       } else {
-        const {data:ar,error:ae}=await supabase.from('business_access').select('*,business_profiles(*)').ilike('user_email',session?.user?.email||'').eq('active',true).eq('can_view',true);
+        const { data: ar, error: ae } = await supabase
+          .from('business_access')
+          .select('*,business_profiles(*)')
+          .ilike('user_email', session?.user?.email || '')
+          .eq('active', true)
+          .eq('can_view', true);
         if (ae) throw ae;
-        const rows=ar||[]; setAccessRows(rows); setBusinesses(rows.map(r=>r.business_profiles).filter(Boolean));
-        const next=String(preferredId || businessId || rows[0]?.business_id || ''); setBusinessId(next);
-        const row=rows.find(r=>String(r.business_id)===next) || rows[0] || null; setAccess(row);
+        const rows = ar || [];
+        setAccessRows(rows);
+        setBusinesses(rows.map(r => r.business_profiles).filter(Boolean));
+        const next = String(preferredId || businessId || rows[0]?.business_id || '');
+        setBusinessId(next);
+        const row = rows.find(r => String(r.business_id) === next) || rows[0] || null;
+        setAccess(row);
+        if (row) {
+          setView(prev => {
+            const allowed =
+              (prev === 'daily' && (row.can_view_daily || row.can_add || row.can_edit || row.can_delete)) ||
+              (prev === 'vehicles' && (row.can_view_vehicles || row.can_manage_vehicles)) ||
+              (prev === 'workers' && (row.can_view_workers || row.can_manage_workers)) ||
+              (prev === 'monthly' && row.can_view_monthly) ||
+              (prev === 'access' && row.can_manage_access);
+            return allowed ? prev : resolveFirstAllowedView(row, false);
+          });
+        }
       }
-    } catch(e) { alert('Business list load nahi hui: '+(e?.message||e)+'. SQL setup check karein.'); }
-    finally { setLoading(false); }
+    } catch (e) {
+      alert('Failed to load business list: ' + (e?.message || e));
+    } finally {
+      setLoading(false);
+    }
   }
-  async function loadBusinessData(id=businessId) {
+
+  async function loadBusinessData(id = businessId) {
     if (!id) return;
     setLoading(true);
     try {
-      const [v,p,e] = await Promise.all([
-        supabase.from('business_vehicles').select('*').eq('business_id',id).eq('active',true).order('plate_number'),
-        supabase.from('business_people').select('*').eq('business_id',id).eq('active',true).order('person_name'),
-        supabase.from('business_entries').select('*').eq('business_id',id).order('entry_date',{ascending:false}).order('created_at',{ascending:false})
+      const [v, p, e] = await Promise.all([
+        supabase.from('business_vehicles').select('*').eq('business_id', id).eq('active', true).order('plate_number'),
+        supabase.from('business_people').select('*').eq('business_id', id).eq('active', true).order('person_name'),
+        supabase.from('business_entries').select('*').eq('business_id', id).order('entry_date', { ascending: false }).order('created_at', { ascending: false })
       ]);
-      // A staff member may have access to only one section; do not let an unrelated
-      // denied section prevent the permitted section from loading.
-      setVehicles(v.error?[]:(v.data||[])); setPeople(p.error?[]:(p.data||[])); setEntries(e.error?[]:(e.data||[]));
-      if(v.error&&p.error&&e.error) throw (e.error||p.error||v.error);
-    } catch(e) { alert('Business details load nahi huay: '+(e?.message||e)); }
-    finally { setLoading(false); }
+      const loadedVehicles = v.error ? [] : (v.data || []);
+      const loadedPeople = p.error ? [] : (p.data || []);
+      const loadedEntries = e.error ? [] : (e.data || []);
+      setVehicles(loadedVehicles);
+      setPeople(loadedPeople);
+      setEntries(loadedEntries);
+      if (loadedVehicles.length === 1) {
+        setVehicleId(String(loadedVehicles[0].id));
+      }
+      if (v.error && p.error && e.error) throw (e.error || p.error || v.error);
+    } catch (e) {
+      alert('Failed to load business details: ' + (e?.message || e));
+    } finally {
+      setLoading(false);
+    }
   }
-  useEffect(()=>{ loadBusinesses(); },[session?.user?.email,admin]);
-  useEffect(()=>{ if(businessId) loadBusinessData(businessId); },[businessId]);
+
+  useEffect(() => { loadBusinesses(); }, [session?.user?.email, admin]);
+  useEffect(() => { if (businessId) loadBusinessData(businessId); }, [businessId]);
 
   async function addBusiness(e) {
-    e.preventDefault(); if(!admin) return;
-    const name=newBusinessName.trim(); if(!name) return;
-    const {data,error}=await supabase.from('business_profiles').insert([{name,business_kind:newBusinessKind,active:true,created_by:session?.user?.email||''}]).select('*').single();
-    if(error) return alert('Business create nahi hua: '+error.message);
-    setNewBusinessName(''); await loadBusinesses(data.id); setBusinessId(String(data.id)); alert('Naya business add ho gaya.');
+    e.preventDefault();
+    if (!admin) return;
+    const name = newBusinessName.trim();
+    if (!name) return;
+    const { data, error } = await supabase
+      .from('business_profiles')
+      .insert([{ name, business_kind: newBusinessKind, active: true, created_by: session?.user?.email || '' }])
+      .select('*')
+      .single();
+    if (error) return alert('Could not create business: ' + error.message);
+    setNewBusinessName('');
+    await loadBusinesses(data.id);
+    setBusinessId(String(data.id));
+    alert('New business created successfully.');
   }
+
   async function addVehicle(e) {
-    e.preventDefault(); if(!can('can_manage_vehicles')) return alert('Vehicle add karne ki permission nahi.');
-    if(!vehiclePlate.trim()) return alert('Vehicle plate number enter karein.');
-    const {error}=await supabase.from('business_vehicles').insert([{business_id:Number(businessId),plate_number:vehiclePlate.trim().toUpperCase(),vehicle_name:vehicleName.trim(),notes:vehicleNotes.trim(),active:true}]);
-    if(error) return alert('Vehicle save nahi hui: '+error.message);
-    setVehiclePlate('');setVehicleName('');setVehicleNotes('');await loadBusinessData();alert('Vehicle file create ho gayi.');
+    e.preventDefault();
+    if (!can('can_manage_vehicles')) return alert('You do not have permission to add vehicles.');
+    if (!vehiclePlate.trim()) return alert('Please enter the vehicle plate number.');
+    const { error } = await supabase.from('business_vehicles').insert([{
+      business_id: Number(businessId),
+      plate_number: vehiclePlate.trim().toUpperCase(),
+      vehicle_name: vehicleName.trim(),
+      notes: vehicleNotes.trim(),
+      active: true
+    }]);
+    if (error) return alert('Could not save vehicle file: ' + error.message);
+    setVehiclePlate('');
+    setVehicleName('');
+    setVehicleNotes('');
+    await loadBusinessData();
+    alert('Vehicle file created successfully.');
   }
+
   async function addPerson(e) {
-    e.preventDefault(); if(!can('can_manage_workers')) return alert('Worker add karne ki permission nahi.');
-    if(!personName.trim()) return alert('Worker ka naam enter karein.');
-    const payload={business_id:Number(businessId),person_name:personName.trim(),job_title:personRole.trim()||'Worker',phone:personPhone.trim(),pay_type:payType,monthly_salary:payType==='fixed'?(Number(payAmount)||0):0,profit_percent:payType==='profit_percent'?(Number(profitPercent)||0):0,active:true};
-    if(payload.profit_percent<0||payload.profit_percent>100) return alert('Profit percentage 0 se 100 ke darmiyan honi chahiye.');
-    const existingPercent=people.filter(p=>p.pay_type==='profit_percent').reduce((n,p)=>n+Number(p.profit_percent||0),0);
-    if(payload.pay_type==='profit_percent' && existingPercent+payload.profit_percent>100) return alert('Tamam drivers ka combined profit share 100% se zyada nahi ho sakta.');
-    const {error}=await supabase.from('business_people').insert([payload]); if(error) return alert('Worker save nahi hua: '+error.message);
-    setPersonName('');setPersonPhone('');setPayAmount('');await loadBusinessData();alert('Worker add ho gaya.');
-  }
-  async function addEntry(e) {
-    e.preventDefault(); if(!can('can_add')) return alert('Entry add karne ki permission nahi.');
-    const val=Number(amount); if(!entryDate||!Number.isFinite(val)||val<=0) return alert('Date aur amount sahi enter karein.');
-    if(!vehicleId) return alert('Pehle Vehicle Files mein gaari add karein aur is entry ke liye gaari select karein.');
-    if(!description.trim()&&!remarks.trim()) return alert('Entry ki detail likhein taake monthly sheet mein kharchay ki wajah clear ho.');
-    const isMaintenanceEntry=/maintenance|garage|repair|workshop/i.test(`${category} ${description} ${remarks}`);
-    if(entryKind==='income' && isMaintenanceEntry) return alert('Maintenance / Garage ke din income enter na karein. Is din sirf expense entries save karein.');
-    if(entryKind==='income' && entries.some(r=>r.entry_date===entryDate && String(r.vehicle_id||'')===String(vehicleId||'') && r.entry_kind==='expense' && /maintenance|garage|repair|workshop/i.test(`${r.category||''} ${r.description||''} ${r.remarks||''}`))) return alert('Is vehicle ki aaj Maintenance entry mojood hai. Garage day par income zero rakhein; sirf expenses add karein.');
-    if(entryKind==='expense' && isMaintenanceEntry && entries.some(r=>r.entry_date===entryDate && String(r.vehicle_id||'')===String(vehicleId||'') && r.entry_kind==='income')) return alert('Is gaari ki aaj income pehle save ho chuki hai. Maintenance day par income zero honi chahiye; pehle income record ko correct/delete karein, phir garage expense save karein.');
-    let billUrl='';
-    if(billFile){
-      const safeName=`${businessId}/${entryDate}/${Date.now()}-${billFile.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
-      const {error:upErr}=await supabase.storage.from('business-bills').upload(safeName,billFile,{upsert:false});
-      if(upErr) return alert('Bill upload nahi hua: '+upErr.message+' (Storage bucket/policy check karein)');
-      const {data}=supabase.storage.from('business-bills').getPublicUrl(safeName); billUrl=data?.publicUrl||'';
+    e.preventDefault();
+    if (!can('can_manage_workers')) return alert('You do not have permission to add drivers/staff.');
+    if (!personName.trim()) return alert('Please enter driver or staff name.');
+    const payload = {
+      business_id: Number(businessId),
+      person_name: personName.trim(),
+      job_title: personRole.trim() || 'Driver',
+      phone: personPhone.trim(),
+      pay_type: payType,
+      monthly_salary: payType === 'fixed' ? (Number(payAmount) || 0) : 0,
+      profit_percent: payType === 'profit_percent' ? (Number(profitPercent) || 0) : 0,
+      active: true
+    };
+    if (payload.profit_percent < 0 || payload.profit_percent > 100) {
+      return alert('Profit percentage must be between 0 and 100.');
     }
-    const payload={business_id:Number(businessId),entry_date:entryDate,entry_kind:entryKind,category:category.trim()||'General',amount:val,payment_mode:paymentMode,vehicle_id:vehicleId?Number(vehicleId):null,driver_id:driverId?Number(driverId):null,description:description.trim(),remarks:remarks.trim(),bill_url:billUrl,created_by:session?.user?.email||''};
-    const {error}=await supabase.from('business_entries').insert([payload]); if(error) return alert('Roznamcha save nahi hua: '+error.message);
-    setAmount('');setDescription('');setRemarks('');setBillFile(null);await loadBusinessData();alert('Daily detail save ho gayi.');
+    const existingPercent = people.filter(p => p.pay_type === 'profit_percent').reduce((n, p) => n + Number(p.profit_percent || 0), 0);
+    if (payload.pay_type === 'profit_percent' && existingPercent + payload.profit_percent > 100) {
+      return alert('Combined profit share of all drivers cannot exceed 100%.');
+    }
+    const { error } = await supabase.from('business_people').insert([payload]);
+    if (error) return alert('Could not save driver/staff: ' + error.message);
+    setPersonName('');
+    setPersonPhone('');
+    setPayAmount('');
+    await loadBusinessData();
+    alert('Driver / Staff added successfully.');
   }
-  async function deleteEntry(row) { if(!can('can_delete')) return alert('Delete permission nahi.'); if(!window.confirm('Yeh entry delete karni hai?'))return; const {error}=await supabase.from('business_entries').delete().eq('id',row.id).eq('business_id',Number(businessId)); if(error)return alert(error.message);await loadBusinessData(); }
+
+  async function addEntry(e) {
+    e.preventDefault();
+    if (!can('can_add')) return alert('You do not have permission to add entries.');
+    const val = Number(amount);
+    if (!entryDate || !Number.isFinite(val) || val <= 0) return alert('Please enter a valid date and amount.');
+    if (isTransportBusiness && !vehicleId) {
+      return alert('Please select a vehicle first (or ask Admin to add the vehicle in Vehicle Files).');
+    }
+    const isMaintenanceEntry = /maintenance|garage|repair|workshop/i.test(`${category} ${description} ${remarks}`);
+    if (entryKind === 'income' && isMaintenanceEntry) {
+      return alert('Do not enter Income on a Maintenance / Garage day. Save only Expense entries.');
+    }
+    if (entryKind === 'income' && entries.some(r =>
+      r.entry_date === entryDate &&
+      String(r.vehicle_id || '') === String(vehicleId || '') &&
+      r.entry_kind === 'expense' &&
+      /maintenance|garage|repair|workshop/i.test(`${r.category || ''} ${r.description || ''} ${r.remarks || ''}`)
+    )) {
+      return alert('Maintenance expense is already recorded for this vehicle today. Keep income zero on garage days.');
+    }
+    if (entryKind === 'expense' && isMaintenanceEntry && entries.some(r =>
+      r.entry_date === entryDate &&
+      String(r.vehicle_id || '') === String(vehicleId || '') &&
+      r.entry_kind === 'income'
+    )) {
+      return alert('Income is already saved for this vehicle today. Delete/edit the income entry first if today is a garage/maintenance day.');
+    }
+
+    let billUrl = '';
+    if (billFile) {
+      const safeName = `${businessId}/${entryDate}/${Date.now()}-${billFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const { error: upErr } = await supabase.storage.from('business-bills').upload(safeName, billFile, { upsert: false });
+      if (upErr) return alert('Bill upload failed: ' + upErr.message);
+      const { data } = supabase.storage.from('business-bills').getPublicUrl(safeName);
+      billUrl = data?.publicUrl || '';
+    }
+
+    const payload = {
+      business_id: Number(businessId),
+      entry_date: entryDate,
+      entry_kind: entryKind,
+      category: category.trim() || 'General',
+      amount: val,
+      payment_mode: paymentMode,
+      vehicle_id: vehicleId ? Number(vehicleId) : null,
+      driver_id: driverId ? Number(driverId) : null,
+      description: description.trim() || category.trim(),
+      remarks: remarks.trim(),
+      bill_url: billUrl,
+      created_by: session?.user?.email || ''
+    };
+    const { error } = await supabase.from('business_entries').insert([payload]);
+    if (error) return alert('Could not save daily entry: ' + error.message);
+
+    setAmount('');
+    setDescription('');
+    setRemarks('');
+    setBillFile(null);
+    await loadBusinessData();
+    alert('Saved! Daily record updated.');
+  }
+
+  async function deleteEntry(row) {
+    if (!can('can_delete')) return alert('You do not have permission to delete entries.');
+    if (!window.confirm('Delete this entry permanently?')) return;
+    const { error } = await supabase.from('business_entries').delete().eq('id', row.id).eq('business_id', Number(businessId));
+    if (error) return alert(error.message);
+    await loadBusinessData();
+  }
+
   async function editEntry(row) {
-    if(!can('can_edit')) return alert('Edit permission nahi.');
-    const newDate=window.prompt('Date (YYYY-MM-DD)',row.entry_date||entryDate); if(newDate===null)return;
-    const newCategory=window.prompt('Category',row.category||'General'); if(newCategory===null)return;
-    const newAmount=window.prompt('Amount',String(row.amount||'')); if(newAmount===null)return;
-    const value=Number(newAmount); if(!newDate||!Number.isFinite(value)||value<=0)return alert('Date/amount sahi enter karein.');
-    const newDescription=window.prompt('Details',row.description||''); if(newDescription===null)return;
-    const newRemarks=window.prompt('Remarks',row.remarks||''); if(newRemarks===null)return;
-    const {error}=await supabase.from('business_entries').update({entry_date:newDate,category:newCategory,amount:value,description:newDescription,remarks:newRemarks}).eq('id',row.id).eq('business_id',Number(businessId));
-    if(error)return alert('Entry update nahi hui: '+error.message); await loadBusinessData();
+    if (!can('can_edit')) return alert('You do not have permission to edit entries.');
+    const newDate = window.prompt('Date (YYYY-MM-DD)', row.entry_date || entryDate);
+    if (newDate === null) return;
+    const newCategory = window.prompt('Category', row.category || 'General');
+    if (newCategory === null) return;
+    const newAmount = window.prompt('Amount', String(row.amount || ''));
+    if (newAmount === null) return;
+    const value = Number(newAmount);
+    if (!newDate || !Number.isFinite(value) || value <= 0) return alert('Please enter valid date and amount.');
+    const newDescription = window.prompt('Details / Notes', row.description || '');
+    if (newDescription === null) return;
+    const newRemarks = window.prompt('Remarks', row.remarks || '');
+    if (newRemarks === null) return;
+    const { error } = await supabase
+      .from('business_entries')
+      .update({ entry_date: newDate, category: newCategory, amount: value, description: newDescription, remarks: newRemarks })
+      .eq('id', row.id)
+      .eq('business_id', Number(businessId));
+    if (error) return alert('Could not update entry: ' + error.message);
+    await loadBusinessData();
   }
+
   async function saveAccess(e) {
     e.preventDefault();
-    if (!admin) return alert('Sirf Admin Business staff manage kar sakta hai.');
+    if (!can('can_manage_access')) return alert('Only Admin or authorized manager can manage staff logins.');
     const email = accessEmail.trim().toLowerCase();
     const password = accessPassword;
-    if (!email || !accessBusinessId) return alert('Email aur business select karein.');
-    if (password && password.length < 6) return alert('Password kam az kam 6 characters ka hona chahiye.');
-    if (!editingAccessRow && !password) return alert('Naye staff ke liye password enter karein.');
+    if (!email || !accessBusinessId) return alert('Please enter Staff Login ID (Email) and select a Business.');
+    if (password && password.length < 6) return alert('Password must be at least 6 characters.');
+    if (!editingAccessRow && !password) return alert('Please create a password for the new staff account.');
     const { data, error } = await supabase.functions.invoke('manage-business-staff', {
       body: {
         action: 'save',
@@ -252,146 +470,988 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
         permissions: accessFlags
       }
     });
-    if (error || data?.error) return alert('Staff save nahi hua: ' + (data?.error || error?.message || 'Unknown error'));
-    setAccessEmail(''); setAccessPassword(''); setEditingAccessRow(null);
-    setAccessFlags({can_view:true,can_view_daily:true,can_view_vehicles:true,can_view_workers:true,can_view_monthly:true,can_add:false,can_edit:false,can_delete:false,can_manage_vehicles:false,can_manage_workers:false,can_manage_access:false});
+    if (error || data?.error) return alert('Could not save staff account: ' + (data?.error || error?.message || 'Unknown error'));
+    setAccessEmail('');
+    setAccessPassword('');
+    setEditingAccessRow(null);
+    setAccessFlags({
+      can_view: true, can_view_daily: true, can_add: true, can_edit: false, can_delete: false,
+      can_view_vehicles: true, can_manage_vehicles: false, can_view_workers: false,
+      can_manage_workers: false, can_view_monthly: false, can_manage_access: false
+    });
     await loadBusinesses(businessId);
-    alert(data?.message || 'Business staff aur permissions save ho gayi hain.');
+    alert(data?.message || 'Staff ID, password and permissions saved.');
   }
+
   function startEditAccess(row) {
     setEditingAccessRow(row);
     setAccessEmail(row.user_email || '');
     setAccessPassword('');
     setAccessBusinessId(String(row.business_id));
     setAccessFlags({
-      can_view:!!row.can_view, can_view_daily:!!row.can_view_daily, can_add:!!row.can_add,
-      can_edit:!!row.can_edit, can_delete:!!row.can_delete,
-      can_view_vehicles:!!row.can_view_vehicles, can_manage_vehicles:!!row.can_manage_vehicles,
-      can_view_workers:!!row.can_view_workers, can_manage_workers:!!row.can_manage_workers,
-      can_view_monthly:!!row.can_view_monthly, can_manage_access:!!row.can_manage_access
+      can_view: !!row.can_view,
+      can_view_daily: !!row.can_view_daily,
+      can_add: !!row.can_add,
+      can_edit: !!row.can_edit,
+      can_delete: !!row.can_delete,
+      can_view_vehicles: !!row.can_view_vehicles,
+      can_manage_vehicles: !!row.can_manage_vehicles,
+      can_view_workers: !!row.can_view_workers,
+      can_manage_workers: !!row.can_manage_workers,
+      can_view_monthly: !!row.can_view_monthly,
+      can_manage_access: !!row.can_manage_access
     });
   }
+
   function cancelEditAccess() {
-    setEditingAccessRow(null); setAccessEmail(''); setAccessPassword('');
-    setAccessFlags({can_view:true,can_view_daily:true,can_view_vehicles:true,can_view_workers:true,can_view_monthly:true,can_add:false,can_edit:false,can_delete:false,can_manage_vehicles:false,can_manage_workers:false,can_manage_access:false});
+    setEditingAccessRow(null);
+    setAccessEmail('');
+    setAccessPassword('');
+    setAccessFlags({
+      can_view: true, can_view_daily: true, can_add: true, can_edit: false, can_delete: false,
+      can_view_vehicles: true, can_manage_vehicles: false, can_view_workers: false,
+      can_manage_workers: false, can_view_monthly: false, can_manage_access: false
+    });
   }
+
   async function deleteAccessStaff(row) {
-    if (!admin) return alert('Sirf Admin Business staff delete kar sakta hai.');
-    const ok = window.confirm(`Kya ${row.user_email} ko Business se permanently delete karna hai? Is ka Business login aur tamam Business permissions remove ho jayengi. HR System ka login, records aur permissions change nahi honge.`);
+    if (!can('can_manage_access')) return alert('Only Admin can delete staff access.');
+    const ok = window.confirm(`Remove ${row.user_email} from Business System? Their Business login and permissions will be deleted.`);
     if (!ok) return;
-    const { data, error } = await supabase.functions.invoke('manage-business-staff', { body: { action:'delete', email:row.user_email } });
-    if (error || data?.error) return alert('Staff delete nahi hua: ' + (data?.error || error?.message || 'Unknown error'));
+    const { data, error } = await supabase.functions.invoke('manage-business-staff', { body: { action: 'delete', email: row.user_email } });
+    if (error || data?.error) return alert('Could not delete staff: ' + (data?.error || error?.message || 'Unknown error'));
     if (editingAccessRow?.user_email === row.user_email) cancelEditAccess();
     await loadBusinesses(businessId);
-    alert(data?.message || 'Business staff permanently delete ho gaya.');
+    alert(data?.message || 'Staff login removed.');
   }
-  const vehicleFilter = row => !activeVehicleId || String(row.vehicle_id || '') === String(activeVehicleId);
-  const selectedEntries=entries.filter(r=>r.entry_date===entryDate && vehicleFilter(r));
-  const monthEntries=entries.filter(r=>String(r.entry_date||'').slice(0,7)===month && vehicleFilter(r));
-  const sum=(rows,kind,mode=null)=>rows.filter(r=>(!kind||r.entry_kind===kind)&&(!mode||String(r.payment_mode||'').toLowerCase()===String(mode).toLowerCase())).reduce((n,r)=>n+Number(r.amount||0),0);
-  const income=sum(selectedEntries,'income'),expense=sum(selectedEntries,'expense'),net=income-expense;
-  const mIncome=sum(monthEntries,'income'),mExpense=sum(monthEntries,'expense'),mNet=mIncome-mExpense;
-  const mCashIncome=sum(monthEntries,'income','Cash'),mCreditIncome=sum(monthEntries,'income','Credit');
-  const labelForVehicle=id=>vehicles.find(v=>String(v.id)===String(id))?.plate_number||'—';
-  const labelForPerson=id=>people.find(p=>String(p.id)===String(id))?.person_name||'—';
-  const profitShare=people.map(p=>({...p,share:p.pay_type==='profit_percent'?Math.max(0,mNet)*Number(p.profit_percent||0)/100:Number(p.monthly_salary||0)}));
-  const totalDriverPay=profitShare.reduce((n,p)=>n+Number(p.share||0),0);
-  const ownerMonthlyProfit=mNet-totalDriverPay;
-  const selectedDayHasMaintenance=selectedEntries.some(r=>/maintenance|garage|repair|workshop/i.test(`${r.category||''} ${r.description||''} ${r.remarks||''}`));
-  const selectedDayStatus=!selectedEntries.length?'OFF':selectedDayHasMaintenance?'MAINTENANCE':'WORKING';
-  const [monthYear,monthNumber]=String(month||'').split('-').map(Number);
-  const monthDayCount=monthYear&&monthNumber?new Date(monthYear,monthNumber,0).getDate():0;
-  const todayText=dateToInputValue(new Date());
-  const monthLastVisible=month>todayText.slice(0,7)?0:(month===todayText.slice(0,7)?Number(todayText.slice(8,10)):monthDayCount);
-  const monthlyDayRows=Array.from({length:Math.max(0,Math.min(monthLastVisible,monthDayCount))},(_,i)=>{
-    const day=String(i+1).padStart(2,'0'); const date=`${month}-${day}`;
-    const rows=monthEntries.filter(r=>r.entry_date===date);
-    const dayIncome=sum(rows,'income'),dayExpense=sum(rows,'expense');
-    const maintenance=rows.some(r=>/maintenance|garage|repair|workshop/i.test(`${r.category||''} ${r.description||''} ${r.remarks||''}`));
-    const status=!rows.length?'OFF':maintenance?'MAINTENANCE':'WORKING';
-    const reason=dayIncome===0&&dayExpense>0?`No income received; expenses ${money(dayExpense)} deducted`:dayIncome>0&&dayExpense>dayIncome?`Expenses exceeded income by ${money(dayExpense-dayIncome)}`:'';
-    return {date,rows,income:dayIncome,expense:dayExpense,net:dayIncome-dayExpense,status,reason};
-  });
-  const panelTitle=currentBusiness?.name||'Business';
-  return <div className="business-workspace" style={{minHeight:'100vh',background:'#f1f5f9',fontFamily:"'Segoe UI',sans-serif",color:'#0f172a'}}>
-    <style>{`
-      @media(max-width:700px){
-        .business-workspace>header{padding:12px!important;align-items:flex-start!important}
-        .business-workspace>header>div:first-child{width:100%!important;min-width:0!important}
-        .business-workspace>header h1{font-size:21px!important;overflow-wrap:anywhere}
-        .business-workspace>header>div:last-child{width:100%!important;justify-content:flex-start!important}
-        .business-workspace main{padding:10px!important}
-        .business-workspace main>section{min-width:0!important}
-        .business-workspace input,.business-workspace select,.business-workspace textarea,.business-workspace button{max-width:100%;box-sizing:border-box}
-        .business-workspace input,.business-workspace select,.business-workspace textarea{font-size:16px!important}
-        .business-workspace table{display:block!important;width:100%!important;max-width:100%!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}
-        .business-workspace th,.business-workspace td{white-space:nowrap}
-        .business-workspace img{max-width:100%;height:auto}
-      }
-    `}</style>
-    <style>{`@media print {
-      @page { size:A4 landscape; margin:8mm; }
-      body * { visibility:hidden !important; }
-      .nda-print-target, .nda-print-target * { visibility:visible !important; }
-      .nda-print-target { position:relative !important; left:auto !important; top:auto !important; width:100% !important; padding:25mm 0 0 !important; margin:0 !important; overflow:visible !important; background:#fff !important; color:#000 !important; box-shadow:none !important; }
-      .nda-print-target table{page-break-inside:auto!important;break-inside:auto!important}
-      .nda-print-target thead{display:table-header-group!important}
-      .nda-print-target tr{page-break-inside:avoid!important;break-inside:avoid!important}
-      .nda-print-target .business-no-print, .nda-print-target button, .nda-print-target input, .nda-print-target select, .nda-print-target textarea, .nda-print-target form { display:none !important; }
-      .business-print-brand { display:flex !important; position:fixed !important; top:0 !important; left:0 !important; right:0 !important; z-index:9999 !important; align-items:center !important; gap:14px !important; height:21mm !important; box-sizing:border-box !important; background:#fff !important; border-bottom:2px solid #c69227 !important; padding-bottom:8px !important; margin:0 !important; color:#064e3b !important; }
-      .business-print-brand img { width:95px !important; height:58px !important; object-fit:contain !important; }
-    } .business-print-brand{display:none;}`}</style>
-    <header style={{padding:'18px clamp(14px,3vw,30px)',background:'linear-gradient(115deg,#064e3b,#047857)',color:'#fff',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-      <div style={{display:'flex',alignItems:'center',gap:14}}>
-        <div style={{width:88,height:64,background:'#fff',borderRadius:9,padding:3,overflow:'hidden',display:'flex',alignItems:'center'}}><img src="/nda-naveed-logo.png" alt="NDA Naveed logo" style={{width:'100%',height:'100%',objectFit:'contain'}} /></div>
-        <div><div style={{fontSize:12,letterSpacing:2,fontWeight:800,color:'#a7f3d0'}}>BUSINESS MANAGEMENT</div><h1 style={{margin:'5px 0',fontSize:26}}>{panelTitle}</h1><div style={{fontSize:13,color:'#d1fae5'}}>Signed in: {session?.user?.email}</div></div>
-      </div>
-      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button onClick={onSwitchSystem} style={{...btn,background:'#fff',color:'#065f46'}}>← System Selection</button><button onClick={onLogout} style={{...btn,background:'#b91c1c'}}>Logout</button></div>
-    </header>
-    <main style={{padding:'18px clamp(12px,2vw,26px)',maxWidth:1500,margin:'0 auto'}}>
-      <section style={{...card,marginBottom:14,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
-        <button type="button" onClick={()=>setView('daily')} style={{...btn,background:view==='daily'?'#047857':'#e2e8f0',color:view==='daily'?'#fff':'#334155',padding:'12px 18px'}}>📒 Daily Roznamcha</button>
-        <details style={{position:'relative',flex:'1 1 230px',minWidth:220}}>
-          <summary style={{listStyle:'none',cursor:'pointer',padding:'12px 15px',borderRadius:9,background:'#f1f5f9',color:'#0f172a',fontWeight:800,border:'1px solid #cbd5e1'}}>☰ Other Functions / Business Options ▾</summary>
-          <div style={{...card,marginTop:8,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:10,border:'1px solid #cbd5e1'}}>
-            <label style={{fontSize:13,fontWeight:700}}>Open Business<select style={{...inputStyle,marginTop:6}} value={businessId} onChange={e=>{setBusinessId(e.target.value);setActiveVehicleId('');setVehicleId('');setView('daily');}}><option value="">Select business</option>{businesses.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
-            <label style={{fontSize:13,fontWeight:700}}>Vehicle / All Vehicles<select style={{...inputStyle,marginTop:6}} value={activeVehicleId} onChange={e=>{setActiveVehicleId(e.target.value);setVehicleId(e.target.value);}}><option value="">All Vehicles</option>{vehicles.map(v=><option key={v.id} value={v.id}>{v.plate_number} {v.vehicle_name||''}</option>)}</select></label>
-            <label style={{fontSize:13,fontWeight:700}}>Date<input type="date" style={{...inputStyle,marginTop:6}} value={entryDate} onChange={e=>setEntryDate(e.target.value)}/></label>
-            <label style={{fontSize:13,fontWeight:700}}>Month Sheet<input type="month" style={{...inputStyle,marginTop:6}} value={month} onChange={e=>setMonth(e.target.value)}/></label>
-            <label style={{fontSize:13,fontWeight:700}}>Currency<select style={{...inputStyle,marginTop:6}} value={currency} onChange={e=>setCurrency(e.target.value)}><option>AED</option><option>PKR</option><option>INR</option><option>USD</option></select></label>
-            <label style={{fontSize:13,fontWeight:700}}>Open Other Section<select style={{...inputStyle,marginTop:6}} value={view} onChange={e=>setView(e.target.value)}><option value="daily">Daily Roznamcha</option>{(admin||access?.can_view_vehicles||can('can_manage_vehicles'))&&<option value="vehicles">Vehicle Files</option>}{(admin||access?.can_view_workers||can('can_manage_workers'))&&<option value="workers">Workers & Salary</option>}{(admin||access?.can_view_monthly)&&<option value="monthly">Monthly Sheet</option>}{admin&&<option value="access">Staff Access</option>}</select></label>
-            {admin&&<div style={{gridColumn:'1/-1',borderTop:'1px solid #e2e8f0',paddingTop:12}}><strong style={{display:'block',marginBottom:8}}>＋ Add New Business</strong><form onSubmit={addBusiness} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:10}}><input style={inputStyle} value={newBusinessName} onChange={e=>setNewBusinessName(e.target.value)} placeholder="Business name (e.g. Shop, Trading)" required/><select style={inputStyle} value={newBusinessKind} onChange={e=>setNewBusinessKind(e.target.value)}><option value="transport">Transport</option><option value="other">Other Business</option></select><button style={btn}>Create Business</button></form></div>}
-          </div>
-        </details>
-      </section>
-      {!businessId?<section style={card}><h3>Abhi koi business mojood nahi</h3><p>Admin pehle upar se business create karein, phir Vehicle Files mein apni gaari add karein. Staff ko admin se access milne ke baad hi business nazar aayega.</p></section>:<>
-      {userRole.is_admin && <div className="business-no-print" style={{display:'flex',justifyContent:'flex-end',marginBottom:10}}><button type="button" onClick={() => printNdaPage('business-current-print', userRole.is_admin)} style={{...btn,background:'#b98519'}}>🖨️ Print Current Business Page</button></div>}
 
-      <div id="business-current-print">
-      <div className="business-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><strong>NDA-PK BUSINESS SYSTEM</strong><div>{panelTitle} · {view==='daily'?'Daily Roznamcha':view==='vehicles'?'Vehicle Files':view==='workers'?'Workers & Salary':view==='monthly'?'Monthly Sheet':'Staff Access'}</div></div></div>
-      {view==='daily'&&(admin||access?.can_view_daily||can('can_add')||can('can_edit')||can('can_delete'))&&<>
-        <section style={{...card,marginBottom:12,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}><div><div style={{fontSize:12,color:'#64748b'}}>Selected date status</div><strong style={{fontSize:20,color:selectedDayStatus==='OFF'?'#64748b':selectedDayStatus==='MAINTENANCE'?'#b45309':'#047857'}}>{selectedDayStatus}</strong><div style={{fontSize:12,color:'#64748b',marginTop:3}}>{selectedDayStatus==='OFF'?'No entry saved for this date.':selectedDayStatus==='MAINTENANCE'?'Garage / maintenance expense recorded; income can remain zero.':'Daily activity recorded.'}</div></div><div style={{fontSize:13,color:'#64748b'}}>No entry = OFF automatically · Garage/Repair category = Maintenance</div></section><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:16}}>{[['Cash Income',sum(selectedEntries,'income','Cash'),'#dcfce7','#166534'],['Credit Income',sum(selectedEntries,'income','Credit'),'#ede9fe','#5b21b6'],['Total Expenses',expense,'#fee2e2','#991b1b'],['Net Daily Profit',net,'#dbeafe','#1d4ed8']].map(([l,n,bg,c])=><div key={l} style={{background:bg,borderRadius:12,padding:16,color:c}}><div style={{fontSize:13,fontWeight:700}}>{l}</div><div style={{fontSize:23,fontWeight:900,marginTop:6}}>{money(n)}</div></div>)}</div>
-        {can('can_add')&&<form onSubmit={addEntry} style={{...card,marginBottom:16}}><h3 style={{marginTop:0}}>Daily Roznamcha Entry — {entryDate}</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(175px,1fr))',gap:10}}><select style={inputStyle} value={entryKind} onChange={e=>{setEntryKind(e.target.value);setCategory(e.target.value==='income'?'Daily Income':'Petrol / Fuel');}}><option value="income">Income</option><option value="expense">Expense</option></select><input style={inputStyle} value={category} onChange={e=>setCategory(e.target.value)} placeholder="Expense / income type (Petrol, Garage Maintenance, Toll...)" required/><input style={inputStyle} type="number" min="0.01" step="0.01" value={amount} onChange={e=>setAmount(e.target.value)} placeholder={`Amount (${currency})`} required/><select style={inputStyle} value={paymentMode} onChange={e=>setPaymentMode(e.target.value)}><option>Cash</option><option>Credit</option><option>Bank</option></select><select style={inputStyle} value={vehicleId} onChange={e=>setVehicleId(e.target.value)} required><option value="">Select vehicle</option>{vehicles.map(v=><option key={v.id} value={v.id}>{v.plate_number} {v.vehicle_name}</option>)}</select><select style={inputStyle} value={driverId} onChange={e=>setDriverId(e.target.value)}><option value="">Driver / worker (optional)</option>{people.map(p=><option key={p.id} value={p.id}>{p.person_name}</option>)}</select><input style={inputStyle} value={description} onChange={e=>setDescription(e.target.value)} placeholder="Required details (why expense / income)"/><input style={inputStyle} value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Remarks"/><label style={{fontSize:13}}>Bill / file upload<input style={{...inputStyle,marginTop:4}} type="file" accept="image/*,.pdf" onChange={e=>setBillFile(e.target.files?.[0]||null)}/></label><button style={btn}>Save Daily Detail</button></div></form>}
-        <section style={{...card,overflowX:'auto'}}><h3 style={{marginTop:0}}>Daily Roznamcha — {entryDate}</h3><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Date','Type','Category','Vehicle No.','Driver / Worker','Details','Payment','Amount','Bill',''].map(h=><th key={h} style={{padding:9,borderBottom:'1px solid #e2e8f0',textAlign:'left',whiteSpace:'nowrap'}}>{h}</th>)}</tr></thead><tbody>{selectedEntries.map(r=><tr key={r.id}>{[r.entry_date,r.entry_kind,r.category,labelForVehicle(r.vehicle_id),labelForPerson(r.driver_id),r.description||r.remarks||'—',r.payment_mode,money(r.amount)].map((v,i)=><td key={i} style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{v}</td>)}<td style={{padding:9}}>{r.bill_url?<a href={r.bill_url} target="_blank" rel="noreferrer">Open bill</a>:'—'}</td><td style={{padding:9}}>{can('can_edit')&&<button onClick={()=>editEntry(r)} style={{...btn,background:'#1d4ed8',padding:'6px 8px',marginRight:5}}>Edit</button>}{can('can_delete')&&<button onClick={()=>deleteEntry(r)} style={{...btn,background:'#b91c1c',padding:'6px 8px'}}>Delete</button>}</td></tr>)}{!selectedEntries.length&&<tr><td colSpan="10" style={{padding:14,color:'#64748b'}}>Is date ka koi record nahi. Upar daily detail add karein.</td></tr>}</tbody></table></section>
-      </>}
-      {view==='vehicles'&&(admin||access?.can_view_vehicles||can('can_manage_vehicles'))&&<><section style={{...card,marginBottom:16}}><h3 style={{marginTop:0}}>Vehicle Files</h3>{can('can_manage_vehicles')&&<form onSubmit={addVehicle} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:10}}><input style={inputStyle} value={vehiclePlate} onChange={e=>setVehiclePlate(e.target.value)} placeholder="Plate number" required/><input style={inputStyle} value={vehicleName} onChange={e=>setVehicleName(e.target.value)} placeholder="Vehicle name / model"/><input style={inputStyle} value={vehicleNotes} onChange={e=>setVehicleNotes(e.target.value)} placeholder="Notes / file details"/><button style={btn}>Create Vehicle File</button></form>}</section><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))',gap:12}}>{vehicles.map(v=><section key={v.id} style={card}><h3 style={{marginTop:0}}>🚚 {v.plate_number}</h3><div>{v.vehicle_name||'Vehicle'}</div><p style={{color:'#64748b',fontSize:13}}>{v.notes||'No extra details'}</p><div style={{fontSize:13}}>This file keeps date-wise entries and bills linked to this vehicle.</div><button style={{...btn,marginTop:10}} onClick={()=>{setVehicleId(String(v.id));setView('daily');}}>Open Daily Records</button></section>)}{!vehicles.length&&<section style={card}>No vehicle files yet. Add your first vehicle above.</section>}</div></>}
-      {view==='workers'&&(admin||access?.can_view_workers||can('can_manage_workers'))&&<><section style={{...card,marginBottom:16}}><h3 style={{marginTop:0}}>Workers, Drivers & Salary / Profit Share</h3>{can('can_manage_workers')&&<form onSubmit={addPerson} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:10}}><input style={inputStyle} value={personName} onChange={e=>setPersonName(e.target.value)} placeholder="Full name" required/><input style={inputStyle} value={personRole} onChange={e=>setPersonRole(e.target.value)} placeholder="Driver / Worker / Mechanic"/><input style={inputStyle} value={personPhone} onChange={e=>setPersonPhone(e.target.value)} placeholder="Phone number"/><select style={inputStyle} value={payType} onChange={e=>setPayType(e.target.value)}><option value="fixed">Fixed monthly salary</option><option value="profit_percent">Profit percentage</option></select>{payType==='fixed'?<input style={inputStyle} type="number" min="0" step="0.01" value={payAmount} onChange={e=>setPayAmount(e.target.value)} placeholder="Monthly salary"/>:<input style={inputStyle} type="number" min="0" max="100" step="0.01" value={profitPercent} onChange={e=>setProfitPercent(e.target.value)} placeholder="Profit %"/>}<button style={btn}>Add Worker</button></form>}</section><section style={{...card,overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Name','Role','Phone','Payment Type','Monthly Salary','Profit %','This Month Share'].map(h=><th key={h} style={{padding:9,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead><tbody>{profitShare.map(p=><tr key={p.id}>{[p.person_name,p.job_title,p.phone||'—',p.pay_type==='fixed'?'Fixed salary':'Profit share',money(p.monthly_salary),`${p.profit_percent||0}%`,money(p.share)].map((v,i)=><td key={i} style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{v}</td>)}</tr>)}{!people.length&&<tr><td colSpan="7" style={{padding:14}}>No workers added yet.</td></tr>}</tbody></table><p style={{fontSize:12,color:'#64748b'}}>Profit share is calculated from positive net profit for the selected month (income minus recorded expenses). Fixed salaries are shown as a set amount; salary payments and monthly accruals are not automatically posted by this screen.</p></section></>}
-      {view==='monthly'&&(admin||access?.can_view_monthly)&&<>
-        <div className="business-no-print" style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
-          {userRole.is_admin && <button type="button" onClick={()=>printNdaPage('business-driver-monthly-print', userRole.is_admin)} style={{...btn,background:'#1d4ed8'}}>🖨️ Print Driver Monthly Sheet</button>}
-          {userRole.is_admin && <button type="button" onClick={()=>printNdaPage('business-owner-monthly-print', userRole.is_admin)} style={{...btn,background:'#047857'}}>🖨️ Print Owner Monthly Sheet</button>}
+  function applyStaffPreset(preset) {
+    if (preset === 'driver_entry') {
+      setAccessFlags({
+        can_view: true, can_view_daily: true, can_add: true, can_edit: false, can_delete: false,
+        can_view_vehicles: true, can_manage_vehicles: false, can_view_workers: false,
+        can_manage_workers: false, can_view_monthly: false, can_manage_access: false
+      });
+    } else if (preset === 'supervisor') {
+      setAccessFlags({
+        can_view: true, can_view_daily: true, can_add: true, can_edit: true, can_delete: false,
+        can_view_vehicles: true, can_manage_vehicles: true, can_view_workers: true,
+        can_manage_workers: false, can_view_monthly: true, can_manage_access: false
+      });
+    } else if (preset === 'view_only') {
+      setAccessFlags({
+        can_view: true, can_view_daily: true, can_add: false, can_edit: false, can_delete: false,
+        can_view_vehicles: true, can_manage_vehicles: false, can_view_workers: false,
+        can_manage_workers: false, can_view_monthly: true, can_manage_access: false
+      });
+    }
+  }
+
+  const vehicleFilter = row => !activeVehicleId || String(row.vehicle_id || '') === String(activeVehicleId);
+  const selectedEntries = entries.filter(r => r.entry_date === entryDate && vehicleFilter(r));
+  const monthEntries = entries.filter(r => String(r.entry_date || '').slice(0, 7) === month && vehicleFilter(r));
+  const sum = (rows, kind, mode = null) =>
+    rows
+      .filter(r => (!kind || r.entry_kind === kind) && (!mode || String(r.payment_mode || '').toLowerCase() === String(mode).toLowerCase()))
+      .reduce((n, r) => n + Number(r.amount || 0), 0);
+
+  const income = sum(selectedEntries, 'income');
+  const expense = sum(selectedEntries, 'expense');
+  const net = income - expense;
+  const mIncome = sum(monthEntries, 'income');
+  const mExpense = sum(monthEntries, 'expense');
+  const mNet = mIncome - mExpense;
+  const mCashIncome = sum(monthEntries, 'income', 'Cash');
+  const mCreditIncome = sum(monthEntries, 'income', 'Credit');
+
+  const labelForVehicle = id => vehicles.find(v => String(v.id) === String(id))?.plate_number || '—';
+  const labelForPerson = id => people.find(p => String(p.id) === String(id))?.person_name || '—';
+
+  const profitShare = people.map(p => ({
+    ...p,
+    share: p.pay_type === 'profit_percent' ? Math.max(0, mNet) * Number(p.profit_percent || 0) / 100 : Number(p.monthly_salary || 0)
+  }));
+  const totalDriverPay = profitShare.reduce((n, p) => n + Number(p.share || 0), 0);
+  const ownerMonthlyProfit = mNet - totalDriverPay;
+
+  const selectedDayHasMaintenance = selectedEntries.some(r => /maintenance|garage|repair|workshop/i.test(`${r.category || ''} ${r.description || ''} ${r.remarks || ''}`));
+  const selectedDayStatus = !selectedEntries.length ? 'OFF' : selectedDayHasMaintenance ? 'MAINTENANCE' : 'WORKING';
+
+  const [monthYear, monthNumber] = String(month || '').split('-').map(Number);
+  const monthDayCount = monthYear && monthNumber ? new Date(monthYear, monthNumber, 0).getDate() : 0;
+  const todayText = dateToInputValue(new Date());
+  const monthLastVisible = month > todayText.slice(0, 7) ? 0 : (month === todayText.slice(0, 7) ? Number(todayText.slice(8, 10)) : monthDayCount);
+  const monthlyDayRows = Array.from({ length: Math.max(0, Math.min(monthLastVisible, monthDayCount)) }, (_, i) => {
+    const day = String(i + 1).padStart(2, '0');
+    const date = `${month}-${day}`;
+    const rows = monthEntries.filter(r => r.entry_date === date);
+    const dayIncome = sum(rows, 'income');
+    const dayExpense = sum(rows, 'expense');
+    const maintenance = rows.some(r => /maintenance|garage|repair|workshop/i.test(`${r.category || ''} ${r.description || ''} ${r.remarks || ''}`));
+    const status = !rows.length ? 'OFF' : maintenance ? 'MAINTENANCE' : 'WORKING';
+    const reason = dayIncome === 0 && dayExpense > 0
+      ? `No income received; expenses ${money(dayExpense)} deducted`
+      : dayIncome > 0 && dayExpense > dayIncome
+        ? `Expenses exceeded income by ${money(dayExpense - dayIncome)}`
+        : '';
+    return { date, rows, income: dayIncome, expense: dayExpense, net: dayIncome - dayExpense, status, reason };
+  });
+
+  const panelTitle = currentBusiness?.name || 'Business Management';
+
+  const navTabs = [
+    (admin || access?.can_view_daily || can('can_add') || can('can_edit') || can('can_delete')) && { id: 'daily', icon: '📝', label: 'Daily Entry' },
+    (admin || access?.can_view_vehicles || can('can_manage_vehicles')) && { id: 'vehicles', icon: '🚚', label: 'Vehicle Files' },
+    (admin || access?.can_view_monthly) && { id: 'monthly', icon: '📊', label: 'Monthly Sheet' },
+    (admin || access?.can_view_workers || can('can_manage_workers')) && { id: 'workers', icon: '👷', label: 'Drivers & Pay' },
+    can('can_manage_access') && { id: 'access', icon: '🔐', label: 'Staff Access' }
+  ].filter(Boolean);
+
+  return (
+    <div className="business-workspace" style={{ minHeight: '100vh', background: '#f1f5f9', fontFamily: "'Segoe UI', sans-serif", color: '#0f172a' }}>
+      <style>{`
+        @media(max-width:700px){
+          .business-workspace>header{padding:12px!important;align-items:flex-start!important}
+          .business-workspace>header>div:first-child{width:100%!important;min-width:0!important}
+          .business-workspace>header h1{font-size:20px!important;overflow-wrap:anywhere}
+          .business-workspace>header>div:last-child{width:100%!important;justify-content:flex-start!important}
+          .business-workspace main{padding:10px!important}
+          .business-workspace main>section{min-width:0!important}
+          .business-workspace input,.business-workspace select,.business-workspace textarea,.business-workspace button{max-width:100%;box-sizing:border-box}
+          .business-workspace input,.business-workspace select,.business-workspace textarea{font-size:16px!important}
+          .business-workspace table{display:block!important;width:100%!important;max-width:100%!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}
+          .business-workspace th,.business-workspace td{white-space:nowrap}
+          .business-workspace img{max-width:100%;height:auto}
+        }
+      `}</style>
+      <style>{`@media print {
+        @page { size:A4 landscape; margin:8mm; }
+        body * { visibility:hidden !important; }
+        .nda-print-target, .nda-print-target * { visibility:visible !important; }
+        .nda-print-target { position:relative !important; left:auto !important; top:auto !important; width:100% !important; padding:25mm 0 0 !important; margin:0 !important; overflow:visible !important; background:#fff !important; color:#000 !important; box-shadow:none !important; }
+        .nda-print-target table{page-break-inside:auto!important;break-inside:auto!important}
+        .nda-print-target thead{display:table-header-group!important}
+        .nda-print-target tr{page-break-inside:avoid!important;break-inside:avoid!important}
+        .nda-print-target .business-no-print, .nda-print-target button, .nda-print-target input, .nda-print-target select, .nda-print-target textarea, .nda-print-target form { display:none !important; }
+        .business-print-brand { display:flex !important; position:fixed !important; top:0 !important; left:0 !important; right:0 !important; z-index:9999 !important; align-items:center !important; gap:14px !important; height:21mm !important; box-sizing:border-box !important; background:#fff !important; border-bottom:2px solid #c69227 !important; padding-bottom:8px !important; margin:0 !important; color:#064e3b !important; }
+        .business-print-brand img { width:95px !important; height:58px !important; object-fit:contain !important; }
+      } .business-print-brand{display:none;}`}</style>
+
+      {/* HEADER */}
+      <header style={{ padding: '16px clamp(14px,3vw,30px)', background: 'linear-gradient(115deg,#064e3b,#047857)', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 82, height: 60, background: '#fff', borderRadius: 10, padding: 3, overflow: 'hidden', display: 'flex', alignItems: 'center' }}>
+            <img src="/nda-naveed-logo.png" alt="NDA Naveed logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, letterSpacing: 2, fontWeight: 800, color: '#a7f3d0' }}>NDA.PK BUSINESS SYSTEM</div>
+            <h1 style={{ margin: '4px 0', fontSize: 24 }}>{panelTitle}</h1>
+            <div style={{ fontSize: 12, color: '#d1fae5' }}>
+              {admin ? 'Admin Full Access' : 'Staff Access'} · {session?.user?.email}
+            </div>
+          </div>
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:16}}>{[['Total Income',mIncome],['Cash Received',mCashIncome],['Credit / Udhaar',mCreditIncome],['Total Expenses',mExpense],['Net Before Driver Share',mNet],['Driver Salary / Share',totalDriverPay],['Owner Final Profit',ownerMonthlyProfit]].map(([l,n])=><section key={l} style={card}><div style={{fontSize:12,color:'#64748b'}}>{l}</div><div style={{fontSize:21,fontWeight:900,marginTop:6,color:l==='Owner Final Profit'?(ownerMonthlyProfit>=0?'#047857':'#b91c1c'):'#0f172a'}}>{money(n)}</div></section>)}</div>
-        <section style={{...card,overflowX:'auto',marginBottom:16}}><h3 style={{marginTop:0}}>Monthly Daily Sheet — {month}</h3><p style={{fontSize:12,color:'#64748b'}}>Har din ka status automatic hai: no entry = OFF; garage/repair/maintenance detail = MAINTENANCE. Future dates current month mein pehle se show nahi hotin.</p><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Date','Status','Cash Income','Credit Income','Total Expense','Daily Profit / Loss','Automatic Explanation'].map(h=><th key={h} style={{padding:9,textAlign:'left',borderBottom:'1px solid #e2e8f0',whiteSpace:'nowrap'}}>{h}</th>)}</tr></thead><tbody>{monthlyDayRows.map(d=><tr key={d.date}><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{d.date}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9',fontWeight:800,color:d.status==='OFF'?'#64748b':d.status==='MAINTENANCE'?'#b45309':'#047857'}}>{d.status}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{money(sum(d.rows,'income','Cash'))}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{money(sum(d.rows,'income','Credit'))}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{money(d.expense)}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9',fontWeight:800,color:d.net<0?'#b91c1c':'#047857'}}>{money(d.net)}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{d.reason|| (d.status==='OFF'?'No daily entry — counted as OFF':'Daily activity saved')}</td></tr>)}{!monthlyDayRows.length&&<tr><td colSpan="7" style={{padding:14}}>No days available for this month.</td></tr>}</tbody></table></section>
-        <section id="business-driver-monthly-print" style={{...card,overflowX:'auto',marginBottom:16}}><div className="business-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><strong>NDA.PK BUSINESS SYSTEM</strong><div>Driver Monthly Sheet · {month}</div></div></div><h3 style={{marginTop:0}}>NDA.PK — Driver Monthly Sheet ({month})</h3><p style={{fontSize:12,color:'#64748b'}}>Driver ki salary / profit share ka alag hisaab. Percentage net business profit (income minus daily expenses) par calculate hota hai.</p><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Driver / Staff','Payment Method','Monthly Salary','Profit %','Earned / Payable'].map(h=><th key={h} style={{padding:9,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead><tbody>{profitShare.map(p=><tr key={p.id}>{[p.person_name,p.pay_type==='profit_percent'?'Net Profit Share':'Fixed Monthly Salary',money(p.monthly_salary),p.pay_type==='profit_percent'?`${p.profit_percent||0}%`:'—',money(p.share)].map((v,i)=><td key={i} style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{v}</td>)}</tr>)}{!profitShare.length&&<tr><td colSpan="5" style={{padding:12}}>No driver added. Add driver in Vehicle / Driver section.</td></tr>}<tr><td colSpan="4" style={{padding:9,fontWeight:900,textAlign:'right'}}>Total Driver Salary / Share</td><td style={{padding:9,fontWeight:900}}>{money(totalDriverPay)}</td></tr></tbody></table><h4 style={{marginBottom:8}}>Driver Daily Activity Details</h4><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Date','Driver','Category','Type','Amount','Details'].map(h=><th key={h} style={{padding:8,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead><tbody>{monthEntries.filter(r=>r.driver_id).map(r=><tr key={`driver-${r.id}`}><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{r.entry_date}</td><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{labelForPerson(r.driver_id)}</td><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{r.category}</td><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{r.entry_kind}</td><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{money(r.amount)}</td><td style={{padding:8,borderBottom:'1px solid #f1f5f9'}}>{r.description||r.remarks||'—'}</td></tr>)}{!monthEntries.some(r=>r.driver_id)&&<tr><td colSpan="6" style={{padding:10}}>No transactions linked to a driver this month.</td></tr>}</tbody></table></section>
-        <section id="business-owner-monthly-print" style={{...card,overflowX:'auto',marginBottom:16}}><div className="business-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><strong>NDA.PK BUSINESS SYSTEM</strong><div>Owner Monthly Sheet · {month}</div></div></div><h3 style={{marginTop:0}}>NDA.PK — Owner Monthly Sheet ({month})</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:14}}>{[['Cash Income',mCashIncome],['Credit Income',mCreditIncome],['All Expenses',mExpense],['Profit Before Driver',mNet],['Driver Share / Salary',totalDriverPay],['Owner Final Profit',ownerMonthlyProfit]].map(([l,n])=><div key={l} style={{padding:10,background:'#f8fafc',borderRadius:9}}><div style={{fontSize:11,color:'#64748b'}}>{l}</div><strong>{money(n)}</strong></div>)}</div><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Date','Vehicle','Activity / Expense Details','Income','Expense','Net','Why Minus?'].map(h=><th key={h} style={{padding:9,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead><tbody>{monthEntries.map(r=>{const isExpense=r.entry_kind==='expense';return <tr key={r.id}><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{r.entry_date}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{labelForVehicle(r.vehicle_id)}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{r.category}: {r.description||r.remarks||'Details not entered'} {r.bill_url?<a href={r.bill_url} target="_blank" rel="noreferrer">Bill</a>:''}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{!isExpense?money(r.amount):'—'}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{isExpense?money(r.amount):'—'}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9',color:isExpense?'#b91c1c':'#047857'}}>{isExpense?`-${money(r.amount)}`:money(r.amount)}</td><td style={{padding:9,borderBottom:'1px solid #f1f5f9'}}>{isExpense?`Minus: ${r.description||r.category||'Expense recorded'}`:'—'}</td></tr>})}{!monthEntries.length&&<tr><td colSpan="7" style={{padding:12}}>No transaction details for this month.</td></tr>}</tbody></table><p style={{fontSize:12,color:'#64748b',marginTop:12}}>Credit income is included in earned income but separately shown as receivable; it is not cash received yet. Owner final profit = total income − recorded expenses − driver salary / profit share.</p></section>
-      </>}
-      {view==='access'&&admin&&<section style={card}><h3 style={{marginTop:0}}>Business Staff Access</h3><p style={{fontSize:13,color:'#64748b'}}>Yahan se sirf Business ka login aur permissions manage honge. HR System ke login, workers, attendance, salary aur records par koi asar nahi hoga. Edit mein password khali chhor dein to purana password same rahega.</p><form onSubmit={saveAccess} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:10,alignItems:'center',padding:12,border:'1px solid #e2e8f0',borderRadius:10,background:'#f8fafc'}}><div style={{gridColumn:'1/-1',fontWeight:800,color:editingAccessRow?'#b45309':'#047857'}}>{editingAccessRow?'✏️ Edit Business Staff':'➕ Add New Business Staff'}</div><input style={inputStyle} type="email" value={accessEmail} onChange={e=>setAccessEmail(e.target.value)} placeholder="Staff email / login ID" autoComplete="username" required/><input style={inputStyle} type="password" value={accessPassword} onChange={e=>setAccessPassword(e.target.value)} placeholder={editingAccessRow?'New password (optional)':'Create password (minimum 6 characters)'} autoComplete="new-password" minLength={6} required={!editingAccessRow}/><select style={inputStyle} value={accessBusinessId} onChange={e=>setAccessBusinessId(e.target.value)} required><option value="">Choose business</option>{businesses.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select>{Object.entries({can_view:'Can access this business',can_view_daily:'Can view Daily Roznamcha',can_add:'Can add daily entries',can_edit:'Can edit entries',can_delete:'Can delete entries',can_view_vehicles:'Can view Vehicle Files',can_manage_vehicles:'Can manage vehicle files',can_view_workers:'Can view Workers & Salary',can_manage_workers:'Can manage workers / salaries',can_view_monthly:'Can view Monthly Sheet',can_manage_access:'Can manage staff access'}).map(([key,label])=><label key={key} style={{display:'flex',gap:8,alignItems:'center',fontSize:13}}><input type="checkbox" checked={!!accessFlags[key]} onChange={e=>setAccessFlags(old=>({...old,[key]:e.target.checked}))}/>{label}</label>)}<div style={{gridColumn:'1/-1',display:'flex',gap:8,flexWrap:'wrap'}}><button type="submit" style={btn}>{editingAccessRow?'Save Staff Changes':'Create Login & Save Permissions'}</button>{editingAccessRow&&<button type="button" onClick={cancelEditAccess} style={{...btn,background:'#64748b'}}>Cancel Edit</button>}</div></form><div style={{overflowX:'auto',marginTop:18}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Email / Login ID','Business','Permissions','Status','Actions'].map(h=><th key={h} style={{padding:9,textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead><tbody>{accessRows.map(r=><tr key={r.id}><td style={{padding:9}}>{r.user_email}</td><td style={{padding:9}}>{r.business_profiles?.name||businesses.find(b=>String(b.id)===String(r.business_id))?.name||`Business #${r.business_id}`}</td><td style={{padding:9,maxWidth:360,whiteSpace:'normal'}}>{['can_view','can_view_daily','can_add','can_edit','can_delete','can_view_vehicles','can_manage_vehicles','can_view_workers','can_manage_workers','can_view_monthly','can_manage_access'].filter(k=>r[k]).join(', ')||'None'}</td><td style={{padding:9}}>{r.active?'Active':'Disabled'}</td><td style={{padding:9,whiteSpace:'nowrap'}}><button type="button" onClick={()=>startEditAccess(r)} style={{...btn,padding:'7px 10px',marginRight:6,background:'#2563eb'}}>Edit</button><button type="button" onClick={()=>deleteAccessStaff(r)} style={{...btn,padding:'7px 10px',background:'#dc2626'}}>Delete</button></td></tr>)}{!accessRows.length&&<tr><td colSpan="5" style={{padding:12}}>No staff permissions yet.</td></tr>}</tbody></table></div></section>}
-      </div>
-      </>}
-      {loading&&<div style={{position:'fixed',bottom:14,right:14,background:'#0f172a',color:'#fff',padding:'8px 12px',borderRadius:8}}>Loading…</div>}
-    </main>
-  </div>;
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={onSwitchSystem} style={{ ...btn, background: '#fff', color: '#065f46' }}>← Switch System</button>
+          <button onClick={onLogout} style={{ ...btn, background: '#b91c1c' }}>Logout</button>
+        </div>
+      </header>
+
+      <main style={{ padding: '16px clamp(12px,2vw,26px)', maxWidth: 1450, margin: '0 auto' }}>
+        {/* TOP CONTROL BAR: BIG EASY TABS + QUICK FILTERS */}
+        <section style={{ ...card, marginBottom: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(135px,1fr))', gap: 8, marginBottom: 12 }}>
+            {navTabs.map(tab => {
+              const active = view === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setView(tab.id)}
+                  style={{
+                    ...btn,
+                    padding: '13px 12px',
+                    background: active ? '#047857' : '#f1f5f9',
+                    color: active ? '#fff' : '#0f172a',
+                    border: active ? '2px solid #065f46' : '1px solid #cbd5e1',
+                    fontSize: 15,
+                    fontWeight: 800
+                  }}
+                >
+                  <span>{tab.icon}</span>
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 10, alignItems: 'end' }}>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
+              🏢 Active Business
+              <select
+                style={{ ...inputStyle, marginTop: 4 }}
+                value={businessId}
+                onChange={e => {
+                  const nextId = e.target.value;
+                  setBusinessId(nextId);
+                  setActiveVehicleId('');
+                  setVehicleId('');
+                  if (!admin) {
+                    const row = accessRows.find(r => String(r.business_id) === String(nextId));
+                    setAccess(row || null);
+                    setView(resolveFirstAllowedView(row, false));
+                  }
+                }}
+              >
+                <option value="">Select Business</option>
+                {businesses.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </label>
+
+            {vehicles.length > 0 && (
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
+                🚚 Filter Vehicle
+                <select
+                  style={{ ...inputStyle, marginTop: 4 }}
+                  value={activeVehicleId}
+                  onChange={e => {
+                    setActiveVehicleId(e.target.value);
+                    if (e.target.value) setVehicleId(e.target.value);
+                  }}
+                >
+                  <option value="">All Vehicles ({vehicles.length})</option>
+                  {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate_number} {v.vehicle_name || ''}</option>)}
+                </select>
+              </label>
+            )}
+
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
+              📅 Selected Date
+              <input type="date" style={{ ...inputStyle, marginTop: 4 }} value={entryDate} onChange={e => setEntryDate(e.target.value)} />
+            </label>
+
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
+              🗓️ Report Month
+              <input type="month" style={{ ...inputStyle, marginTop: 4 }} value={month} onChange={e => setMonth(e.target.value)} />
+            </label>
+
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
+              💱 Currency
+              <select style={{ ...inputStyle, marginTop: 4 }} value={currency} onChange={e => setCurrency(e.target.value)}>
+                <option value="AED">AED</option>
+                <option value="PKR">PKR</option>
+                <option value="SAR">SAR</option>
+                <option value="USD">USD</option>
+              </select>
+            </label>
+          </div>
+
+          {admin && (
+            <details style={{ marginTop: 12, borderTop: '1px solid #e2e8f0', paddingTop: 10 }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 800, color: '#047857', fontSize: 14 }}>
+                ＋ Add New Business (Transport, Shop, Contracting, etc.)
+              </summary>
+              <form onSubmit={addBusiness} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10, marginTop: 10 }}>
+                <input
+                  style={inputStyle}
+                  value={newBusinessName}
+                  onChange={e => setNewBusinessName(e.target.value)}
+                  placeholder="Business Name (e.g. Al Noor Transport, Grocery Shop)"
+                  required
+                />
+                <select style={inputStyle} value={newBusinessKind} onChange={e => setNewBusinessKind(e.target.value)}>
+                  <option value="transport">Transport / Vehicle Business</option>
+                  <option value="other">General / Other Business</option>
+                </select>
+                <button type="submit" style={btn}>Create Business</button>
+              </form>
+            </details>
+          )}
+        </section>
+
+        {!businessId ? (
+          <section style={card}>
+            <h3 style={{ marginTop: 0 }}>No Business Selected</h3>
+            <p style={{ color: '#475569' }}>
+              {admin
+                ? 'Click "+ Add New Business" above to create your first business, then add your vehicle file in Vehicle Files.'
+                : 'No business is assigned to your account yet. Please contact Admin.'}
+            </p>
+          </section>
+        ) : (
+          <>
+            {admin && (
+              <div className="business-no-print" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+                <button type="button" onClick={() => printNdaPage('business-current-print', true)} style={{ ...btn, background: '#b45309' }}>
+                  🖨️ Print Current Page
+                </button>
+              </div>
+            )}
+
+            <div id="business-current-print">
+              <div className="business-print-brand">
+                <img src="/nda-naveed-logo.png" alt="NDA-PK" />
+                <div>
+                  <strong>NDA-PK BUSINESS SYSTEM</strong>
+                  <div>{panelTitle} · {view.toUpperCase()}</div>
+                </div>
+              </div>
+
+              {/* 1. DAILY ENTRY & LEDGER */}
+              {view === 'daily' && (admin || access?.can_view_daily || can('can_add') || can('can_edit') || can('can_delete')) && (
+                <>
+                  {/* Color-Coded Summary Cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(165px,1fr))', gap: 10, marginBottom: 14 }}>
+                    <div style={{ background: '#dcfce7', border: '1px solid #86efac', borderRadius: 12, padding: 14, color: '#166534' }}>
+                      <div style={{ fontSize: 12, fontWeight: 800 }}>🟢 CASH INCOME</div>
+                      <div style={{ fontSize: 22, fontWeight: 900, marginTop: 4 }}>{money(sum(selectedEntries, 'income', 'Cash'))}</div>
+                    </div>
+                    <div style={{ background: '#ede9fe', border: '1px solid #c4b5fd', borderRadius: 12, padding: 14, color: '#5b21b6' }}>
+                      <div style={{ fontSize: 12, fontWeight: 800 }}>🟣 CREDIT INCOME</div>
+                      <div style={{ fontSize: 22, fontWeight: 900, marginTop: 4 }}>{money(sum(selectedEntries, 'income', 'Credit'))}</div>
+                    </div>
+                    <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 12, padding: 14, color: '#991b1b' }}>
+                      <div style={{ fontSize: 12, fontWeight: 800 }}>🔴 TOTAL EXPENSE</div>
+                      <div style={{ fontSize: 22, fontWeight: 900, marginTop: 4 }}>{money(expense)}</div>
+                    </div>
+                    <div style={{ background: net >= 0 ? '#dbeafe' : '#fef3c7', border: `1px solid ${net >= 0 ? '#93c5fd' : '#fcd34d'}`, borderRadius: 12, padding: 14, color: net >= 0 ? '#1e40af' : '#92400e' }}>
+                      <div style={{ fontSize: 12, fontWeight: 800 }}>🔵 NET TODAY ({selectedDayStatus})</div>
+                      <div style={{ fontSize: 22, fontWeight: 900, marginTop: 4 }}>{money(net)}</div>
+                    </div>
+                  </div>
+
+                  {/* Simple Easy Form for Driver / Staff */}
+                  {can('can_add') && (
+                    <form onSubmit={addEntry} style={{ ...card, marginBottom: 14 }}>
+                      <h3 style={{ marginTop: 0, marginBottom: 12, fontSize: 18 }}>➕ Add Daily Record — {entryDate}</h3>
+
+                      {/* Big Green / Red Toggle Buttons */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                        <button
+                          type="button"
+                          onClick={() => { setEntryKind('income'); setCategory(quickIncomeCategories[0]); }}
+                          style={{
+                            ...btn,
+                            padding: '14px',
+                            fontSize: 16,
+                            background: entryKind === 'income' ? '#16a34a' : '#f1f5f9',
+                            color: entryKind === 'income' ? '#fff' : '#334155',
+                            border: entryKind === 'income' ? '2px solid #15803d' : '1px solid #cbd5e1'
+                          }}
+                        >
+                          🟢 INCOME (Cash / Trip In)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setEntryKind('expense'); setCategory(quickExpenseCategories[0]); }}
+                          style={{
+                            ...btn,
+                            padding: '14px',
+                            fontSize: 16,
+                            background: entryKind === 'expense' ? '#dc2626' : '#f1f5f9',
+                            color: entryKind === 'expense' ? '#fff' : '#334155',
+                            border: entryKind === 'expense' ? '2px solid #b91c1c' : '1px solid #cbd5e1'
+                          }}
+                        >
+                          🔴 EXPENSE (Fuel / Garage / Bill)
+                        </button>
+                      </div>
+
+                      {/* Quick One-Tap Category Chips */}
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                        {(entryKind === 'income' ? quickIncomeCategories : quickExpenseCategories).map(item => (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => setCategory(item)}
+                            style={{
+                              padding: '7px 12px',
+                              borderRadius: 20,
+                              border: category === item ? '2px solid #0f172a' : '1px solid #cbd5e1',
+                              background: category === item ? '#0f172a' : '#f8fafc',
+                              color: category === item ? '#fff' : '#334155',
+                              fontWeight: 700,
+                              fontSize: 13,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10 }}>
+                        {isTransportBusiness && (
+                          <label style={{ fontSize: 12, fontWeight: 700 }}>
+                            🚚 Vehicle *
+                            <select style={{ ...inputStyle, marginTop: 4 }} value={vehicleId} onChange={e => setVehicleId(e.target.value)} required>
+                              <option value="">Select Vehicle</option>
+                              {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate_number} {v.vehicle_name}</option>)}
+                            </select>
+                          </label>
+                        )}
+
+                        <label style={{ fontSize: 12, fontWeight: 700 }}>
+                          🏷️ Category *
+                          <input style={{ ...inputStyle, marginTop: 4 }} value={category} onChange={e => setCategory(e.target.value)} placeholder="Type or select above" required />
+                        </label>
+
+                        <label style={{ fontSize: 12, fontWeight: 700 }}>
+                          💵 Amount ({currency}) *
+                          <input style={{ ...inputStyle, marginTop: 4, fontWeight: 800 }} type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" required />
+                        </label>
+
+                        <label style={{ fontSize: 12, fontWeight: 700 }}>
+                          💳 Payment Mode
+                          <select style={{ ...inputStyle, marginTop: 4 }} value={paymentMode} onChange={e => setPaymentMode(e.target.value)}>
+                            <option value="Cash">Cash</option>
+                            <option value="Credit">Credit / Udhaar</option>
+                            <option value="Bank">Bank / Transfer</option>
+                          </select>
+                        </label>
+
+                        <label style={{ fontSize: 12, fontWeight: 700 }}>
+                          👷 Driver / Staff
+                          <select style={{ ...inputStyle, marginTop: 4 }} value={driverId} onChange={e => setDriverId(e.target.value)}>
+                            <option value="">Select Driver / Staff (Optional)</option>
+                            {people.map(p => <option key={p.id} value={p.id}>{p.person_name} ({p.job_title})</option>)}
+                          </select>
+                        </label>
+
+                        <label style={{ fontSize: 12, fontWeight: 700 }}>
+                          📝 Note / Trip Details
+                          <input style={{ ...inputStyle, marginTop: 4 }} value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. Sharjah to Dubai trip / Diesel bill" />
+                        </label>
+
+                        <label style={{ fontSize: 12, fontWeight: 700 }}>
+                          📎 Receipt / Bill Photo (Optional)
+                          <input style={{ ...inputStyle, marginTop: 4, padding: 9 }} type="file" accept="image/*,.pdf" onChange={e => setBillFile(e.target.files?.[0] || null)} />
+                        </label>
+                      </div>
+
+                      <button
+                        type="submit"
+                        style={{
+                          ...btn,
+                          width: '100%',
+                          marginTop: 14,
+                          padding: '14px',
+                          fontSize: 16,
+                          background: entryKind === 'income' ? '#15803d' : '#b91c1c'
+                        }}
+                      >
+                        ✅ Save {entryKind === 'income' ? 'Income' : 'Expense'} Entry
+                      </button>
+                    </form>
+                  )}
+
+                  {/* Daily Entries Table */}
+                  <section style={{ ...card, overflowX: 'auto' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                      <h3 style={{ margin: 0 }}>📒 Daily Entries — {entryDate}</h3>
+                      <span style={{
+                        padding: '4px 10px',
+                        borderRadius: 20,
+                        fontSize: 12,
+                        fontWeight: 800,
+                        background: selectedDayStatus === 'OFF' ? '#e2e8f0' : selectedDayStatus === 'MAINTENANCE' ? '#fef3c7' : '#dcfce7',
+                        color: selectedDayStatus === 'OFF' ? '#475569' : selectedDayStatus === 'MAINTENANCE' ? '#b45309' : '#166534'
+                      }}>
+                        Status: {selectedDayStatus}
+                      </span>
+                    </div>
+
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc' }}>
+                          {['Type', 'Category', 'Vehicle', 'Driver / Staff', 'Details', 'Mode', 'Amount', 'Bill', 'Actions'].map(h => (
+                            <th key={h} style={{ padding: 10, borderBottom: '2px solid #e2e8f0', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedEntries.map(r => {
+                          const isInc = r.entry_kind === 'income';
+                          return (
+                            <tr key={r.id} style={{ background: isInc ? '#f0fdf4' : '#fef2f2' }}>
+                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 800, color: isInc ? '#15803d' : '#b91c1c' }}>
+                                {isInc ? '🟢 INCOME' : '🔴 EXPENSE'}
+                              </td>
+                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 700 }}>{r.category}</td>
+                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>{labelForVehicle(r.vehicle_id)}</td>
+                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>{labelForPerson(r.driver_id)}</td>
+                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>{r.description || r.remarks || '—'}</td>
+                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>{r.payment_mode}</td>
+                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 900, color: isInc ? '#15803d' : '#b91c1c' }}>
+                                {isInc ? '+' : '-'}{money(r.amount)}
+                              </td>
+                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
+                                {r.bill_url ? <a href={r.bill_url} target="_blank" rel="noreferrer" style={{ color: '#1d4ed8', fontWeight: 700 }}>View Bill</a> : '—'}
+                              </td>
+                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
+                                {can('can_edit') && <button type="button" onClick={() => editEntry(r)} style={{ ...btn, background: '#1d4ed8', padding: '6px 10px', fontSize: 12, marginRight: 5 }}>Edit</button>}
+                                {can('can_delete') && <button type="button" onClick={() => deleteEntry(r)} style={{ ...btn, background: '#b91c1c', padding: '6px 10px', fontSize: 12 }}>Delete</button>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {!selectedEntries.length && (
+                          <tr>
+                            <td colSpan="9" style={{ padding: 16, color: '#64748b', textAlign: 'center' }}>
+                              No entries recorded for {entryDate}.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </section>
+                </>
+              )}
+
+              {/* 2. VEHICLE FILES */}
+              {view === 'vehicles' && (admin || access?.can_view_vehicles || can('can_manage_vehicles')) && (
+                <>
+                  {can('can_manage_vehicles') && (
+                    <section style={{ ...card, marginBottom: 14 }}>
+                      <h3 style={{ marginTop: 0 }}>🚚 Create New Vehicle File</h3>
+                      <form onSubmit={addVehicle} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10 }}>
+                        <input style={inputStyle} value={vehiclePlate} onChange={e => setVehiclePlate(e.target.value)} placeholder="Plate Number (e.g. SHJ 12345)" required />
+                        <input style={inputStyle} value={vehicleName} onChange={e => setVehicleName(e.target.value)} placeholder="Vehicle Model / Type (e.g. Toyota Hiace)" />
+                        <input style={inputStyle} value={vehicleNotes} onChange={e => setVehicleNotes(e.target.value)} placeholder="Notes (Mulkiya expiry, insurance, route)" />
+                        <button type="submit" style={btn}>➕ Save Vehicle File</button>
+                      </form>
+                    </section>
+                  )}
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 12 }}>
+                    {vehicles.map(v => {
+                      const vEntries = entries.filter(r => String(r.vehicle_id) === String(v.id));
+                      const vInc = sum(vEntries, 'income');
+                      const vExp = sum(vEntries, 'expense');
+                      return (
+                        <section key={v.id} style={card}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ margin: 0, fontSize: 19 }}>🚚 {v.plate_number}</h3>
+                            <span style={{ background: '#dcfce7', color: '#166534', padding: '3px 9px', borderRadius: 12, fontSize: 11, fontWeight: 800 }}>ACTIVE</span>
+                          </div>
+                          <div style={{ fontWeight: 700, color: '#334155', marginTop: 4 }}>{v.vehicle_name || 'Transport Vehicle'}</div>
+                          <p style={{ color: '#64748b', fontSize: 13, minHeight: 20 }}>{v.notes || 'No extra notes'}</p>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: '#f8fafc', padding: 10, borderRadius: 10, marginBottom: 10, fontSize: 12 }}>
+                            <div><span style={{ color: '#15803d', fontWeight: 700 }}>Total Income:</span><br /><strong>{money(vInc)}</strong></div>
+                            <div><span style={{ color: '#b91c1c', fontWeight: 700 }}>Total Expense:</span><br /><strong>{money(vExp)}</strong></div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button
+                              type="button"
+                              style={{ ...btn, flex: 1 }}
+                              onClick={() => { setActiveVehicleId(String(v.id)); setVehicleId(String(v.id)); setView('daily'); }}
+                            >
+                              📝 Daily Entries
+                            </button>
+                            {(admin || access?.can_view_monthly) && (
+                              <button
+                                type="button"
+                                style={{ ...btn, flex: 1, background: '#1d4ed8' }}
+                                onClick={() => { setActiveVehicleId(String(v.id)); setView('monthly'); }}
+                              >
+                                📊 Monthly Sheet
+                              </button>
+                            )}
+                          </div>
+                        </section>
+                      );
+                    })}
+                    {!vehicles.length && (
+                      <section style={card}>No vehicle files created yet. Add your first vehicle above.</section>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* 3. DRIVERS & SALARY / PROFIT SHARE */}
+              {view === 'workers' && (admin || access?.can_view_workers || can('can_manage_workers')) && (
+                <>
+                  {can('can_manage_workers') && (
+                    <section style={{ ...card, marginBottom: 14 }}>
+                      <h3 style={{ marginTop: 0 }}>👷 Add Driver / Business Staff Profile</h3>
+                      <form onSubmit={addPerson} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(175px,1fr))', gap: 10 }}>
+                        <input style={inputStyle} value={personName} onChange={e => setPersonName(e.target.value)} placeholder="Full Name" required />
+                        <input style={inputStyle} value={personRole} onChange={e => setPersonRole(e.target.value)} placeholder="Role (Driver, Helper, Manager)" />
+                        <input style={inputStyle} value={personPhone} onChange={e => setPersonPhone(e.target.value)} placeholder="Mobile Number" />
+                        <select style={inputStyle} value={payType} onChange={e => setPayType(e.target.value)}>
+                          <option value="fixed">Fixed Monthly Salary</option>
+                          <option value="profit_percent">Net Profit Percentage (%)</option>
+                        </select>
+                        {payType === 'fixed' ? (
+                          <input style={inputStyle} type="number" min="0" step="0.01" value={payAmount} onChange={e => setPayAmount(e.target.value)} placeholder={`Monthly Salary (${currency})`} />
+                        ) : (
+                          <input style={inputStyle} type="number" min="0" max="100" step="0.01" value={profitPercent} onChange={e => setProfitPercent(e.target.value)} placeholder="Profit Share (%)" />
+                        )}
+                        <button type="submit" style={btn}>➕ Add Driver / Staff</button>
+                      </form>
+                    </section>
+                  )}
+
+                  <section style={{ ...card, overflowX: 'auto' }}>
+                    <h3 style={{ marginTop: 0 }}>Drivers & Staff Pay Structure ({month})</h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc' }}>
+                          {['Name', 'Role', 'Phone', 'Pay System', 'Fixed Salary', 'Profit %', 'Earned This Month'].map(h => (
+                            <th key={h} style={{ padding: 10, textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {profitShare.map(p => (
+                          <tr key={p.id}>
+                            <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9', fontWeight: 700 }}>{p.person_name}</td>
+                            <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9' }}>{p.job_title}</td>
+                            <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9' }}>{p.phone || '—'}</td>
+                            <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9' }}>{p.pay_type === 'fixed' ? 'Fixed Salary' : 'Profit Share'}</td>
+                            <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9' }}>{money(p.monthly_salary)}</td>
+                            <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9' }}>{p.pay_type === 'profit_percent' ? `${p.profit_percent || 0}%` : '—'}</td>
+                            <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9', fontWeight: 900, color: '#047857' }}>{money(p.share)}</td>
+                          </tr>
+                        ))}
+                        {!people.length && (
+                          <tr><td colSpan="7" style={{ padding: 14, color: '#64748b' }}>No drivers or staff added yet.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </section>
+                </>
+              )}
+
+              {/* 4. MONTHLY SHEET (DRIVER + OWNER) */}
+              {view === 'monthly' && (admin || access?.can_view_monthly) && (
+                <>
+                  {admin && (
+                    <div className="business-no-print" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                      <button type="button" onClick={() => printNdaPage('business-driver-monthly-print', true)} style={{ ...btn, background: '#1d4ed8' }}>
+                        🖨️ Print Driver Monthly Sheet
+                      </button>
+                      <button type="button" onClick={() => printNdaPage('business-owner-monthly-print', true)} style={{ ...btn, background: '#047857' }}>
+                        🖨️ Print Owner Monthly Sheet
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Monthly Summary Boxes */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 10, marginBottom: 14 }}>
+                    <div style={{ background: '#dcfce7', borderRadius: 12, padding: 14, color: '#166534' }}>
+                      <div style={{ fontSize: 12, fontWeight: 700 }}>TOTAL INCOME</div>
+                      <div style={{ fontSize: 20, fontWeight: 900, marginTop: 4 }}>{money(mIncome)}</div>
+                    </div>
+                    <div style={{ background: '#fee2e2', borderRadius: 12, padding: 14, color: '#991b1b' }}>
+                      <div style={{ fontSize: 12, fontWeight: 700 }}>TOTAL EXPENSES</div>
+                      <div style={{ fontSize: 20, fontWeight: 900, marginTop: 4 }}>{money(mExpense)}</div>
+                    </div>
+                    <div style={{ background: '#e0f2fe', borderRadius: 12, padding: 14, color: '#075985' }}>
+                      <div style={{ fontSize: 12, fontWeight: 700 }}>NET BEFORE DRIVER</div>
+                      <div style={{ fontSize: 20, fontWeight: 900, marginTop: 4 }}>{money(mNet)}</div>
+                    </div>
+                    <div style={{ background: '#fef3c7', borderRadius: 12, padding: 14, color: '#92400e' }}>
+                      <div style={{ fontSize: 12, fontWeight: 700 }}>DRIVER PAY / SHARE</div>
+                      <div style={{ fontSize: 20, fontWeight: 900, marginTop: 4 }}>{money(totalDriverPay)}</div>
+                    </div>
+                    <div style={{ background: ownerMonthlyProfit >= 0 ? '#d1fae5' : '#fee2e2', borderRadius: 12, padding: 14, color: ownerMonthlyProfit >= 0 ? '#065f46' : '#991b1b' }}>
+                      <div style={{ fontSize: 12, fontWeight: 800 }}>OWNER FINAL PROFIT</div>
+                      <div style={{ fontSize: 20, fontWeight: 900, marginTop: 4 }}>{money(ownerMonthlyProfit)}</div>
+                    </div>
+                  </div>
+
+                  {/* Driver Monthly Sheet */}
+                  <section id="business-driver-monthly-print" style={{ ...card, overflowX: 'auto', marginBottom: 14 }}>
+                    <div className="business-print-brand">
+                      <img src="/nda-naveed-logo.png" alt="NDA-PK" />
+                      <div><strong>NDA.PK BUSINESS SYSTEM</strong><div>Driver Monthly Sheet · {month}</div></div>
+                    </div>
+                    <h3 style={{ marginTop: 0 }}>👷 Driver Monthly Sheet — {month}</h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 14 }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc' }}>
+                          {['Driver / Staff', 'Pay Type', 'Fixed Salary', 'Profit %', 'Total Payable'].map(h => (
+                            <th key={h} style={{ padding: 9, textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {profitShare.map(p => (
+                          <tr key={p.id}>
+                            <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9', fontWeight: 700 }}>{p.person_name}</td>
+                            <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9' }}>{p.pay_type === 'profit_percent' ? 'Profit Share' : 'Fixed Salary'}</td>
+                            <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9' }}>{money(p.monthly_salary)}</td>
+                            <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9' }}>{p.pay_type === 'profit_percent' ? `${p.profit_percent || 0}%` : '—'}</td>
+                            <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9', fontWeight: 900, color: '#047857' }}>{money(p.share)}</td>
+                          </tr>
+                        ))}
+                        {!profitShare.length && (
+                          <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>No drivers added in Drivers & Pay section.</td></tr>
+                        )}
+                        <tr style={{ background: '#f8fafc' }}>
+                          <td colSpan="4" style={{ padding: 9, fontWeight: 900, textAlign: 'right' }}>Total Driver Salary / Share:</td>
+                          <td style={{ padding: 9, fontWeight: 900 }}>{money(totalDriverPay)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    <h4 style={{ marginBottom: 8 }}>Driver-Wise Daily Entries</h4>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc' }}>
+                          {['Date', 'Driver', 'Vehicle', 'Type', 'Category', 'Details', 'Amount'].map(h => (
+                            <th key={h} style={{ padding: 8, textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {monthEntries.filter(r => r.driver_id).map(r => (
+                          <tr key={`drv-${r.id}`}>
+                            <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9' }}>{r.entry_date}</td>
+                            <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9', fontWeight: 700 }}>{labelForPerson(r.driver_id)}</td>
+                            <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9' }}>{labelForVehicle(r.vehicle_id)}</td>
+                            <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9', color: r.entry_kind === 'income' ? '#15803d' : '#b91c1c', fontWeight: 700 }}>{r.entry_kind.toUpperCase()}</td>
+                            <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9' }}>{r.category}</td>
+                            <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9' }}>{r.description || r.remarks || '—'}</td>
+                            <td style={{ padding: 8, borderBottom: '1px solid #f1f5f9', fontWeight: 800 }}>{money(r.amount)}</td>
+                          </tr>
+                        ))}
+                        {!monthEntries.some(r => r.driver_id) && (
+                          <tr><td colSpan="7" style={{ padding: 10, color: '#64748b' }}>No entries linked to a driver this month.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </section>
+
+                  {/* Day-by-Day Monthly Sheet */}
+                  <section style={{ ...card, overflowX: 'auto', marginBottom: 14 }}>
+                    <h3 style={{ marginTop: 0 }}>📅 Date-Wise Monthly Summary — {month}</h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc' }}>
+                          {['Date', 'Status', 'Cash Income', 'Credit Income', 'Expense', 'Daily Net', 'Notes'].map(h => (
+                            <th key={h} style={{ padding: 9, textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {monthlyDayRows.map(d => (
+                          <tr key={d.date}>
+                            <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9' }}>{d.date}</td>
+                            <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9', fontWeight: 800, color: d.status === 'OFF' ? '#64748b' : d.status === 'MAINTENANCE' ? '#b45309' : '#047857' }}>{d.status}</td>
+                            <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9' }}>{money(sum(d.rows, 'income', 'Cash'))}</td>
+                            <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9' }}>{money(sum(d.rows, 'income', 'Credit'))}</td>
+                            <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9' }}>{money(d.expense)}</td>
+                            <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9', fontWeight: 800, color: d.net < 0 ? '#b91c1c' : '#047857' }}>{money(d.net)}</td>
+                            <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9' }}>{d.reason || (d.status === 'OFF' ? 'OFF Day' : 'Working Day')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </section>
+
+                  {/* Owner Monthly Sheet */}
+                  <section id="business-owner-monthly-print" style={{ ...card, overflowX: 'auto' }}>
+                    <div className="business-print-brand">
+                      <img src="/nda-naveed-logo.png" alt="NDA-PK" />
+                      <div><strong>NDA.PK BUSINESS SYSTEM</strong><div>Owner Monthly Sheet · {month}</div></div>
+                    </div>
+                    <h3 style={{ marginTop: 0 }}>🏢 Owner Monthly Ledger — {month}</h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc' }}>
+                          {['Date', 'Vehicle', 'Category & Details', 'Income', 'Expense', 'Net'].map(h => (
+                            <th key={h} style={{ padding: 9, textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {monthEntries.map(r => {
+                          const isExp = r.entry_kind === 'expense';
+                          return (
+                            <tr key={r.id}>
+                              <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9' }}>{r.entry_date}</td>
+                              <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9' }}>{labelForVehicle(r.vehicle_id)}</td>
+                              <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9' }}>
+                                <strong>{r.category}:</strong> {r.description || r.remarks || '—'} {r.bill_url ? <a href={r.bill_url} target="_blank" rel="noreferrer">[Bill]</a> : ''}
+                              </td>
+                              <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9', color: '#15803d', fontWeight: 700 }}>{!isExp ? money(r.amount) : '—'}</td>
+                              <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9', color: '#b91c1c', fontWeight: 700 }}>{isExp ? money(r.amount) : '—'}</td>
+                              <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9', fontWeight: 800, color: isExp ? '#b91c1c' : '#047857' }}>{isExp ? `-${money(r.amount)}` : money(r.amount)}</td>
+                            </tr>
+                          );
+                        })}
+                        {!monthEntries.length && (
+                          <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}>No entries recorded for {month}.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </section>
+                </>
+              )}
+
+              {/* 5. STAFF ACCESS & PERMISSIONS */}
+              {view === 'access' && can('can_manage_access') && (
+                <section style={card}>
+                  <h3 style={{ marginTop: 0 }}>🔐 Staff Login ID, Password & Permissions</h3>
+                  <p style={{ fontSize: 13, color: '#475569', marginTop: 0 }}>
+                    Create login ID and password for your drivers or staff. Choose exactly which business and functions they can view or enter.
+                  </p>
+
+                  <form onSubmit={saveAccess} style={{ padding: 14, border: '1px solid #cbd5e1', borderRadius: 12, background: '#f8fafc', marginBottom: 16 }}>
+                    <div style={{ fontWeight: 800, fontSize: 15, color: editingAccessRow ? '#b45309' : '#047857', marginBottom: 10 }}>
+                      {editingAccessRow ? `✏️ Editing Staff: ${editingAccessRow.user_email}` : '➕ Create New Staff Login'}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10, marginBottom: 12 }}>
+                      <label style={{ fontSize: 12, fontWeight: 700 }}>
+                        Login ID (Email) *
+                        <input
+                          style={{ ...inputStyle, marginTop: 4 }}
+                          type="email"
+                          value={accessEmail}
+                          onChange={e => setAccessEmail(e.target.value)}
+                          placeholder="driver1@nda.pk"
+                          autoComplete="username"
+                          required
+                        />
+                      </label>
+
+                      <label style={{ fontSize: 12, fontWeight: 700 }}>
+                        Password *
+                        <input
+                          style={{ ...inputStyle, marginTop: 4 }}
+                          type="password"
+                          value={accessPassword}
+                          onChange={e => setAccessPassword(e.target.value)}
+                          placeholder={editingAccessRow ? 'Leave blank to keep old password' : 'Min 6 characters'}
+                          autoComplete="new-password"
+                          minLength={6}
+                          required={!editingAccessRow}
+                        />
+                      </label>
+
+                      <label style={{ fontSize: 12, fontWeight: 700 }}>
+                        Assign Business *
+                        <select style={{ ...inputStyle, marginTop: 4 }} value={accessBusinessId} onChange={e => setAccessBusinessId(e.target.value)} required>
+                          <option value="">Select Business</option>
+                          {businesses.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                        </select>
+                      </label>
+                    </div>
+
+                    {/* Quick Role Presets */}
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#334155', marginBottom: 6 }}>Quick Role Setup (One-Click Permissions):</div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button type="button" onClick={() => applyStaffPreset('driver_entry')} style={{ ...btn, background: '#0284c7', padding: '8px 12px', fontSize: 12 }}>
+                          🚚 Driver (Daily Entry Only)
+                        </button>
+                        <button type="button" onClick={() => applyStaffPreset('supervisor')} style={{ ...btn, background: '#7c3aed', padding: '8px 12px', fontSize: 12 }}>
+                          📋 Manager / Supervisor
+                        </button>
+                        <button type="button" onClick={() => applyStaffPreset('view_only')} style={{ ...btn, background: '#475569', padding: '8px 12px', fontSize: 12 }}>
+                          👁️ View Only
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Granular Checkboxes */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 8, background: '#fff', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 12 }}>
+                      {Object.entries({
+                        can_view: '1. Allow Login to Business',
+                        can_view_daily: '2. View Daily Entries',
+                        can_add: '3. Add New Daily Entries',
+                        can_edit: '4. Edit Entries',
+                        can_delete: '5. Delete Entries',
+                        can_view_vehicles: '6. View Vehicle Files',
+                        can_manage_vehicles: '7. Add / Manage Vehicle Files',
+                        can_view_workers: '8. View Drivers & Pay',
+                        can_manage_workers: '9. Add / Manage Drivers',
+                        can_view_monthly: '10. View Monthly Sheets',
+                        can_manage_access: '11. Manage Staff Logins'
+                      }).map(([key, label]) => (
+                        <label key={key} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={!!accessFlags[key]}
+                            onChange={e => setAccessFlags(old => ({ ...old, [key]: e.target.checked }))}
+                          />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button type="submit" style={btn}>
+                        {editingAccessRow ? '✅ Save Changes' : '✅ Create Staff ID & Save'}
+                      </button>
+                      {editingAccessRow && (
+                        <button type="button" onClick={cancelEditAccess} style={{ ...btn, background: '#64748b' }}>
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </form>
+
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc' }}>
+                          {['Staff Login ID', 'Assigned Business', 'Allowed Functions', 'Status', 'Actions'].map(h => (
+                            <th key={h} style={{ padding: 10, textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {accessRows.map(r => (
+                          <tr key={r.id}>
+                            <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9', fontWeight: 700 }}>{r.user_email}</td>
+                            <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9' }}>{r.business_profiles?.name || businesses.find(b => String(b.id) === String(r.business_id))?.name || `Business #${r.business_id}`}</td>
+                            <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9', maxWidth: 340, whiteSpace: 'normal' }}>
+                              {[
+                                r.can_view_daily && 'View Daily',
+                                r.can_add && 'Add Entry',
+                                r.can_edit && 'Edit',
+                                r.can_delete && 'Delete',
+                                r.can_view_vehicles && 'View Vehicles',
+                                r.can_manage_vehicles && 'Manage Vehicles',
+                                r.can_view_workers && 'View Drivers',
+                                r.can_manage_workers && 'Manage Drivers',
+                                r.can_view_monthly && 'Monthly Sheet',
+                                r.can_manage_access && 'Staff Access'
+                              ].filter(Boolean).join(' · ') || 'Login Only'}
+                            </td>
+                            <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9', fontWeight: 700, color: r.active ? '#15803d' : '#b91c1c' }}>
+                              {r.active ? 'Active' : 'Disabled'}
+                            </td>
+                            <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
+                              <button type="button" onClick={() => startEditAccess(r)} style={{ ...btn, padding: '6px 10px', fontSize: 12, marginRight: 6, background: '#2563eb' }}>Edit</button>
+                              <button type="button" onClick={() => deleteAccessStaff(r)} style={{ ...btn, padding: '6px 10px', fontSize: 12, background: '#dc2626' }}>Delete</button>
+                            </td>
+                          </tr>
+                        ))}
+                        {!accessRows.length && (
+                          <tr><td colSpan="5" style={{ padding: 14, color: '#64748b' }}>No staff accounts created yet.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+            </div>
+          </>
+        )}
+
+        {loading && (
+          <div style={{ position: 'fixed', bottom: 14, right: 14, background: '#0f172a', color: '#fff', padding: '8px 14px', borderRadius: 10, fontWeight: 700 }}>
+            Loading…
+          </div>
+        )}
+      </main>
+    </div>
+  );
 }
 
 export default function App() {
