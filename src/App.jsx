@@ -96,11 +96,13 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
   const [customers, setCustomers] = useState([]);
   const [sales, setSales] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [deliveries, setDeliveries] = useState([]);
+  const [companyPayments, setCompanyPayments] = useState([]);
   const [busy, setBusy] = useState(false);
   const [floor, setFloor] = useState('Ground Floor');
   const [month, setMonth] = useState(today.slice(0, 7));
   const [day, setDay] = useState(today);
-  const [tab, setTab] = useState('customers');
+  const [tab, setTab] = useState('daily');
   const [name, setName] = useState('');
   const [room, setRoom] = useState('');
   const [customerFloor, setCustomerFloor] = useState('Ground Floor');
@@ -109,11 +111,22 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
   const [saleCustomer, setSaleCustomer] = useState('');
   const [bottles, setBottles] = useState('');
   const [saleRate, setSaleRate] = useState('');
-  const [saleCash, setSaleCash] = useState('');
+  const [salePaymentType, setSalePaymentType] = useState('Cash');
   const [saleRemarks, setSaleRemarks] = useState('');
   const [payCustomer, setPayCustomer] = useState('');
   const [payAmount, setPayAmount] = useState('');
   const [payRemarks, setPayRemarks] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState(today);
+  const [deliveryType, setDeliveryType] = useState('weekly');
+  const [deliveryBottles, setDeliveryBottles] = useState('');
+  const [companyRate, setCompanyRate] = useState('2');
+  const [companyPaymentType, setCompanyPaymentType] = useState('Credit');
+  const [companyPaidNow, setCompanyPaidNow] = useState('');
+  const [companyBillNo, setCompanyBillNo] = useState('');
+  const [companyRemarks, setCompanyRemarks] = useState('');
+  const [companyPayDate, setCompanyPayDate] = useState(today);
+  const [companyPayAmount, setCompanyPayAmount] = useState('');
+  const [companyPayRemarks, setCompanyPayRemarks] = useState('');
   const [showInactive, setShowInactive] = useState(false);
   const [errorText, setErrorText] = useState('');
   const currency = 'AED';
@@ -122,13 +135,20 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
   async function refresh() {
     setBusy(true); setErrorText('');
     try {
-      const [c,s,p] = await Promise.all([
+      const [c,s,p,d,cp] = await Promise.all([
         supabase.from('water_customers').select('*').eq('business_id',businessId).order('floor').order('room_no'),
         supabase.from('water_sales').select('*').eq('business_id',businessId).order('sale_date',{ascending:false}),
-        supabase.from('water_payments').select('*').eq('business_id',businessId).order('payment_date',{ascending:false})
+        supabase.from('water_payments').select('*').eq('business_id',businessId).order('payment_date',{ascending:false}),
+        isAdmin
+          ? supabase.from('water_company_deliveries').select('*').eq('business_id',businessId).order('delivery_date',{ascending:false})
+          : supabase.from('water_company_deliveries').select('id,delivery_date,delivery_type,bottles_received').eq('business_id',businessId).order('delivery_date',{ascending:false}),
+        isAdmin
+          ? supabase.from('water_company_payments').select('*').eq('business_id',businessId).order('payment_date',{ascending:false})
+          : Promise.resolve({data:[],error:null})
       ]);
-      if (c.error) throw c.error; if (s.error) throw s.error; if (p.error) throw p.error;
+      for (const r of [c,s,p,d,cp]) if (r.error) throw r.error;
       setCustomers(c.data || []); setSales(s.data || []); setPayments(p.data || []);
+      setDeliveries(d.data || []); setCompanyPayments(cp.data || []);
     } catch(e) { setErrorText(e?.message || String(e)); }
     finally { setBusy(false); }
   }
@@ -143,7 +163,6 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
     return { total, paid: paidAtSale + laterPaid, balance: Math.max(0,total-paidAtSale-laterPaid) };
   };
   const visibleCustomers = customers.filter(c => showInactive || c.active !== false);
-  const floorCustomers = visibleCustomers.filter(c => c.floor === floor);
   const monthSales = sales.filter(x => String(x.sale_date || '').slice(0,7) === month);
   const monthPayments = payments.filter(x => String(x.payment_date || '').slice(0,7) === month);
   const floorIds = new Set(customers.filter(c => c.floor === floor).map(c => String(c.id)));
@@ -154,6 +173,19 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
   const dailyCash = dailySales.reduce((a,x)=>a+Number(x.cash_received||0),0) + dailyPayments.reduce((a,x)=>a+Number(x.amount||0),0);
   const dailyBilled = dailySales.reduce((a,x)=>a+Number(x.total_amount||0),0);
   const dailyCredit = dailySales.reduce((a,x)=>a+Math.max(0,Number(x.total_amount||0)-Number(x.cash_received||0)),0);
+  const openingStockRow = [...deliveries].filter(x=>x.delivery_type==='opening').sort((a,b)=>String(a.delivery_date).localeCompare(String(b.delivery_date)))[0];
+  const stockStartDate = openingStockRow?.delivery_date || '';
+  const stockDeliveries = stockStartDate ? deliveries.filter(x=>String(x.delivery_date)>=String(stockStartDate)) : deliveries;
+  const stockSales = stockStartDate ? sales.filter(x=>String(x.sale_date)>=String(stockStartDate)) : sales;
+  const totalStockIn = stockDeliveries.reduce((a,x)=>a+Number(x.bottles_received||0),0);
+  const totalStockOut = stockSales.reduce((a,x)=>a+Number(x.bottles||0),0);
+  const currentStock = totalStockIn-totalStockOut;
+  const companyBillTotal = deliveries.reduce((a,x)=>a+Number(x.bill_amount||0),0);
+  const companyPaidAtDelivery = deliveries.reduce((a,x)=>a+Number(x.paid_amount||0),0);
+  const companyPaidLater = companyPayments.reduce((a,x)=>a+Number(x.amount||0),0);
+  const companyOutstanding = Math.max(0,companyBillTotal-companyPaidAtDelivery-companyPaidLater);
+  const deliveryMonth = deliveries.filter(x=>String(x.delivery_date||'').slice(0,7)===month);
+  const companyPaymentMonth = companyPayments.filter(x=>String(x.payment_date||'').slice(0,7)===month);
 
   async function addCustomer(e) {
     e.preventDefault();
@@ -166,20 +198,41 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
   async function addSale(e) {
     e.preventDefault();
     if (!canAdd) return alert('Aapko daily entry ki permission nahi hai.');
-    const c=customers.find(x=>String(x.id)===String(saleCustomer)); const qty=Number(bottles); const r=Number(saleRate || c?.rate); const cash=Number(saleCash||0);
-    if(!c||!day||!Number.isInteger(qty)||qty<=0||!(r>0)||cash<0||cash>qty*r) return alert('Customer, date, bottles, rate aur cash amount sahi enter karein.');
-    const {error}=await supabase.from('water_sales').insert([{business_id:Number(businessId),customer_id:c.id,sale_date:day,bottles:qty,rate:r,total_amount:qty*r,cash_received:cash,remarks:saleRemarks.trim(),created_by:session?.user?.email||''}]);
+    const c=customers.find(x=>String(x.id)===String(saleCustomer)); const qty=Number(bottles); const r=Number(saleRate || c?.rate); const bill=qty*r;
+    const cash=salePaymentType==='Cash'?bill:0;
+    if(!c||!day||!Number.isInteger(qty)||qty<=0||!(r>0)) return alert('Customer, date, bottles aur rate sahi enter karein.');
+    if(qty>currentStock) return alert(`Stock kam hai. Available stock sirf ${currentStock} bottles hai.`);
+    const {error}=await supabase.from('water_sales').insert([{business_id:Number(businessId),customer_id:c.id,sale_date:day,bottles:qty,rate:r,total_amount:bill,cash_received:cash,payment_mode:salePaymentType,remarks:saleRemarks.trim(),created_by:session?.user?.email||''}]);
     if(error)return alert('Daily water entry save nahi hui: '+error.message);
-    setBottles('');setSaleCash('');setSaleRemarks('');await refresh();alert('Daily water entry save ho gayi.');
+    setBottles('');setSaleRemarks('');await refresh();alert(`Daily entry save ho gayi. ${salePaymentType==='Cash'?'Cash received':'Credit added'}: ${fmt(bill)}`);
   }
   async function addPayment(e) {
     e.preventDefault();
-    if(!canAdd)return alert('Aapko payment entry ki permission nahi hai.');
+    if(!canAdd)return alert('Aapko credit recovery entry ki permission nahi hai.');
     const c=customers.find(x=>String(x.id)===String(payCustomer));const amount=Number(payAmount);
     if(!c||!day||!(amount>0))return alert('Customer, date aur payment amount sahi enter karein.');
+    if(amount>customerStats(c).balance)return alert(`Customer ka outstanding balance ${fmt(customerStats(c).balance)} hai.`);
     const {error}=await supabase.from('water_payments').insert([{business_id:Number(businessId),customer_id:c.id,payment_date:day,amount,currency,remarks:payRemarks.trim(),received_by:session?.user?.email||''}]);
-    if(error)return alert('Cash received save nahi hua: '+error.message);
-    setPayAmount('');setPayRemarks('');await refresh();alert('Cash received save ho gaya.');
+    if(error)return alert('Customer credit payment save nahi hui: '+error.message);
+    setPayAmount('');setPayRemarks('');await refresh();alert('Customer ka purana credit receive ho gaya.');
+  }
+  async function addDelivery(e) {
+    e.preventDefault(); if(!isAdmin)return alert('Company delivery entry sirf Admin kar sakta hai.');
+    const qty=Number(deliveryBottles), r=deliveryType==='opening'?0:Number(companyRate), bill=deliveryType==='opening'?0:qty*r;
+    const paid=deliveryType==='opening'?0:(companyPaymentType==='Cash'?(companyPaidNow===''?bill:Number(companyPaidNow)):Number(companyPaidNow||0));
+    if(!deliveryDate||!Number.isInteger(qty)||qty<0||(deliveryType==='weekly'&&qty<=0)||(deliveryType==='weekly'&&!(r>0))||!Number.isFinite(paid)||paid<0||paid>bill)return alert('Delivery date, bottles, company rate aur paid amount check karein.');
+    if(deliveryType==='opening'&&deliveries.some(x=>x.delivery_type==='opening'))return alert('Opening Stock pehle se enter hai. Dobara opening stock add na karein; weekly delivery select karein.');
+    const {error}=await supabase.from('water_company_deliveries').insert([{business_id:Number(businessId),delivery_date:deliveryDate,delivery_type:deliveryType,bottles_received:qty,company_rate:r,bill_amount:bill,paid_amount:paid,payment_mode:deliveryType==='opening'?'Credit':companyPaymentType,bill_no:companyBillNo.trim(),remarks:companyRemarks.trim(),created_by:session?.user?.email||''}]);
+    if(error)return alert('Company delivery save nahi hui: '+error.message);
+    setDeliveryBottles('');setCompanyPaidNow('');setCompanyBillNo('');setDeliveryType('weekly');setCompanyRemarks('');await refresh();alert('Company delivery aur stock add ho gaya.');
+  }
+  async function addCompanyPayment(e) {
+    e.preventDefault(); if(!isAdmin)return alert('Company payment sirf Admin enter kar sakta hai.');
+    const amount=Number(companyPayAmount);
+    if(!companyPayDate||!(amount>0)||amount>companyOutstanding)return alert(`Valid payment enter karein. Company outstanding: ${fmt(companyOutstanding)}.`);
+    const {error}=await supabase.from('water_company_payments').insert([{business_id:Number(businessId),payment_date:companyPayDate,amount,remarks:companyPayRemarks.trim(),paid_by:session?.user?.email||''}]);
+    if(error)return alert('Company payment save nahi hui: '+error.message);
+    setCompanyPayAmount('');setCompanyPayRemarks('');await refresh();alert('Company payment save ho gayi; outstanding update ho gaya.');
   }
   async function deleteCustomer(c) {
     if(!canDelete)return alert('Customer delete karne ki permission nahi hai.');
@@ -190,10 +243,9 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
     if(sr.error||pr.error)return alert('Customer history check nahi ho saki. Delete nahi kiya gaya.');
     const history=Number(sr.count||0)+Number(pr.count||0);
     if(history>0){
-      if(!window.confirm(`${c.customer_name} (Room ${c.room_no}) ki ${history} sales/payment history mojood hai. Purana hisaab safe rakhne ke liye customer ko sirf inactive kiya jayega, history delete nahi hogi. Continue?`))return;
+      if(!window.confirm(`${c.customer_name} (Room ${c.room_no}) ki ${history} sales/payment history mojood hai. Purana hisaab safe rakhne ke liye customer ko sirf inactive kiya jayega. Continue?`))return;
       const {error}=await supabase.from('water_customers').update({active:false}).eq('id',c.id).eq('business_id',businessId);
       if(error)return alert('Customer inactive nahi hua: '+error.message);
-      alert('Customer inactive ho gaya. Uski purani sales aur payments safe hain.');
     } else {
       if(!window.confirm(`${c.customer_name} (Room ${c.room_no}) ka koi purana record nahi. Permanently delete karna hai?`))return;
       const {error}=await supabase.from('water_customers').delete().eq('id',c.id).eq('business_id',businessId);
@@ -211,34 +263,39 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
   const btn={padding:'10px 13px',border:0,borderRadius:8,background:'#047857',color:'#fff',fontWeight:800,cursor:'pointer'};
   const printRegister = () => { if(!isAdmin)return alert('Print permission sirf Admin ko hai.'); printNdaPage('water-month-register',true); };
   return <section>
-    <div style={{...panelCard,background:'#ecfdf5',borderColor:'#a7f3d0'}}><h2 style={{margin:'0 0 5px',color:'#065f46'}}>💧 Water Supply Management</h2><div style={{fontSize:13,color:'#475569'}}>Customer khata · Daily cash & credit · Monthly floor-wise collection</div></div>
-    {errorText && <div style={{...panelCard,color:'#991b1b',background:'#fef2f2'}}>Database error: {errorText}<p style={{marginBottom:0}}>Supabase mein Water Supply SQL setup run karna zaroori hai.</p></div>}
-    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>{[['customers','👥 Customers'],['daily','🧾 Daily Entry'],['payments','💵 Cash Received'],['monthly','📄 Monthly Print']].map(([id,label])=><button key={id} style={{...btn,background:tab===id?'#065f46':'#64748b'}} onClick={()=>setTab(id)}>{label}</button>)}</div>
+    <div style={{...panelCard,background:'#ecfdf5',borderColor:'#a7f3d0'}}><h2 style={{margin:'0 0 5px',color:'#065f46'}}>💧 Water Supply Management</h2><div style={{fontSize:13,color:'#475569'}}>Stock in / out · Customer cash & credit · Company account</div></div>
+    {errorText && <div style={{...panelCard,color:'#991b1b',background:'#fef2f2'}}>Database error: {errorText}<p style={{marginBottom:0}}>Water Supply ka updated SQL setup Supabase mein run karein.</p></div>}
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:12}}>
+      {[['Available Stock',`${currentStock} Bottles`],['Total Received',`${totalStockIn} Bottles`],['Total Sold',`${totalStockOut} Bottles`],...(isAdmin?[['Company Outstanding',fmt(companyOutstanding)]]:[])].map(([l,v])=><div key={l} style={{...panelCard,margin:0}}><small style={{color:'#64748b',fontWeight:700}}>{l}</small><div style={{fontSize:20,fontWeight:900,marginTop:5}}>{v}</div></div>)}
+    </div>
+    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>{[['daily','🧾 Daily Entry'],['customers','👥 Customers'],...(isAdmin?[['company','🏭 Company Account']]:[]),['monthly','📄 Monthly Print']].map(([id,label])=><button key={id} style={{...btn,background:tab===id?'#065f46':'#64748b'}} onClick={()=>setTab(id)}>{label}</button>)}</div>
     {tab==='customers' && <>
       {canAdd && <form onSubmit={addCustomer} style={panelCard}><h3 style={{marginTop:0}}>➕ Add Water Customer</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}>
-        <label>Customer Name<input style={input} value={name} onChange={e=>setName(e.target.value)} required/></label><label>Room Number<input style={input} value={room} onChange={e=>setRoom(e.target.value)} placeholder="G-01 / 101" required/></label><label>Floor<select style={input} value={customerFloor} onChange={e=>setCustomerFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></label><label>Rate per Bottle (AED)<input style={input} type="number" min="0.01" step="0.01" value={rate} onChange={e=>setRate(e.target.value)} required/></label><label style={{gridColumn:'1/-1'}}>Remarks<input style={input} value={customerRemarks} onChange={e=>setCustomerRemarks(e.target.value)}/></label></div><button style={{...btn,marginTop:12}}>Save Customer</button></form>}
-      <div style={panelCard}><div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap',alignItems:'center'}}><h3 style={{margin:0}}>Customer List</h3><div><select style={{...input,width:'auto'}} value={floor} onChange={e=>setFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select> <label style={{fontSize:12}}><input type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)}/> Show inactive</label></div></div>
-      <div style={{overflowX:'auto',marginTop:10}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Room','Customer','Rate','Total Bill','Received','Credit','Remarks','Action'].map(x=><th key={x} style={{padding:8,textAlign:'left',borderBottom:'1px solid #cbd5e1'}}>{x}</th>)}</tr></thead><tbody>{floorCustomers.map(c=>{const st=customerStats(c);return <tr key={c.id}><td style={{padding:8,borderBottom:'1px solid #eee'}}>{c.room_no}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{c.customer_name}{!c.active&&' (Inactive)'}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{fmt(c.rate)}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{fmt(st.total)}</td><td style={{padding:8,borderBottom:'1px solid #eee',color:'#047857'}}>{fmt(st.paid)}</td><td style={{padding:8,borderBottom:'1px solid #eee',color:'#b91c1c'}}>{fmt(st.balance)}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{c.remarks||'—'}</td><td style={{padding:8,borderBottom:'1px solid #eee',whiteSpace:'nowrap'}}>{canDelete&&<><button style={{...btn,background:'#b45309',marginRight:5}} onClick={()=>toggleCustomer(c)}>{c.active?'Inactive':'Activate'}</button><button style={{...btn,background:'#b91c1c'}} onClick={()=>deleteCustomer(c)}>Delete</button></>}</td></tr>})}{!floorCustomers.length&&<tr><td colSpan="8" style={{padding:14,textAlign:'center',color:'#64748b'}}>Is floor par koi customer nahi.</td></tr>}</tbody></table></div></div>
+        <label>Customer Name<input style={input} value={name} onChange={e=>setName(e.target.value)} required/></label><label>Room Number<input style={input} value={room} onChange={e=>setRoom(e.target.value)} placeholder="G-01 / 101" required/></label><label>Floor<select style={input} value={customerFloor} onChange={e=>setCustomerFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></label><label>Rate per Bottle (AED)<input style={input} type="number" min="0.01" step="0.01" value={rate} onChange={e=>setRate(e.target.value)} required/></label><label>Remarks<input style={input} value={customerRemarks} onChange={e=>setCustomerRemarks(e.target.value)}/></label></div><button style={{...btn,marginTop:10}}>Save Customer</button></form>}
+      <div style={panelCard}><div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}><h3 style={{marginTop:0}}>Customer List</h3><label><input type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)}/> Show inactive</label></div><div style={{display:'flex',gap:8,marginBottom:10}}><select style={input} value={floor} onChange={e=>setFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></div><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Room','Customer','Rate','Total Bill','Received','Outstanding','Status','Action'].map(x=><th style={thStyle} key={x}>{x}</th>)}</tr></thead><tbody>{floorCustomers.map(c=>{const st=customerStats(c);return <tr key={c.id}><td style={tdStyle}>{c.room_no}</td><td style={tdStyle}>{c.customer_name}</td><td style={tdStyle}>{fmt(c.rate)}</td><td style={tdStyle}>{fmt(st.total)}</td><td style={tdStyle}>{fmt(st.paid)}</td><td style={{...tdStyle,color:st.balance?'#b91c1c':'#047857',fontWeight:800}}>{fmt(st.balance)}</td><td style={tdStyle}>{c.active===false?'Inactive':'Active'}</td><td style={tdStyle}>{canDelete&&<button onClick={()=>toggleCustomer(c)} style={{marginRight:5}}>{c.active===false?'Activate':'Inactive'}</button>}{canDelete&&<button onClick={()=>deleteCustomer(c)} style={{color:'#b91c1c'}}>Delete</button>}</td></tr>})}{!floorCustomers.length&&<tr><td colSpan="8" style={tdStyle}>Is floor par koi customer nahi.</td></tr>}</tbody></table></div></div>
     </>}
     {tab==='daily' && <>
-      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Water Sale / Udhaar Entry</h3><form onSubmit={addSale}><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={saleCustomer} onChange={e=>{setSaleCustomer(e.target.value);const c=customers.find(x=>String(x.id)===e.target.value);setSaleRate(c?String(c.rate):'')}} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false).map(c=><option key={c.id} value={c.id}>{c.room_no} · {c.customer_name}</option>)}</select></label><label>Total Bottles<input type="number" min="1" step="1" style={input} value={bottles} onChange={e=>setBottles(e.target.value)} required/></label><label>Rate / Bottle<input type="number" min="0.01" step="0.01" style={input} value={saleRate} onChange={e=>setSaleRate(e.target.value)} required/></label><label>Cash Received Now<input type="number" min="0" step="0.01" style={input} value={saleCash} onChange={e=>setSaleCash(e.target.value)} placeholder="0 = full credit"/></label><label>Remarks<input style={input} value={saleRemarks} onChange={e=>setSaleRemarks(e.target.value)}/></label></div><div style={{marginTop:10,fontWeight:800}}>Bill: {fmt(Number(bottles||0)*Number(saleRate||0))} · Credit: {fmt(Math.max(0,Number(bottles||0)*Number(saleRate||0)-Number(saleCash||0)))}</div><button style={{...btn,marginTop:10}} disabled={!canAdd}>Save Daily Entry</button></form></div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}>{[['Daily Bill',dailyBilled],['Daily Cash',dailyCash],['Daily Credit Added',dailyCredit],['Daily Cash + Credit',dailyBilled]].map(([l,v])=><div key={l} style={{...panelCard,margin:0}}><div style={{fontSize:12,color:'#64748b',fontWeight:700}}>{l}</div><div style={{fontSize:21,fontWeight:900}}>{fmt(v)}</div></div>)}</div>
-      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Activity · {day}</h3><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Customer','Room','Bottles','Bill','Cash at Sale','Credit Added','Remarks'].map(x=><th key={x} style={{padding:8,textAlign:'left'}}>{x}</th>)}</tr></thead><tbody>{dailySales.map(x=>{const c=customers.find(y=>String(y.id)===String(x.customer_id));return <tr key={x.id}><td style={{padding:8}}>{c?.customer_name||'Deleted customer'}</td><td style={{padding:8}}>{c?.room_no||'—'}</td><td style={{padding:8}}>{x.bottles}</td><td style={{padding:8}}>{fmt(x.total_amount)}</td><td style={{padding:8}}>{fmt(x.cash_received)}</td><td style={{padding:8,color:'#b91c1c'}}>{fmt(Number(x.total_amount)-Number(x.cash_received))}</td><td style={{padding:8}}>{x.remarks||'—'}</td></tr>})}{!dailySales.length&&<tr><td colSpan="7" style={{padding:12}}>No daily entries.</td></tr>}</tbody></table></div></div>
+      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Water Sale Entry</h3><form onSubmit={addSale}><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={saleCustomer} onChange={e=>{setSaleCustomer(e.target.value);const c=customers.find(x=>String(x.id)===e.target.value);setSaleRate(c?String(c.rate):'')}} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false).map(c=><option key={c.id} value={c.id}>{c.room_no} · {c.customer_name}</option>)}</select></label><label>Total Bottles<input type="number" min="1" step="1" style={input} value={bottles} onChange={e=>setBottles(e.target.value)} required/></label><label>Rate / Bottle<input type="number" min="0.01" step="0.01" style={input} value={saleRate} onChange={e=>setSaleRate(e.target.value)} required/></label><label>Payment Type<select style={input} value={salePaymentType} onChange={e=>setSalePaymentType(e.target.value)}><option value="Cash">Cash</option><option value="Credit">Credit</option></select></label><label>Remarks<input style={input} value={saleRemarks} onChange={e=>setSaleRemarks(e.target.value)}/></label></div><div style={{marginTop:10,fontWeight:800}}>Bill: {fmt(Number(bottles||0)*Number(saleRate||0))} · {salePaymentType==='Cash'?'Cash Received':'Credit Added'}: {fmt(Number(bottles||0)*Number(saleRate||0))} · Available Stock: {currentStock}</div><button style={{...btn,marginTop:10}} disabled={!canAdd||busy}>Save Daily Entry</button></form></div>
+      {canAdd&&<form onSubmit={addPayment} style={panelCard}><h3 style={{marginTop:0}}>Receive Previous Customer Credit</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={payCustomer} onChange={e=>setPayCustomer(e.target.value)} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false&&customerStats(c).balance>0).map(c=><option key={c.id} value={c.id}>{c.room_no} · {c.customer_name} · Due {fmt(customerStats(c).balance)}</option>)}</select></label><label>Cash Received<input type="number" min="0.01" step="0.01" style={input} value={payAmount} onChange={e=>setPayAmount(e.target.value)} required/></label><label>Remarks<input style={input} value={payRemarks} onChange={e=>setPayRemarks(e.target.value)}/></label></div><button style={{...btn,marginTop:10}}>Receive Old Credit</button></form>}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}>{[['Daily Bill',dailyBilled],['Daily Cash',dailyCash],['Daily Credit Added',dailyCredit]].map(([l,v])=><div key={l} style={{...panelCard,margin:0}}><div style={{fontSize:12,color:'#64748b',fontWeight:700}}>{l}</div><div style={{fontSize:21,fontWeight:900}}>{fmt(v)}</div></div>)}</div>
+      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Activity · {day}</h3><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Customer','Room','Bottles','Bill','Payment Type','Credit','Remarks'].map(x=><th key={x} style={thStyle}>{x}</th>)}</tr></thead><tbody>{dailySales.map(x=>{const c=customers.find(y=>String(y.id)===String(x.customer_id));return <tr key={x.id}><td style={tdStyle}>{c?.customer_name||'Deleted customer'}</td><td style={tdStyle}>{c?.room_no||'—'}</td><td style={tdStyle}>{x.bottles}</td><td style={tdStyle}>{fmt(x.total_amount)}</td><td style={tdStyle}>{x.payment_mode||(Number(x.cash_received)>=Number(x.total_amount)?'Cash':'Credit')}</td><td style={tdStyle}>{fmt(Number(x.total_amount)-Number(x.cash_received))}</td><td style={tdStyle}>{x.remarks||'—'}</td></tr>})}{!dailySales.length&&<tr><td colSpan="7" style={tdStyle}>No daily entries.</td></tr>}</tbody></table></div><h4>Old Credit Received Today</h4>{dailyPayments.map(p=><div key={p.id} style={{padding:8,borderTop:'1px solid #eee'}}>{customers.find(c=>String(c.id)===String(p.customer_id))?.customer_name||'Customer'} · {fmt(p.amount)} · {p.remarks||'—'}</div>)}{!dailyPayments.length&&<small>No previous credit received today.</small>}</div>
     </>}
-    {tab==='payments' && <>
-      {canAdd&&<form onSubmit={addPayment} style={panelCard}><h3 style={{marginTop:0}}>💵 Receive Old / Current Credit</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={payCustomer} onChange={e=>setPayCustomer(e.target.value)} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false).map(c=><option key={c.id} value={c.id}>{c.room_no} · {c.customer_name}</option>)}</select></label><label>Cash Received<input type="number" min="0.01" step="0.01" style={input} value={payAmount} onChange={e=>setPayAmount(e.target.value)} required/></label><label>Remarks<input style={input} value={payRemarks} onChange={e=>setPayRemarks(e.target.value)}/></label></div><button style={{...btn,marginTop:10}}>Save Cash Received</button></form>}
-      <div style={panelCard}><h3 style={{marginTop:0}}>Cash Received Today · {day}</h3><div style={{fontSize:23,fontWeight:900,color:'#047857'}}>{fmt(dailyPayments.reduce((a,x)=>a+Number(x.amount||0),0))}</div>{dailyPayments.map(p=><div key={p.id} style={{padding:8,borderTop:'1px solid #eee'}}>{customers.find(c=>String(c.id)===String(p.customer_id))?.customer_name||'Customer'} · {fmt(p.amount)} · {p.remarks||'—'} · {p.received_by||''}</div>)}</div>
+    {tab==='company' && <>
+      <div style={{...panelCard,background:'#eff6ff'}}><h3 style={{marginTop:0}}>Company Stock & Account Summary</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}><div><small>Total Stock Received</small><h2>{totalStockIn} Bottles</h2></div><div><small>Total Bottles Sold</small><h2>{totalStockOut} Bottles</h2></div><div><small>Available Stock</small><h2 style={{color:currentStock<0?'#b91c1c':'#047857'}}>{currentStock} Bottles</h2></div><div><small>Total Company Bill</small><h2>{fmt(companyBillTotal)}</h2></div><div><small>Total Paid</small><h2 style={{color:'#047857'}}>{fmt(companyPaidAtDelivery+companyPaidLater)}</h2></div><div><small>Company Outstanding</small><h2 style={{color:'#b91c1c'}}>{fmt(companyOutstanding)}</h2></div></div></div>
+      {isAdmin&&<form onSubmit={addDelivery} style={panelCard}><h3 style={{marginTop:0}}>＋ Add Weekly Company Delivery / Opening Stock</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}><label>Entry Type<select style={input} value={deliveryType} onChange={e=>setDeliveryType(e.target.value)}><option value="weekly">Weekly Company Delivery</option><option value="opening">Opening Stock (existing bottles)</option></select></label><label>Delivery Date<input type="date" style={input} value={deliveryDate} onChange={e=>setDeliveryDate(e.target.value)} required/></label><label>Bottles Received<input type="number" min={deliveryType==='opening'?0:1} step="1" style={input} value={deliveryBottles} onChange={e=>setDeliveryBottles(e.target.value)} required/></label><label>Company Rate / Bottle (AED)<input type="number" min="0.01" step="0.01" style={input} value={companyRate} onChange={e=>setCompanyRate(e.target.value)} disabled={deliveryType==='opening'} required={deliveryType==='weekly'}/></label><label>Payment Type<select style={input} value={companyPaymentType} disabled={deliveryType==='opening'} onChange={e=>{setCompanyPaymentType(e.target.value);if(e.target.value==='Cash')setCompanyPaidNow('')}}><option value="Cash">Cash</option><option value="Credit">Credit</option></select></label><label>Paid Now (AED)<input type="number" min="0" step="0.01" style={input} value={companyPaidNow} disabled={deliveryType==='opening'} onChange={e=>setCompanyPaidNow(e.target.value)} placeholder={companyPaymentType==='Cash'?'Full bill by default':'0 = full credit'}/></label><label>Bill / Invoice No.<input style={input} value={companyBillNo} onChange={e=>setCompanyBillNo(e.target.value)}/></label><label>Remarks<input style={input} value={companyRemarks} onChange={e=>setCompanyRemarks(e.target.value)}/></label></div><div style={{marginTop:10,fontWeight:800}}>Company Bill: {fmt(deliveryType==='opening'?0:Number(deliveryBottles||0)*Number(companyRate||0))} · Unpaid: {fmt(deliveryType==='opening'?0:Math.max(0,Number(deliveryBottles||0)*Number(companyRate||0)-(companyPaymentType==='Cash'?(companyPaidNow===''?Number(deliveryBottles||0)*Number(companyRate||0):Number(companyPaidNow)):Number(companyPaidNow||0))))}</div><button style={{...btn,marginTop:10}}>Save Company Delivery & Add Stock</button></form>}
+      {isAdmin&&<form onSubmit={addCompanyPayment} style={panelCard}><h3 style={{marginTop:0}}>Pay Company Outstanding Bill</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}><label>Payment Date<input type="date" style={input} value={companyPayDate} onChange={e=>setCompanyPayDate(e.target.value)}/></label><label>Payment Amount<input type="number" min="0.01" step="0.01" style={input} value={companyPayAmount} onChange={e=>setCompanyPayAmount(e.target.value)} required/></label><label>Remarks / Bill Reference<input style={input} value={companyPayRemarks} onChange={e=>setCompanyPayRemarks(e.target.value)}/></label></div><div style={{marginTop:8}}>Current Company Outstanding: <b>{fmt(companyOutstanding)}</b></div><button style={{...btn,marginTop:10}}>Save Company Payment</button></form>}
+      <div style={panelCard}><h3 style={{marginTop:0}}>Company Delivery History</h3><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Date','Entry Type','Bottles In','Rate','Bill','Paid at Delivery','Payment Type','Bill No.','Unpaid'].map(x=><th key={x} style={thStyle}>{x}</th>)}</tr></thead><tbody>{deliveries.map(d=><tr key={d.id}><td style={tdStyle}>{d.delivery_date}</td><td style={tdStyle}>{d.delivery_type==='opening'?'Opening Stock':'Weekly Delivery'}</td><td style={tdStyle}>{d.bottles_received}</td><td style={tdStyle}>{fmt(d.company_rate)}</td><td style={tdStyle}>{fmt(d.bill_amount)}</td><td style={tdStyle}>{fmt(d.paid_amount)}</td><td style={tdStyle}>{d.payment_mode}</td><td style={tdStyle}>{d.bill_no||'—'}</td><td style={tdStyle}>{fmt(Number(d.bill_amount)-Number(d.paid_amount))}</td></tr>)}{!deliveries.length&&<tr><td colSpan="9" style={tdStyle}>Abhi company delivery record nahi.</td></tr>}</tbody></table></div></div>
+      <div style={panelCard}><h3 style={{marginTop:0}}>Company Payments History</h3>{companyPayments.map(p=><div key={p.id} style={{padding:8,borderTop:'1px solid #eee'}}>{p.payment_date} · {fmt(p.amount)} · {p.remarks||'Company bill payment'}</div>)}{!companyPayments.length&&<small>Abhi company ko payment record nahi hui.</small>}</div>
     </>}
     {tab==='monthly' && <>
       <div style={{...panelCard,display:'flex',gap:12,alignItems:'end',flexWrap:'wrap'}}><label>Month<input type="month" style={input} value={month} onChange={e=>setMonth(e.target.value)}/></label><label>Floor<select style={input} value={floor} onChange={e=>setFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></label><button style={btn} onClick={printRegister}>🖨️ Print Monthly Page</button><button style={{...btn,background:'#64748b'}} onClick={refresh}>Refresh</button></div>
-      <div id="water-month-register" style={{...panelCard}}><div style={{display:'none'}} className="business-print-brand"><h2>NDA.PK · Water Supply Monthly Collection</h2></div><h2 style={{textAlign:'center',margin:'4px 0'}}>WATER SUPPLY · MONTHLY COLLECTION</h2><h3 style={{textAlign:'center',margin:'4px 0'}}>{floor} · {month}</h3><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><thead><tr>{['Room No.','Customer Name','Rate','Total Bottles','Previous Balance','Current Bill','Cash Received','Total Due / Credit','Remarks','Signature'].map(x=><th style={{border:'1px solid #94a3b8',padding:7,textAlign:'left'}} key={x}>{x}</th>)}</tr></thead><tbody>{customers.filter(c=>c.floor===floor&&c.active!==false).map(c=>{const ss=floorMonthSales.filter(x=>String(x.customer_id)===String(c.id));const pp=floorMonthPayments.filter(x=>String(x.customer_id)===String(c.id));const qty=ss.reduce((a,x)=>a+Number(x.bottles||0),0);const bill=ss.reduce((a,x)=>a+Number(x.total_amount||0),0);const openingSales=sales.filter(x=>String(x.customer_id)===String(c.id)&&String(x.sale_date)<month+'-01').reduce((a,x)=>a+Number(x.total_amount||0)-Number(x.cash_received||0),0);const openingPayments=payments.filter(x=>String(x.customer_id)===String(c.id)&&String(x.payment_date)<month+'-01').reduce((a,x)=>a+Number(x.amount||0),0);const opening=Math.max(0,openingSales-openingPayments);const paid=ss.reduce((a,x)=>a+Number(x.cash_received||0),0)+pp.reduce((a,x)=>a+Number(x.amount||0),0);const due=Math.max(0,opening+bill-paid);return <tr key={c.id}><td style={{border:'1px solid #94a3b8',padding:7}}>{c.room_no}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{c.customer_name}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{Number(c.rate).toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{qty}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{opening.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{bill.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{paid.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{due.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{c.remarks||''}</td><td style={{border:'1px solid #94a3b8',padding:7,minWidth:65}}></td></tr>})}</tbody><tfoot><tr><td colSpan="3" style={{border:'1px solid #94a3b8',padding:7,fontWeight:800}}>TOTAL</td><td style={{border:'1px solid #94a3b8',padding:7}}>{floorMonthSales.reduce((a,x)=>a+Number(x.bottles||0),0)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{fmt(customers.filter(c=>c.floor===floor&&c.active!==false).reduce((a,c)=>a+Math.max(0,sales.filter(x=>String(x.customer_id)===String(c.id)&&String(x.sale_date)<month+'-01').reduce((b,x)=>b+Number(x.total_amount||0)-Number(x.cash_received||0),0)-payments.filter(x=>String(x.customer_id)===String(c.id)&&String(x.payment_date)<month+'-01').reduce((b,x)=>b+Number(x.amount||0),0)),0))}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{fmt(floorMonthSales.reduce((a,x)=>a+Number(x.total_amount||0),0))}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{fmt(floorMonthSales.reduce((a,x)=>a+Number(x.cash_received||0),0)+floorMonthPayments.reduce((a,x)=>a+Number(x.amount||0),0))}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{fmt(Math.max(0,customers.filter(c=>c.floor===floor&&c.active!==false).reduce((a,c)=>a+Math.max(0,sales.filter(x=>String(x.customer_id)===String(c.id)&&String(x.sale_date)<month+'-01').reduce((b,x)=>b+Number(x.total_amount||0)-Number(x.cash_received||0),0)-payments.filter(x=>String(x.customer_id)===String(c.id)&&String(x.payment_date)<month+'-01').reduce((b,x)=>b+Number(x.amount||0),0)),0)+floorMonthSales.reduce((a,x)=>a+Number(x.total_amount||0)-Number(x.cash_received||0),0)-floorMonthPayments.reduce((a,x)=>a+Number(x.amount||0),0)))}</td><td colSpan="2" style={{border:'1px solid #94a3b8',padding:7}}></td></tr></tfoot></table><div style={{display:'flex',justifyContent:'space-between',marginTop:28,fontSize:12}}><span>Cash Collected By: __________________</span><span>Checked By: __________________</span></div></div>
+      <div id="water-month-register" style={panelCard}><div style={{display:'none'}} className="business-print-brand"><h2>NDA.PK · Water Supply Monthly Collection</h2></div><h2 style={{textAlign:'center',margin:'4px 0'}}>WATER SUPPLY · MONTHLY COLLECTION</h2><h3 style={{textAlign:'center',margin:'4px 0'}}>{floor} · {month}</h3><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><thead><tr>{['Room No.','Customer Name','Rate','Total Bottles','Previous Balance','Current Bill','Cash Received','Total Due / Credit','Remarks','Signature'].map(x=><th style={{border:'1px solid #94a3b8',padding:7,textAlign:'left'}} key={x}>{x}</th>)}</tr></thead><tbody>{customers.filter(c=>c.floor===floor&&c.active!==false).map(c=>{const ss=floorMonthSales.filter(x=>String(x.customer_id)===String(c.id));const pp=floorMonthPayments.filter(x=>String(x.customer_id)===String(c.id));const qty=ss.reduce((a,x)=>a+Number(x.bottles||0),0);const bill=ss.reduce((a,x)=>a+Number(x.total_amount||0),0);const openingSales=sales.filter(x=>String(x.customer_id)===String(c.id)&&String(x.sale_date)<month+'-01').reduce((a,x)=>a+Number(x.total_amount||0)-Number(x.cash_received||0),0);const openingPayments=payments.filter(x=>String(x.customer_id)===String(c.id)&&String(x.payment_date)<month+'-01').reduce((a,x)=>a+Number(x.amount||0),0);const opening=Math.max(0,openingSales-openingPayments);const paid=ss.reduce((a,x)=>a+Number(x.cash_received||0),0)+pp.reduce((a,x)=>a+Number(x.amount||0),0);const due=Math.max(0,opening+bill-paid);return <tr key={c.id}><td style={{border:'1px solid #94a3b8',padding:7}}>{c.room_no}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{c.customer_name}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{Number(c.rate).toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{qty}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{opening.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{bill.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{paid.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{due.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{c.remarks||''}</td><td style={{border:'1px solid #94a3b8',padding:7,minWidth:65}}></td></tr>})}</tbody></table><div style={{display:'flex',justifyContent:'space-between',marginTop:28,fontSize:12}}><span>Cash Collected By: __________________</span><span>Checked By: __________________</span></div></div>
       <div style={{...panelCard,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:12}}><div><small>Total Bill (month)</small><h3>{fmt(floorMonthSales.reduce((a,x)=>a+Number(x.total_amount||0),0))}</h3></div><div><small>Cash Received (month)</small><h3 style={{color:'#047857'}}>{fmt(floorMonthSales.reduce((a,x)=>a+Number(x.cash_received||0),0)+floorMonthPayments.reduce((a,x)=>a+Number(x.amount||0),0))}</h3></div><div><small>Credit / Balance</small><h3 style={{color:'#b91c1c'}}>{fmt(Math.max(0,floorMonthSales.reduce((a,x)=>a+Number(x.total_amount||0)-Number(x.cash_received||0),0)-floorMonthPayments.reduce((a,x)=>a+Number(x.amount||0),0)))}</h3></div></div>
+      <div style={panelCard}><h3>Company Account · {month}</h3><p>Deliveries: {fmt(deliveryMonth.reduce((a,x)=>a+Number(x.bill_amount||0),0))} · Payments: {fmt(companyPaymentMonth.reduce((a,x)=>a+Number(x.amount||0),0))} · Current Outstanding: <b>{fmt(companyOutstanding)}</b></p></div>
     </>}
     {busy&&<div style={{padding:8,color:'#64748b'}}>Loading water records...</div>}
   </section>;
 }
-
-
 
 function PersonalNotebookPanel({ session, businessId, isAdmin }) {
   const [files, setFiles] = useState([]);
@@ -394,6 +451,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
 
   const admin = !!userRole?.is_admin;
   const can = (key) => admin || !!access?.[key];
+  const waterOnlyStaff = !admin && !!access?.can_view && !access?.can_view_daily && !access?.can_edit && !access?.can_delete && !access?.can_view_vehicles && !access?.can_manage_vehicles && !access?.can_view_workers && !access?.can_manage_workers && !access?.can_view_monthly && !access?.can_manage_access;
   const currentBusiness = businesses.find(b => String(b.id) === String(businessId));
   const isTransportBusiness = (currentBusiness?.business_kind || 'transport') === 'transport';
   const money = n => `${currency} ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -442,11 +500,14 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   function resolveFirstAllowedView(accRow, isAdminUser) {
     if (isAdminUser) return 'daily';
     if (!accRow) return 'daily';
+    const onlyWater = accRow.can_view && !accRow.can_view_daily && !accRow.can_edit && !accRow.can_delete && !accRow.can_view_vehicles && !accRow.can_manage_vehicles && !accRow.can_view_workers && !accRow.can_manage_workers && !accRow.can_view_monthly && !accRow.can_manage_access;
+    if (onlyWater) return 'water';
     if (accRow.can_view_daily || accRow.can_add || accRow.can_edit || accRow.can_delete) return 'daily';
     if (accRow.can_view_vehicles || accRow.can_manage_vehicles) return 'vehicles';
     if (accRow.can_view_monthly) return 'monthly';
     if (accRow.can_view_workers || accRow.can_manage_workers) return 'workers';
     if (accRow.can_manage_access) return 'access';
+    if (accRow.can_view) return 'water';
     return 'daily';
   }
 
@@ -477,7 +538,11 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
           .eq('active', true)
           .eq('can_view', true);
         if (ae) throw ae;
-        const rows = ar || [];
+        const allRows = ar || [];
+        const isWaterOnlyRow = r => r.can_view && !r.can_view_daily && !r.can_edit && !r.can_delete && !r.can_view_vehicles && !r.can_manage_vehicles && !r.can_view_workers && !r.can_manage_workers && !r.can_view_monthly && !r.can_manage_access;
+        const waterOnlyRows = allRows.filter(isWaterOnlyRow);
+        // If this login has any Water-only assignment, expose only those assigned Water business rows.
+        const rows = waterOnlyRows.length ? waterOnlyRows : allRows;
         setAccessRows(rows);
         setBusinesses(rows.map(r => r.business_profiles).filter(Boolean));
         const next = String(preferredId || businessId || rows[0]?.business_id || '');
@@ -486,12 +551,15 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
         setAccess(row);
         if (row) {
           setView(prev => {
-            const allowed =
-              (prev === 'daily' && (row.can_view_daily || row.can_add || row.can_edit || row.can_delete)) ||
-              (prev === 'vehicles' && (row.can_view_vehicles || row.can_manage_vehicles)) ||
-              (prev === 'workers' && (row.can_view_workers || row.can_manage_workers)) ||
-              (prev === 'monthly' && row.can_view_monthly) ||
-              (prev === 'access' && row.can_manage_access);
+            const onlyWater = row.can_view && !row.can_view_daily && !row.can_edit && !row.can_delete && !row.can_view_vehicles && !row.can_manage_vehicles && !row.can_view_workers && !row.can_manage_workers && !row.can_view_monthly && !row.can_manage_access;
+            const allowed = onlyWater
+              ? prev === 'water'
+              : (prev === 'daily' && (row.can_view_daily || row.can_add || row.can_edit || row.can_delete)) ||
+                (prev === 'vehicles' && (row.can_view_vehicles || row.can_manage_vehicles)) ||
+                (prev === 'workers' && (row.can_view_workers || row.can_manage_workers)) ||
+                (prev === 'monthly' && row.can_view_monthly) ||
+                (prev === 'access' && row.can_manage_access) ||
+                (prev === 'water' && row.can_view);
             return allowed ? prev : resolveFirstAllowedView(row, false);
           });
         }
@@ -505,6 +573,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
 
   async function loadBusinessData(id = businessId) {
     if (!id) return;
+    if (waterOnlyStaff) { setVehicles([]); setPeople([]); setEntries([]); return; }
     setLoading(true);
     try {
       const [v, p, e] = await Promise.all([
@@ -858,6 +927,12 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
         can_view_vehicles: true, can_manage_vehicles: false, can_view_workers: false,
         can_manage_workers: false, can_view_monthly: true, can_manage_access: false
       });
+    } else if (preset === 'water_only') {
+      setAccessFlags({
+        can_view: true, can_view_daily: false, can_add: true, can_edit: false, can_delete: false,
+        can_view_vehicles: false, can_manage_vehicles: false, can_view_workers: false,
+        can_manage_workers: false, can_view_monthly: false, can_manage_access: false
+      });
     }
   }
 
@@ -914,7 +989,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const panelTitle = currentBusiness?.name || 'Business Management';
 
   const navTabs = [
-    (admin || access?.can_view_daily || can('can_add') || can('can_edit') || can('can_delete')) && { id: 'daily', icon: '📝', label: 'Daily Entry' },
+    (admin || access?.can_view_daily || (!waterOnlyStaff && (can('can_add') || can('can_edit') || can('can_delete')))) && { id: 'daily', icon: '📝', label: 'Daily Entry' },
     (admin || access?.can_view_vehicles || can('can_manage_vehicles')) && { id: 'vehicles', icon: '🚚', label: 'Vehicle Files' },
     (admin || access?.can_view_monthly) && { id: 'monthly', icon: '📊', label: 'Monthly Sheet' },
     (admin || access?.can_view || can('can_add')) && { id: 'water', icon: '💧', label: 'Water Supply' },
@@ -969,7 +1044,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={onSwitchSystem} style={{ ...btn, background: '#fff', color: '#065f46' }}>← Switch System</button>
+          {!waterOnlyStaff && <button onClick={onSwitchSystem} style={{ ...btn, background: '#fff', color: '#065f46' }}>← Switch System</button>}
           <button onClick={onLogout} style={{ ...btn, background: '#b91c1c' }}>Logout</button>
         </div>
       </header>
@@ -1121,7 +1196,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
               </div>
 
               {/* 1. DAILY ENTRY & LEDGER */}
-              {view === 'daily' && (admin || access?.can_view_daily || can('can_add') || can('can_edit') || can('can_delete')) && (
+              {view === 'daily' && (admin || access?.can_view_daily || (!waterOnlyStaff && (can('can_add') || can('can_edit') || can('can_delete')))) && (
                 <>
                   {/* Color-Coded Summary Cards */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(165px,1fr))', gap: 10, marginBottom: 14 }}>
@@ -1696,6 +1771,9 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                         <button type="button" onClick={() => applyStaffPreset('view_only')} style={{ ...btn, background: '#475569', padding: '8px 12px', fontSize: 12 }}>
                           👁️ View Only
                         </button>
+                        <button type="button" onClick={() => applyStaffPreset('water_only')} style={{ ...btn, background: '#0f766e', padding: '8px 12px', fontSize: 12 }}>
+                          💧 Water Supply Only
+                        </button>
                       </div>
                     </div>
 
@@ -1752,18 +1830,20 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                             <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9', fontWeight: 700 }}>{r.user_email}</td>
                             <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9' }}>{r.business_profiles?.name || businesses.find(b => String(b.id) === String(r.business_id))?.name || `Business #${r.business_id}`}</td>
                             <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9', maxWidth: 340, whiteSpace: 'normal' }}>
-                              {[
-                                r.can_view_daily && 'View Daily',
-                                r.can_add && 'Add Entry',
-                                r.can_edit && 'Edit',
-                                r.can_delete && 'Delete',
-                                r.can_view_vehicles && 'View Vehicles',
-                                r.can_manage_vehicles && 'Manage Vehicles',
-                                r.can_view_workers && 'View Drivers',
-                                r.can_manage_workers && 'Manage Drivers',
-                                r.can_view_monthly && 'Monthly Sheet',
-                                r.can_manage_access && 'Staff Access'
-                              ].filter(Boolean).join(' · ') || 'Login Only'}
+                              {r.can_view && !r.can_view_daily && !r.can_edit && !r.can_delete && !r.can_view_vehicles && !r.can_manage_vehicles && !r.can_view_workers && !r.can_manage_workers && !r.can_view_monthly && !r.can_manage_access
+                                ? 'Water Supply Only'
+                                : ([
+                                  r.can_view_daily && 'View Daily',
+                                  r.can_add && 'Add Entry',
+                                  r.can_edit && 'Edit',
+                                  r.can_delete && 'Delete',
+                                  r.can_view_vehicles && 'View Vehicles',
+                                  r.can_manage_vehicles && 'Manage Vehicles',
+                                  r.can_view_workers && 'View Drivers',
+                                  r.can_manage_workers && 'Manage Drivers',
+                                  r.can_view_monthly && 'Monthly Sheet',
+                                  r.can_manage_access && 'Staff Access'
+                                ].filter(Boolean).join(' · ') || 'Login Only')}
                             </td>
                             <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9', fontWeight: 700, color: r.active ? '#15803d' : '#b91c1c' }}>
                               {r.active ? 'Active' : 'Disabled'}
