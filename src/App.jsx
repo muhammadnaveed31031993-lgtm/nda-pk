@@ -163,6 +163,7 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
     return { total, paid: paidAtSale + laterPaid, balance: Math.max(0,total-paidAtSale-laterPaid) };
   };
   const visibleCustomers = customers.filter(c => showInactive || c.active !== false);
+  const floorCustomers = visibleCustomers.filter(c => c.floor === floor);
   const monthSales = sales.filter(x => String(x.sale_date || '').slice(0,7) === month);
   const monthPayments = payments.filter(x => String(x.payment_date || '').slice(0,7) === month);
   const floorIds = new Set(customers.filter(c => c.floor === floor).map(c => String(c.id)));
