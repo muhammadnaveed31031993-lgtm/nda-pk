@@ -91,6 +91,243 @@ function shiftPayrollDateOneMonth(dateText) {
   return `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
 }
 
+function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [customers, setCustomers] = useState([]);
+  const [sales, setSales] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [floor, setFloor] = useState('Ground Floor');
+  const [month, setMonth] = useState(today.slice(0, 7));
+  const [day, setDay] = useState(today);
+  const [tab, setTab] = useState('customers');
+  const [name, setName] = useState('');
+  const [room, setRoom] = useState('');
+  const [customerFloor, setCustomerFloor] = useState('Ground Floor');
+  const [rate, setRate] = useState('6');
+  const [customerRemarks, setCustomerRemarks] = useState('');
+  const [saleCustomer, setSaleCustomer] = useState('');
+  const [bottles, setBottles] = useState('');
+  const [saleRate, setSaleRate] = useState('');
+  const [saleCash, setSaleCash] = useState('');
+  const [saleRemarks, setSaleRemarks] = useState('');
+  const [payCustomer, setPayCustomer] = useState('');
+  const [payAmount, setPayAmount] = useState('');
+  const [payRemarks, setPayRemarks] = useState('');
+  const [showInactive, setShowInactive] = useState(false);
+  const [errorText, setErrorText] = useState('');
+  const currency = 'AED';
+  const fmt = n => `${currency} ${Number(n || 0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+
+  async function refresh() {
+    setBusy(true); setErrorText('');
+    try {
+      const [c,s,p] = await Promise.all([
+        supabase.from('water_customers').select('*').eq('business_id',businessId).order('floor').order('room_no'),
+        supabase.from('water_sales').select('*').eq('business_id',businessId).order('sale_date',{ascending:false}),
+        supabase.from('water_payments').select('*').eq('business_id',businessId).order('payment_date',{ascending:false})
+      ]);
+      if (c.error) throw c.error; if (s.error) throw s.error; if (p.error) throw p.error;
+      setCustomers(c.data || []); setSales(s.data || []); setPayments(p.data || []);
+    } catch(e) { setErrorText(e?.message || String(e)); }
+    finally { setBusy(false); }
+  }
+  useEffect(() => { if (businessId) void refresh(); }, [businessId]);
+
+  const customerStats = customer => {
+    const cs = sales.filter(x => String(x.customer_id) === String(customer.id));
+    const ps = payments.filter(x => String(x.customer_id) === String(customer.id));
+    const total = cs.reduce((a,x) => a + Number(x.total_amount || 0), 0);
+    const paidAtSale = cs.reduce((a,x) => a + Number(x.cash_received || 0), 0);
+    const laterPaid = ps.reduce((a,x) => a + Number(x.amount || 0), 0);
+    return { total, paid: paidAtSale + laterPaid, balance: Math.max(0,total-paidAtSale-laterPaid) };
+  };
+  const visibleCustomers = customers.filter(c => showInactive || c.active !== false);
+  const floorCustomers = visibleCustomers.filter(c => c.floor === floor);
+  const monthSales = sales.filter(x => String(x.sale_date || '').slice(0,7) === month);
+  const monthPayments = payments.filter(x => String(x.payment_date || '').slice(0,7) === month);
+  const floorIds = new Set(customers.filter(c => c.floor === floor).map(c => String(c.id)));
+  const floorMonthSales = monthSales.filter(x => floorIds.has(String(x.customer_id)));
+  const floorMonthPayments = monthPayments.filter(x => floorIds.has(String(x.customer_id)));
+  const dailySales = sales.filter(x => x.sale_date === day);
+  const dailyPayments = payments.filter(x => x.payment_date === day);
+  const dailyCash = dailySales.reduce((a,x)=>a+Number(x.cash_received||0),0) + dailyPayments.reduce((a,x)=>a+Number(x.amount||0),0);
+  const dailyBilled = dailySales.reduce((a,x)=>a+Number(x.total_amount||0),0);
+  const dailyCredit = dailySales.reduce((a,x)=>a+Math.max(0,Number(x.total_amount||0)-Number(x.cash_received||0)),0);
+
+  async function addCustomer(e) {
+    e.preventDefault();
+    if (!canAdd) return alert('Aapko customer add karne ki permission nahi hai.');
+    if (!name.trim() || !room.trim() || !(Number(rate)>0)) return alert('Customer name, room number aur valid rate enter karein.');
+    const {error} = await supabase.from('water_customers').insert([{business_id:Number(businessId),customer_name:name.trim(),room_no:room.trim(),floor:customerFloor,rate:Number(rate),currency,remarks:customerRemarks.trim(),active:true,created_by:session?.user?.email||''}]);
+    if(error) return alert('Customer save nahi hua: '+error.message);
+    setName('');setRoom('');setRate('6');setCustomerRemarks('');await refresh();
+  }
+  async function addSale(e) {
+    e.preventDefault();
+    if (!canAdd) return alert('Aapko daily entry ki permission nahi hai.');
+    const c=customers.find(x=>String(x.id)===String(saleCustomer)); const qty=Number(bottles); const r=Number(saleRate || c?.rate); const cash=Number(saleCash||0);
+    if(!c||!day||!Number.isInteger(qty)||qty<=0||!(r>0)||cash<0||cash>qty*r) return alert('Customer, date, bottles, rate aur cash amount sahi enter karein.');
+    const {error}=await supabase.from('water_sales').insert([{business_id:Number(businessId),customer_id:c.id,sale_date:day,bottles:qty,rate:r,total_amount:qty*r,cash_received:cash,remarks:saleRemarks.trim(),created_by:session?.user?.email||''}]);
+    if(error)return alert('Daily water entry save nahi hui: '+error.message);
+    setBottles('');setSaleCash('');setSaleRemarks('');await refresh();alert('Daily water entry save ho gayi.');
+  }
+  async function addPayment(e) {
+    e.preventDefault();
+    if(!canAdd)return alert('Aapko payment entry ki permission nahi hai.');
+    const c=customers.find(x=>String(x.id)===String(payCustomer));const amount=Number(payAmount);
+    if(!c||!day||!(amount>0))return alert('Customer, date aur payment amount sahi enter karein.');
+    const {error}=await supabase.from('water_payments').insert([{business_id:Number(businessId),customer_id:c.id,payment_date:day,amount,currency,remarks:payRemarks.trim(),received_by:session?.user?.email||''}]);
+    if(error)return alert('Cash received save nahi hua: '+error.message);
+    setPayAmount('');setPayRemarks('');await refresh();alert('Cash received save ho gaya.');
+  }
+  async function deleteCustomer(c) {
+    if(!canDelete)return alert('Customer delete karne ki permission nahi hai.');
+    const [sr,pr]=await Promise.all([
+      supabase.from('water_sales').select('id',{count:'exact',head:true}).eq('customer_id',c.id),
+      supabase.from('water_payments').select('id',{count:'exact',head:true}).eq('customer_id',c.id)
+    ]);
+    if(sr.error||pr.error)return alert('Customer history check nahi ho saki. Delete nahi kiya gaya.');
+    const history=Number(sr.count||0)+Number(pr.count||0);
+    if(history>0){
+      if(!window.confirm(`${c.customer_name} (Room ${c.room_no}) ki ${history} sales/payment history mojood hai. Purana hisaab safe rakhne ke liye customer ko sirf inactive kiya jayega, history delete nahi hogi. Continue?`))return;
+      const {error}=await supabase.from('water_customers').update({active:false}).eq('id',c.id).eq('business_id',businessId);
+      if(error)return alert('Customer inactive nahi hua: '+error.message);
+      alert('Customer inactive ho gaya. Uski purani sales aur payments safe hain.');
+    } else {
+      if(!window.confirm(`${c.customer_name} (Room ${c.room_no}) ka koi purana record nahi. Permanently delete karna hai?`))return;
+      const {error}=await supabase.from('water_customers').delete().eq('id',c.id).eq('business_id',businessId);
+      if(error)return alert('Customer delete nahi hua: '+error.message);
+    }
+    await refresh();
+  }
+  async function toggleCustomer(c) {
+    if(!canDelete)return alert('Customer status change karne ki permission nahi hai.');
+    const {error}=await supabase.from('water_customers').update({active:!c.active}).eq('id',c.id).eq('business_id',businessId);
+    if(error)return alert('Status update nahi hua: '+error.message); await refresh();
+  }
+  const panelCard={background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:14,marginBottom:12};
+  const input={width:'100%',boxSizing:'border-box',padding:10,border:'1px solid #cbd5e1',borderRadius:8};
+  const btn={padding:'10px 13px',border:0,borderRadius:8,background:'#047857',color:'#fff',fontWeight:800,cursor:'pointer'};
+  const printRegister = () => { if(!isAdmin)return alert('Print permission sirf Admin ko hai.'); printNdaPage('water-month-register',true); };
+  return <section>
+    <div style={{...panelCard,background:'#ecfdf5',borderColor:'#a7f3d0'}}><h2 style={{margin:'0 0 5px',color:'#065f46'}}>💧 Water Supply Management</h2><div style={{fontSize:13,color:'#475569'}}>Customer khata · Daily cash & credit · Monthly floor-wise collection</div></div>
+    {errorText && <div style={{...panelCard,color:'#991b1b',background:'#fef2f2'}}>Database error: {errorText}<p style={{marginBottom:0}}>Supabase mein Water Supply SQL setup run karna zaroori hai.</p></div>}
+    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>{[['customers','👥 Customers'],['daily','🧾 Daily Entry'],['payments','💵 Cash Received'],['monthly','📄 Monthly Print']].map(([id,label])=><button key={id} style={{...btn,background:tab===id?'#065f46':'#64748b'}} onClick={()=>setTab(id)}>{label}</button>)}</div>
+    {tab==='customers' && <>
+      {canAdd && <form onSubmit={addCustomer} style={panelCard}><h3 style={{marginTop:0}}>➕ Add Water Customer</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}>
+        <label>Customer Name<input style={input} value={name} onChange={e=>setName(e.target.value)} required/></label><label>Room Number<input style={input} value={room} onChange={e=>setRoom(e.target.value)} placeholder="G-01 / 101" required/></label><label>Floor<select style={input} value={customerFloor} onChange={e=>setCustomerFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></label><label>Rate per Bottle (AED)<input style={input} type="number" min="0.01" step="0.01" value={rate} onChange={e=>setRate(e.target.value)} required/></label><label style={{gridColumn:'1/-1'}}>Remarks<input style={input} value={customerRemarks} onChange={e=>setCustomerRemarks(e.target.value)}/></label></div><button style={{...btn,marginTop:12}}>Save Customer</button></form>}
+      <div style={panelCard}><div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap',alignItems:'center'}}><h3 style={{margin:0}}>Customer List</h3><div><select style={{...input,width:'auto'}} value={floor} onChange={e=>setFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select> <label style={{fontSize:12}}><input type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)}/> Show inactive</label></div></div>
+      <div style={{overflowX:'auto',marginTop:10}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Room','Customer','Rate','Total Bill','Received','Credit','Remarks','Action'].map(x=><th key={x} style={{padding:8,textAlign:'left',borderBottom:'1px solid #cbd5e1'}}>{x}</th>)}</tr></thead><tbody>{floorCustomers.map(c=>{const st=customerStats(c);return <tr key={c.id}><td style={{padding:8,borderBottom:'1px solid #eee'}}>{c.room_no}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{c.customer_name}{!c.active&&' (Inactive)'}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{fmt(c.rate)}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{fmt(st.total)}</td><td style={{padding:8,borderBottom:'1px solid #eee',color:'#047857'}}>{fmt(st.paid)}</td><td style={{padding:8,borderBottom:'1px solid #eee',color:'#b91c1c'}}>{fmt(st.balance)}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{c.remarks||'—'}</td><td style={{padding:8,borderBottom:'1px solid #eee',whiteSpace:'nowrap'}}>{canDelete&&<><button style={{...btn,background:'#b45309',marginRight:5}} onClick={()=>toggleCustomer(c)}>{c.active?'Inactive':'Activate'}</button><button style={{...btn,background:'#b91c1c'}} onClick={()=>deleteCustomer(c)}>Delete</button></>}</td></tr>})}{!floorCustomers.length&&<tr><td colSpan="8" style={{padding:14,textAlign:'center',color:'#64748b'}}>Is floor par koi customer nahi.</td></tr>}</tbody></table></div></div>
+    </>}
+    {tab==='daily' && <>
+      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Water Sale / Udhaar Entry</h3><form onSubmit={addSale}><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={saleCustomer} onChange={e=>{setSaleCustomer(e.target.value);const c=customers.find(x=>String(x.id)===e.target.value);setSaleRate(c?String(c.rate):'')}} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false).map(c=><option key={c.id} value={c.id}>{c.room_no} · {c.customer_name}</option>)}</select></label><label>Total Bottles<input type="number" min="1" step="1" style={input} value={bottles} onChange={e=>setBottles(e.target.value)} required/></label><label>Rate / Bottle<input type="number" min="0.01" step="0.01" style={input} value={saleRate} onChange={e=>setSaleRate(e.target.value)} required/></label><label>Cash Received Now<input type="number" min="0" step="0.01" style={input} value={saleCash} onChange={e=>setSaleCash(e.target.value)} placeholder="0 = full credit"/></label><label>Remarks<input style={input} value={saleRemarks} onChange={e=>setSaleRemarks(e.target.value)}/></label></div><div style={{marginTop:10,fontWeight:800}}>Bill: {fmt(Number(bottles||0)*Number(saleRate||0))} · Credit: {fmt(Math.max(0,Number(bottles||0)*Number(saleRate||0)-Number(saleCash||0)))}</div><button style={{...btn,marginTop:10}} disabled={!canAdd}>Save Daily Entry</button></form></div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}>{[['Daily Bill',dailyBilled],['Daily Cash',dailyCash],['Daily Credit Added',dailyCredit],['Daily Cash + Credit',dailyBilled]].map(([l,v])=><div key={l} style={{...panelCard,margin:0}}><div style={{fontSize:12,color:'#64748b',fontWeight:700}}>{l}</div><div style={{fontSize:21,fontWeight:900}}>{fmt(v)}</div></div>)}</div>
+      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Activity · {day}</h3><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Customer','Room','Bottles','Bill','Cash at Sale','Credit Added','Remarks'].map(x=><th key={x} style={{padding:8,textAlign:'left'}}>{x}</th>)}</tr></thead><tbody>{dailySales.map(x=>{const c=customers.find(y=>String(y.id)===String(x.customer_id));return <tr key={x.id}><td style={{padding:8}}>{c?.customer_name||'Deleted customer'}</td><td style={{padding:8}}>{c?.room_no||'—'}</td><td style={{padding:8}}>{x.bottles}</td><td style={{padding:8}}>{fmt(x.total_amount)}</td><td style={{padding:8}}>{fmt(x.cash_received)}</td><td style={{padding:8,color:'#b91c1c'}}>{fmt(Number(x.total_amount)-Number(x.cash_received))}</td><td style={{padding:8}}>{x.remarks||'—'}</td></tr>})}{!dailySales.length&&<tr><td colSpan="7" style={{padding:12}}>No daily entries.</td></tr>}</tbody></table></div></div>
+    </>}
+    {tab==='payments' && <>
+      {canAdd&&<form onSubmit={addPayment} style={panelCard}><h3 style={{marginTop:0}}>💵 Receive Old / Current Credit</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={payCustomer} onChange={e=>setPayCustomer(e.target.value)} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false).map(c=><option key={c.id} value={c.id}>{c.room_no} · {c.customer_name}</option>)}</select></label><label>Cash Received<input type="number" min="0.01" step="0.01" style={input} value={payAmount} onChange={e=>setPayAmount(e.target.value)} required/></label><label>Remarks<input style={input} value={payRemarks} onChange={e=>setPayRemarks(e.target.value)}/></label></div><button style={{...btn,marginTop:10}}>Save Cash Received</button></form>}
+      <div style={panelCard}><h3 style={{marginTop:0}}>Cash Received Today · {day}</h3><div style={{fontSize:23,fontWeight:900,color:'#047857'}}>{fmt(dailyPayments.reduce((a,x)=>a+Number(x.amount||0),0))}</div>{dailyPayments.map(p=><div key={p.id} style={{padding:8,borderTop:'1px solid #eee'}}>{customers.find(c=>String(c.id)===String(p.customer_id))?.customer_name||'Customer'} · {fmt(p.amount)} · {p.remarks||'—'} · {p.received_by||''}</div>)}</div>
+    </>}
+    {tab==='monthly' && <>
+      <div style={{...panelCard,display:'flex',gap:12,alignItems:'end',flexWrap:'wrap'}}><label>Month<input type="month" style={input} value={month} onChange={e=>setMonth(e.target.value)}/></label><label>Floor<select style={input} value={floor} onChange={e=>setFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></label><button style={btn} onClick={printRegister}>🖨️ Print Monthly Page</button><button style={{...btn,background:'#64748b'}} onClick={refresh}>Refresh</button></div>
+      <div id="water-month-register" style={{...panelCard}}><div style={{display:'none'}} className="business-print-brand"><h2>NDA.PK · Water Supply Monthly Collection</h2></div><h2 style={{textAlign:'center',margin:'4px 0'}}>WATER SUPPLY · MONTHLY COLLECTION</h2><h3 style={{textAlign:'center',margin:'4px 0'}}>{floor} · {month}</h3><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><thead><tr>{['Room No.','Customer Name','Rate','Total Bottles','Previous Balance','Current Bill','Cash Received','Total Due / Credit','Remarks','Signature'].map(x=><th style={{border:'1px solid #94a3b8',padding:7,textAlign:'left'}} key={x}>{x}</th>)}</tr></thead><tbody>{customers.filter(c=>c.floor===floor&&c.active!==false).map(c=>{const ss=floorMonthSales.filter(x=>String(x.customer_id)===String(c.id));const pp=floorMonthPayments.filter(x=>String(x.customer_id)===String(c.id));const qty=ss.reduce((a,x)=>a+Number(x.bottles||0),0);const bill=ss.reduce((a,x)=>a+Number(x.total_amount||0),0);const openingSales=sales.filter(x=>String(x.customer_id)===String(c.id)&&String(x.sale_date)<month+'-01').reduce((a,x)=>a+Number(x.total_amount||0)-Number(x.cash_received||0),0);const openingPayments=payments.filter(x=>String(x.customer_id)===String(c.id)&&String(x.payment_date)<month+'-01').reduce((a,x)=>a+Number(x.amount||0),0);const opening=Math.max(0,openingSales-openingPayments);const paid=ss.reduce((a,x)=>a+Number(x.cash_received||0),0)+pp.reduce((a,x)=>a+Number(x.amount||0),0);const due=Math.max(0,opening+bill-paid);return <tr key={c.id}><td style={{border:'1px solid #94a3b8',padding:7}}>{c.room_no}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{c.customer_name}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{Number(c.rate).toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{qty}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{opening.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{bill.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{paid.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{due.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{c.remarks||''}</td><td style={{border:'1px solid #94a3b8',padding:7,minWidth:65}}></td></tr>})}</tbody><tfoot><tr><td colSpan="3" style={{border:'1px solid #94a3b8',padding:7,fontWeight:800}}>TOTAL</td><td style={{border:'1px solid #94a3b8',padding:7}}>{floorMonthSales.reduce((a,x)=>a+Number(x.bottles||0),0)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{fmt(customers.filter(c=>c.floor===floor&&c.active!==false).reduce((a,c)=>a+Math.max(0,sales.filter(x=>String(x.customer_id)===String(c.id)&&String(x.sale_date)<month+'-01').reduce((b,x)=>b+Number(x.total_amount||0)-Number(x.cash_received||0),0)-payments.filter(x=>String(x.customer_id)===String(c.id)&&String(x.payment_date)<month+'-01').reduce((b,x)=>b+Number(x.amount||0),0)),0))}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{fmt(floorMonthSales.reduce((a,x)=>a+Number(x.total_amount||0),0))}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{fmt(floorMonthSales.reduce((a,x)=>a+Number(x.cash_received||0),0)+floorMonthPayments.reduce((a,x)=>a+Number(x.amount||0),0))}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{fmt(Math.max(0,customers.filter(c=>c.floor===floor&&c.active!==false).reduce((a,c)=>a+Math.max(0,sales.filter(x=>String(x.customer_id)===String(c.id)&&String(x.sale_date)<month+'-01').reduce((b,x)=>b+Number(x.total_amount||0)-Number(x.cash_received||0),0)-payments.filter(x=>String(x.customer_id)===String(c.id)&&String(x.payment_date)<month+'-01').reduce((b,x)=>b+Number(x.amount||0),0)),0)+floorMonthSales.reduce((a,x)=>a+Number(x.total_amount||0)-Number(x.cash_received||0),0)-floorMonthPayments.reduce((a,x)=>a+Number(x.amount||0),0)))}</td><td colSpan="2" style={{border:'1px solid #94a3b8',padding:7}}></td></tr></tfoot></table><div style={{display:'flex',justifyContent:'space-between',marginTop:28,fontSize:12}}><span>Cash Collected By: __________________</span><span>Checked By: __________________</span></div></div>
+      <div style={{...panelCard,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:12}}><div><small>Total Bill (month)</small><h3>{fmt(floorMonthSales.reduce((a,x)=>a+Number(x.total_amount||0),0))}</h3></div><div><small>Cash Received (month)</small><h3 style={{color:'#047857'}}>{fmt(floorMonthSales.reduce((a,x)=>a+Number(x.cash_received||0),0)+floorMonthPayments.reduce((a,x)=>a+Number(x.amount||0),0))}</h3></div><div><small>Credit / Balance</small><h3 style={{color:'#b91c1c'}}>{fmt(Math.max(0,floorMonthSales.reduce((a,x)=>a+Number(x.total_amount||0)-Number(x.cash_received||0),0)-floorMonthPayments.reduce((a,x)=>a+Number(x.amount||0),0)))}</h3></div></div>
+    </>}
+    {busy&&<div style={{padding:8,color:'#64748b'}}>Loading water records...</div>}
+  </section>;
+}
+
+
+
+function PersonalNotebookPanel({ session, businessId, isAdmin }) {
+  const [files, setFiles] = useState([]);
+  const [activeFileId, setActiveFileId] = useState('');
+  const [entries, setEntries] = useState([]);
+  const [newFileName, setNewFileName] = useState('');
+  const [newFileCurrency, setNewFileCurrency] = useState('AED');
+  const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0,10));
+  const [entryType, setEntryType] = useState('income');
+  const [entryAmount, setEntryAmount] = useState('');
+  const [entryDetails, setEntryDetails] = useState('');
+  const [entryNotes, setEntryNotes] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errorText, setErrorText] = useState('');
+  const activeFile = files.find(f => String(f.id) === String(activeFileId));
+  const currency = activeFile?.currency || 'AED';
+  const fmt = n => `${currency} ${Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+
+  async function loadFiles(preferred) {
+    if (!businessId) return;
+    setLoading(true); setErrorText('');
+    const {data,error} = await supabase.from('business_notebook_files').select('*').eq('business_id',businessId).order('created_at',{ascending:true});
+    if (error) { setErrorText(error.message); setLoading(false); return; }
+    const rows=data||[]; setFiles(rows);
+    const next=String(preferred === '' ? (rows[0]?.id || '') : (preferred||activeFileId||rows[0]?.id||'')); setActiveFileId(next);
+    setLoading(false);
+  }
+  async function loadEntries(fileId=activeFileId) {
+    if (!fileId) { setEntries([]); return; }
+    const {data,error}=await supabase.from('business_notebook_entries').select('*').eq('file_id',fileId).order('entry_date',{ascending:false}).order('created_at',{ascending:false});
+    if(error){setErrorText(error.message);return;} setEntries(data||[]);
+  }
+  useEffect(()=>{ if(businessId) void loadFiles(); },[businessId]);
+  useEffect(()=>{ if(activeFileId) void loadEntries(activeFileId); else setEntries([]); },[activeFileId]);
+
+  async function createFile(e) {
+    e.preventDefault(); if(!isAdmin) return;
+    if(!newFileName.trim()) return alert('File ka naam likhein.');
+    const {data,error}=await supabase.from('business_notebook_files').insert([{business_id:Number(businessId),file_name:newFileName.trim(),currency:newFileCurrency,owner_email:session?.user?.email||'',created_by:session?.user?.email||''}]).select('*').single();
+    if(error) return alert('Notebook file save nahi hui: '+error.message);
+    setNewFileName(''); await loadFiles(data.id); setActiveFileId(String(data.id));
+  }
+  async function addEntry(e) {
+    e.preventDefault(); if(!isAdmin) return;
+    const value=Number(entryAmount); if(!activeFileId||!entryDate||!Number.isFinite(value)||value<=0||!entryDetails.trim()) return alert('Date, details aur valid amount enter karein.');
+    const {error}=await supabase.from('business_notebook_entries').insert([{file_id:Number(activeFileId),business_id:Number(businessId),entry_date:entryDate,entry_type:entryType,amount:value,details:entryDetails.trim(),notes:entryNotes.trim(),created_by:session?.user?.email||''}]);
+    if(error) return alert('Entry save nahi hui: '+error.message);
+    setEntryAmount('');setEntryDetails('');setEntryNotes('');await loadEntries();
+  }
+  async function editEntry(row) {
+    if(!isAdmin) return;
+    const d=window.prompt('Date (YYYY-MM-DD)',row.entry_date); if(d===null)return;
+    const details=window.prompt('Details',row.details||''); if(details===null)return;
+    const amount=Number(window.prompt('Amount',String(row.amount))); if(!Number.isFinite(amount)||amount<=0)return alert('Valid amount enter karein.');
+    const notes=window.prompt('Remarks / Notes',row.notes||''); if(notes===null)return;
+    const {error}=await supabase.from('business_notebook_entries').update({entry_date:d,details,amount,notes}).eq('id',row.id).eq('file_id',Number(activeFileId));
+    if(error)return alert(error.message); await loadEntries();
+  }
+  async function deleteEntry(row) {
+    if(!isAdmin||!window.confirm('Is notebook entry ko permanently delete karna hai?'))return;
+    const {error}=await supabase.from('business_notebook_entries').delete().eq('id',row.id).eq('file_id',Number(activeFileId));
+    if(error)return alert(error.message); await loadEntries();
+  }
+  async function deleteFile() {
+    if(!isAdmin||!activeFile)return;
+    if(!window.confirm(`"${activeFile.file_name}" aur iski tamam entries permanently delete karni hain?`))return;
+    const {error}=await supabase.from('business_notebook_files').delete().eq('id',Number(activeFileId)).eq('business_id',Number(businessId));
+    if(error)return alert(error.message); setActiveFileId(''); await loadFiles('');
+  }
+  const received=entries.filter(x=>x.entry_type==='income').reduce((a,x)=>a+Number(x.amount||0),0);
+  const spent=entries.filter(x=>x.entry_type==='expense').reduce((a,x)=>a+Number(x.amount||0),0);
+  const balance=received-spent;
+  const panel={background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:14,marginBottom:12};
+  const input={width:'100%',boxSizing:'border-box',padding:10,border:'1px solid #cbd5e1',borderRadius:8};
+  return <section style={{background:'#f8fafc',borderRadius:14,padding:14}}>
+    <div style={{...panel,background:'#eff6ff'}}><h2 style={{margin:'0 0 4px'}}>📒 Personal Notebook / Hisab Kitab</h2><div style={{fontSize:13,color:'#475569'}}>Engineer Account, Udhaar, Ghar ke Akhrajat aur apni zaroorat ke mutabiq unlimited files.</div></div>
+    {errorText&&<div style={{...panel,color:'#991b1b'}}>Database error: {errorText}. Notebook SQL setup run karein.</div>}
+    {isAdmin&&<form onSubmit={createFile} style={{...panel,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:10}}><input style={input} value={newFileName} onChange={e=>setNewFileName(e.target.value)} placeholder="New file name (e.g. Engineer Account)" required/><select style={input} value={newFileCurrency} onChange={e=>setNewFileCurrency(e.target.value)}><option value="AED">AED</option><option value="PKR">PKR</option></select><button style={{...primaryStyle,background:'#1d4ed8'}}>＋ Create Notebook File</button></form>}
+    <div style={{...panel,display:'flex',gap:10,alignItems:'end',flexWrap:'wrap'}}><label style={{flex:'1 1 220px'}}>Open Notebook File<select style={{...input,marginTop:5}} value={activeFileId} onChange={e=>setActiveFileId(e.target.value)}><option value="">Select file</option>{files.map(f=><option key={f.id} value={f.id}>{f.file_name} ({f.currency})</option>)}</select></label>{activeFile&&isAdmin&&<button onClick={deleteFile} style={{...primaryStyle,width:'auto',background:'#b91c1c'}}>Delete File</button>}</div>
+    {activeFile&&<>
+      <div style={{...panel,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}><div><small>Received Amount</small><h2 style={{margin:'5px 0',color:'#047857'}}>{fmt(received)}</h2></div><div><small>Total Expenses</small><h2 style={{margin:'5px 0',color:'#b91c1c'}}>{fmt(spent)}</h2></div><div><small>Remaining Balance</small><h2 style={{margin:'5px 0',color:balance<0?'#b91c1c':'#1d4ed8'}}>{fmt(balance)}</h2></div></div>
+      {isAdmin&&<form onSubmit={addEntry} style={panel}><h3 style={{marginTop:0}}>＋ New Amount / Expense</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={entryDate} onChange={e=>setEntryDate(e.target.value)} required/></label><label>Entry Type<select style={input} value={entryType} onChange={e=>setEntryType(e.target.value)}><option value="income">Received / Income (+)</option><option value="expense">Expense (-)</option></select></label><label>Amount<input type="number" min="0.01" step="0.01" style={input} value={entryAmount} onChange={e=>setEntryAmount(e.target.value)} required/></label><label>Details<input style={input} value={entryDetails} onChange={e=>setEntryDetails(e.target.value)} placeholder="Material bill / payment received" required/></label><label>Remarks<input style={input} value={entryNotes} onChange={e=>setEntryNotes(e.target.value)} placeholder="Optional notes"/></label></div><button style={{...primaryStyle,marginTop:10}}>Save Entry</button></form>}
+      <div style={panel}><h3 style={{marginTop:0}}>{activeFile.file_name} · Entry History</h3><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Date','Details','Income (+)','Expense (-)','Balance','Remarks',...(isAdmin?['Actions']:[])].map(h=><th key={h} style={{padding:8,borderBottom:'1px solid #cbd5e1',textAlign:'left'}}>{h}</th>)}</tr></thead><tbody>{[...entries].reverse().map((r,i)=>{const running=[...entries].reverse().slice(0,i+1).reduce((a,x)=>a+(x.entry_type==='income'?1:-1)*Number(x.amount||0),0);return <tr key={r.id}><td style={{padding:8,borderBottom:'1px solid #eee'}}>{r.entry_date}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{r.details}</td><td style={{padding:8,color:'#047857'}}>{r.entry_type==='income'?fmt(r.amount):'—'}</td><td style={{padding:8,color:'#b91c1c'}}>{r.entry_type==='expense'?fmt(r.amount):'—'}</td><td style={{padding:8,fontWeight:700}}>{fmt(running)}</td><td style={{padding:8}}>{r.notes||'—'}</td>{isAdmin&&<td style={{padding:8,whiteSpace:'nowrap'}}><button onClick={()=>editEntry(r)} style={{marginRight:5}}>Edit</button><button onClick={()=>deleteEntry(r)} style={{color:'#b91c1c'}}>Delete</button></td>}</tr>})}{!entries.length&&<tr><td colSpan={isAdmin?7:6} style={{padding:12}}>Is file mein abhi koi entry nahi.</td></tr>}</tbody></table></div></div>
+    </>}
+    {!files.length&&!loading&&<div style={panel}>Abhi koi notebook file nahi bani. Upar se pehli file create karein.</div>}
+    {loading&&<div>Loading notebook...</div>}
+  </section>;
+}
+
 function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [businesses, setBusinesses] = useState([]);
   const [businessId, setBusinessId] = useState('');
@@ -104,6 +341,8 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [view, setView] = useState('daily');
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [cleanupMonth, setCleanupMonth] = useState(() => { const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; });
+  const [cleanupPreview, setCleanupPreview] = useState(null);
 
   // New Business Form
   const [newBusinessName, setNewBusinessName] = useState('');
@@ -219,7 +458,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
         if (error) throw error;
         const rows = data || [];
         setBusinesses(rows);
-        const next = String(preferredId || businessId || rows[0]?.id || '');
+        const next = String(preferredId === '' ? (rows[0]?.id || '') : (preferredId || businessId || rows[0]?.id || ''));
         setBusinessId(next);
         if (next) {
           setAccess({
@@ -308,6 +547,81 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     await loadBusinesses(data.id);
     setBusinessId(String(data.id));
     alert('New business created successfully.');
+  }
+
+  async function deleteBusinessRecord(b) {
+    if (!admin || !b) return;
+    const checks = await Promise.all([
+      supabase.from('business_vehicles').select('id',{count:'exact',head:true}).eq('business_id',b.id),
+      supabase.from('business_people').select('id',{count:'exact',head:true}).eq('business_id',b.id),
+      supabase.from('business_entries').select('id',{count:'exact',head:true}).eq('business_id',b.id),
+      supabase.from('water_customers').select('id',{count:'exact',head:true}).eq('business_id',b.id),
+      supabase.from('water_sales').select('id',{count:'exact',head:true}).eq('business_id',b.id),
+      supabase.from('water_payments').select('id',{count:'exact',head:true}).eq('business_id',b.id),
+      supabase.from('business_access').select('id',{count:'exact',head:true}).eq('business_id',b.id),
+      supabase.from('business_notebook_files').select('id',{count:'exact',head:true}).eq('business_id',b.id)
+    ]);
+    const count=checks.reduce((n,r)=>n+Number(r.count||0),0);
+    if(checks.some(r=>r.error)) return alert('Business records check nahi ho saka. Delete nahi kiya gaya. '+checks.find(r=>r.error)?.error?.message);
+    if(count>0) {
+      if(!window.confirm(`"${b.name}" ke saath ${count} related record(s) mojood hain. Data delete nahi hoga. Business ko sirf inactive kiya jayega aur list se hide ho jayega. Continue?`)) return;
+      const {error}=await supabase.from('business_profiles').update({active:false}).eq('id',b.id);
+      if(error)return alert('Business inactive nahi hua: '+error.message);
+      if(String(businessId)===String(b.id)){setBusinessId('');setVehicles([]);setPeople([]);setEntries([]);}
+      await loadBusinesses('');
+      alert('Business inactive kar diya gaya. Purana data safe hai.');
+    } else {
+      if(!window.confirm(`"${b.name}" ka koi linked business data nahi mila. Kya aap is business ko permanently delete karna chahte hain?`)) return;
+      const {error}=await supabase.from('business_profiles').delete().eq('id',b.id);
+      if(error)return alert('Business delete nahi hua: '+error.message);
+      if(String(businessId)===String(b.id))setBusinessId('');
+      await loadBusinesses(''); alert('Business permanently delete ho gaya.');
+    }
+  }
+
+  async function deleteVehicleFile(v) {
+    if(!admin||!v)return;
+    const {count,error:countError}=await supabase.from('business_entries').select('id',{count:'exact',head:true}).eq('business_id',Number(businessId)).eq('vehicle_id',v.id);
+    if(countError)return alert('Vehicle records check nahi ho sake. Delete nahi kiya gaya: '+countError.message);
+    if(Number(count||0)>0){
+      if(!window.confirm(`${v.plate_number} ke ${count} purane entry record(s) mojood hain. Purana data safe rakhne ke liye vehicle ko sirf inactive karna hai. Continue?`))return;
+      const {error}=await supabase.from('business_vehicles').update({active:false}).eq('id',v.id).eq('business_id',Number(businessId));
+      if(error)return alert(error.message); alert('Vehicle inactive ho gaya; purani entries safe hain.');
+    } else {
+      if(!window.confirm(`${v.plate_number} ko permanently delete karna hai?`))return;
+      const {error}=await supabase.from('business_vehicles').delete().eq('id',v.id).eq('business_id',Number(businessId));
+      if(error)return alert('Vehicle delete nahi hua: '+error.message); alert('Vehicle file delete ho gayi.');
+    }
+    if(String(activeVehicleId)===String(v.id)){setActiveVehicleId('');setVehicleId('');}
+    await loadBusinessData();
+  }
+
+  async function previewMonthCleanup() {
+    if(!admin||!cleanupMonth)return;
+    const now=new Date(); const maxMonth=new Date(Date.UTC(now.getFullYear(),now.getMonth()-1,1)).toISOString().slice(0,7);
+    if(cleanupMonth>maxMonth)return alert('Sirf previous ya us se purana month select kar sakte hain.');
+    const start=cleanupMonth+'-01'; const [y,m]=cleanupMonth.split('-').map(Number); const end=new Date(Date.UTC(y,m,1)).toISOString().slice(0,10);
+    const queries=await Promise.all([
+      supabase.from('business_entries').select('id,amount,entry_kind').eq('business_id',Number(businessId)).gte('entry_date',start).lt('entry_date',end),
+      supabase.from('water_sales').select('id,total_amount,cash_received').eq('business_id',Number(businessId)).gte('sale_date',start).lt('sale_date',end),
+      supabase.from('water_payments').select('id,amount').eq('business_id',Number(businessId)).gte('payment_date',start).lt('payment_date',end)
+    ]);
+    const failed=queries.find(x=>x.error); if(failed)return alert('Month preview load nahi hua: '+failed.error.message);
+    setCleanupPreview({month:cleanupMonth,entries:queries[0].data||[],sales:queries[1].data||[],payments:queries[2].data||[]});
+  }
+  async function deleteMonthData() {
+    if(!admin||!cleanupPreview||cleanupPreview.month!==cleanupMonth)return;
+    const total=cleanupPreview.entries.length+cleanupPreview.sales.length+cleanupPreview.payments.length;
+    if(!total)return alert('Is month mein delete karne ke liye koi record nahi mila.');
+    if(!window.confirm(`${cleanupMonth} ke ${total} Business records permanently delete honge: daily entries ${cleanupPreview.entries.length}, water sales ${cleanupPreview.sales.length}, water payments ${cleanupPreview.payments.length}. Customers, notebook files aur HR data delete nahi hoga. Kya aap sure hain?`))return;
+    const [y,m]=cleanupMonth.split('-').map(Number); const start=cleanupMonth+'-01'; const end=new Date(Date.UTC(y,m,1)).toISOString().slice(0,10);
+    const ops=await Promise.all([
+      supabase.from('business_entries').delete().eq('business_id',Number(businessId)).gte('entry_date',start).lt('entry_date',end),
+      supabase.from('water_sales').delete().eq('business_id',Number(businessId)).gte('sale_date',start).lt('sale_date',end),
+      supabase.from('water_payments').delete().eq('business_id',Number(businessId)).gte('payment_date',start).lt('payment_date',end)
+    ]);
+    const failed=ops.find(x=>x.error); if(failed)return alert('Kuch records delete nahi ho sake: '+failed.error.message);
+    setCleanupPreview(null); await loadBusinessData(); alert(`${cleanupMonth} ka selected Business data delete ho gaya. HR System untouched hai.`);
   }
 
   async function addVehicle(e) {
@@ -603,6 +917,9 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     (admin || access?.can_view_daily || can('can_add') || can('can_edit') || can('can_delete')) && { id: 'daily', icon: '📝', label: 'Daily Entry' },
     (admin || access?.can_view_vehicles || can('can_manage_vehicles')) && { id: 'vehicles', icon: '🚚', label: 'Vehicle Files' },
     (admin || access?.can_view_monthly) && { id: 'monthly', icon: '📊', label: 'Monthly Sheet' },
+    (admin || access?.can_view || can('can_add')) && { id: 'water', icon: '💧', label: 'Water Supply' },
+    admin && { id: 'notebook', icon: '📒', label: 'Personal Notebook' },
+    admin && { id: 'cleanup', icon: '🧹', label: 'Month Data Delete' },
     (admin || access?.can_view_workers || can('can_manage_workers')) && { id: 'workers', icon: '👷', label: 'Drivers & Pay' },
     can('can_manage_access') && { id: 'access', icon: '🔐', label: 'Staff Access' }
   ].filter(Boolean);
@@ -764,6 +1081,12 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                   <option value="other">General / Other Business</option>
                 </select>
                 <button type="submit" style={btn}>Create Business</button>
+                <div style={{gridColumn:'1 / -1',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                  <label style={{fontSize:12,fontWeight:700}}>Delete / Deactivate Business
+                    <select id="business-delete-select" style={{...inputStyle,marginTop:4}} defaultValue=""><option value="">Select business</option>{businesses.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select>
+                  </label>
+                  <button type="button" style={{...btn,background:'#b91c1c',marginTop:18}} onClick={()=>{const id=document.getElementById('business-delete-select')?.value;const b=businesses.find(x=>String(x.id)===String(id));if(b)void deleteBusinessRecord(b);else alert('Pehle business select karein.');}}>Delete Business</button>
+                </div>
               </form>
             </details>
           )}
@@ -1040,7 +1363,8 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                             <div><span style={{ color: '#15803d', fontWeight: 700 }}>Total Income:</span><br /><strong>{money(vInc)}</strong></div>
                             <div><span style={{ color: '#b91c1c', fontWeight: 700 }}>Total Expense:</span><br /><strong>{money(vExp)}</strong></div>
                           </div>
-                          <div style={{ display: 'flex', gap: 8 }}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap:'wrap' }}>
+                            {admin && <button type="button" style={{...btn,background:'#b91c1c'}} onClick={()=>void deleteVehicleFile(v)}>🗑️ Delete Vehicle</button>}
                             <button
                               type="button"
                               style={{ ...btn, flex: 1 }}
@@ -1289,6 +1613,24 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                     </table>
                   </section>
                 </>
+              )}
+
+              {/* WATER SUPPLY CUSTOMER KHATA — BUSINESS SYSTEM ONLY */}
+              {view === 'water' && (admin || access?.can_view || can('can_add')) && (
+                <WaterSupplyPanel session={session} businessId={businessId} isAdmin={admin} canAdd={admin || can('can_add')} canDelete={admin || can('can_delete')} />
+              )}
+
+              {view === 'notebook' && admin && (
+                <PersonalNotebookPanel session={session} businessId={businessId} isAdmin={admin} />
+              )}
+
+              {view === 'cleanup' && admin && (
+                <section style={card}>
+                  <h2 style={{marginTop:0}}>🧹 Previous Month Business Data Delete</h2>
+                  <p style={{color:'#475569',fontSize:13}}>Pehle month select karke preview dekhein. Delete karne se sirf is Business ke daily entries, Water Supply sales aur payments delete honge. Customer profiles, notebook aur HR System ka data safe rahega.</p>
+                  <div style={{display:'flex',gap:10,alignItems:'end',flexWrap:'wrap'}}><label>Previous Month<input type="month" style={{...inputStyle,marginTop:4}} value={cleanupMonth} max={new Date(Date.UTC(new Date().getFullYear(),new Date().getMonth()-1,1)).toISOString().slice(0,7)} onChange={e=>{setCleanupMonth(e.target.value);setCleanupPreview(null);}} /></label><button type="button" style={btn} onClick={previewMonthCleanup}>Preview Month Data</button></div>
+                  {cleanupPreview&&<div style={{marginTop:14,padding:14,border:'1px solid #fbbf24',background:'#fffbeb',borderRadius:10}}><h3 style={{marginTop:0}}>Preview · {cleanupPreview.month}</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}><div><b>Business Entries</b><div>{cleanupPreview.entries.length}</div></div><div><b>Water Sales</b><div>{cleanupPreview.sales.length}</div></div><div><b>Water Payments</b><div>{cleanupPreview.payments.length}</div></div><div><b>Total Records</b><div>{cleanupPreview.entries.length+cleanupPreview.sales.length+cleanupPreview.payments.length}</div></div></div><button type="button" style={{...btn,background:'#b91c1c',marginTop:12}} onClick={deleteMonthData}>Permanently Delete This Month</button></div>}
+                </section>
               )}
 
               {/* 5. STAFF ACCESS & PERMISSIONS */}
