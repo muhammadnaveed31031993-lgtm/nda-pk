@@ -418,7 +418,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [accessRows, setAccessRows] = useState([]);
   const [access, setAccess] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [view, setView] = useState('daily');
+  const [view, setView] = useState('vehicles');
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [cleanupMonth, setCleanupMonth] = useState(() => { const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; });
@@ -1024,9 +1024,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const panelTitle = currentBusiness?.name || 'Business Management';
 
   const navTabs = [
-    (admin || access?.can_view_daily || (!waterOnlyStaff && (can('can_add') || can('can_edit') || can('can_delete')))) && { id: 'daily', icon: '📝', label: 'Daily Entry' },
-    (admin || access?.can_view_vehicles || can('can_manage_vehicles')) && { id: 'vehicles', icon: '🚚', label: 'Vehicle Files' },
-    (admin || access?.can_view_monthly) && { id: 'monthly', icon: '📊', label: 'Monthly Sheet' },
+    (admin || access?.can_view_vehicles || can('can_manage_vehicles') || access?.can_view_daily || can('can_add')) && { id: 'vehicles', icon: '🚚', label: 'Vehicle Files' },
     (admin || access?.can_view || can('can_add')) && { id: 'water', icon: '💧', label: 'Water Supply' },
     admin && { id: 'notebook', icon: '📒', label: 'Personal Notebook' },
     admin && { id: 'cleanup', icon: '🧹', label: 'Month Data Delete' },
@@ -1085,7 +1083,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
       </header>
 
       <main style={{ padding: '16px clamp(12px,2vw,26px)', maxWidth: 1450, margin: '0 auto' }}>
-        {/* TOP CONTROL BAR: BIG EASY TABS + QUICK FILTERS */}
+        {/* TOP CONTROL BAR: ONLY BUSINESS MODULES; VEHICLE ACTIONS LIVE INSIDE VEHICLE FILES */}
         <section style={{ ...card, marginBottom: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(135px,1fr))', gap: 8, marginBottom: 12 }}>
             {navTabs.map(tab => {
@@ -1201,6 +1199,15 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
             </details>
           )}
         </section>
+
+        {(view === 'daily' || view === 'monthly') && !waterOnlyStaff && (
+          <section style={{ ...card, marginBottom: 14, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button type="button" style={{ ...btn, background: '#475569' }} onClick={() => setView('vehicles')}>← Vehicle Files</button>
+            <strong style={{ marginRight: 8 }}>🚚 {vehicles.find(v => String(v.id) === String(activeVehicleId))?.plate_number || 'Vehicle'}</strong>
+            <button type="button" style={{ ...btn, background: view === 'daily' ? '#047857' : '#e2e8f0', color: view === 'daily' ? '#fff' : '#0f172a' }} onClick={() => setView('daily')}>📝 Daily Entry</button>
+            <button type="button" style={{ ...btn, background: view === 'monthly' ? '#1d4ed8' : '#e2e8f0', color: view === 'monthly' ? '#fff' : '#0f172a' }} onClick={() => setView('monthly')}>📊 Monthly Sheet</button>
+          </section>
+        )}
 
         {!businessId ? (
           <section style={card}>
