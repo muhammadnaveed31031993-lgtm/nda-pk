@@ -1005,6 +1005,16 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
           .business-workspace table{display:block!important;width:100%!important;max-width:100%!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}
           .business-workspace th,.business-workspace td{white-space:nowrap}
           .business-workspace img{max-width:100%;height:auto}
+          .business-workspace button{min-height:42px;touch-action:manipulation}
+          .business-workspace label{line-height:1.35}
+          .business-workspace main>div,.business-workspace main>section{min-width:0!important;max-width:100%!important}
+          .business-workspace [style*="grid-template-columns"]{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+        }
+        @media(max-width:420px){
+          .business-workspace header h1{font-size:18px!important}
+          .business-workspace main{padding:8px!important}
+          .business-workspace [style*="grid-template-columns"]{grid-template-columns:minmax(0,1fr)!important}
+          .business-workspace button{font-size:13px!important}
         }
       `}</style>
       <style>{`@media print {
@@ -1899,8 +1909,19 @@ export default function App() {
       return null;
     }
   });
-  // Select which system to open before entering either workspace.
-  const [selectedSystem, setSelectedSystem] = useState(null); // 'hr' | 'business'
+  // Restore the selected workspace on refresh. The tab session survives refresh,
+  // but is cleared when the browser tab/window is closed (normal sessionStorage behavior).
+  const [selectedSystem, setSelectedSystem] = useState(() => {
+    try {
+      const savedSystem = sessionStorage.getItem('nda_selected_system');
+      if (savedSystem === 'none') return null;
+      if (savedSystem === 'hr' || savedSystem === 'business') return savedSystem;
+      const savedSession = JSON.parse(sessionStorage.getItem('nda_user_session') || 'null');
+      if (savedSession?.system_scope === 'business') return 'business';
+      if (savedSession?.user?.email && savedSession?.role) return 'hr';
+      return null;
+    } catch { return null; }
+  }); // 'hr' | 'business'
   const [businessType, setBusinessType] = useState('transport');
   const [businessTransactions, setBusinessTransactions] = useState([]);
   const [businessWorkers, setBusinessWorkers] = useState([]);
@@ -2460,19 +2481,34 @@ const [newDesignation, setNewDesignation] = useState('');
   const currentMonth = now.getMonth();
   const totalDaysInCurrentMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
-  // Save login for the current tab so refreshing the page does not log the user out.
-  // sessionStorage is cleared when the tab is closed in normal browser behavior.
+  // Keep login + selected workspace through refresh; explicit Logout clears both.
+  // sessionStorage intentionally expires when this browser tab/window is closed.
   useEffect(() => {
     try {
       if (session?.user?.email && session?.role) {
         sessionStorage.setItem('nda_user_session', JSON.stringify(session));
       } else {
         sessionStorage.removeItem('nda_user_session');
+        sessionStorage.removeItem('nda_selected_system');
       }
     } catch (err) {
       console.warn('Tab session could not be saved:', err);
     }
   }, [session]);
+
+  useEffect(() => {
+    try {
+      if (session && (selectedSystem === 'hr' || selectedSystem === 'business')) {
+        sessionStorage.setItem('nda_selected_system', selectedSystem);
+      } else if (session && selectedSystem === null) {
+        sessionStorage.setItem('nda_selected_system', 'none');
+      } else if (!session) {
+        sessionStorage.removeItem('nda_selected_system');
+      }
+    } catch (err) {
+      console.warn('Selected workspace could not be saved:', err);
+    }
+  }, [selectedSystem, session]);
 
  useEffect(() => {
   if (session) {
@@ -3811,6 +3847,7 @@ async function handleToggleHolidayDate() {
     try {
       supabase.auth.signOut().catch(() => {});
       sessionStorage.removeItem('nda_user_session');
+      sessionStorage.removeItem('nda_selected_system');
       sessionStorage.removeItem('nda_worker_docs_token');
       setWorkerDocToken('');
       localStorage.removeItem('nda_user_session'); // Clear any old saved session from earlier versions.
@@ -5202,8 +5239,8 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
             .nda-hr-header>div{min-width:0!important}
             .nda-sidebar{position:relative!important;top:auto!important;bottom:auto!important;left:auto!important;width:100%!important;max-height:none!important;min-height:0!important;flex-direction:row!important;flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;gap:6px!important;padding:8px 10px!important;scrollbar-width:thin}
             .nda-sidebar>div:first-child{display:none!important}
-            .nda-sidebar>button{flex:0 0 auto!important;white-space:nowrap!important;padding:10px 12px!important}
-            .nda-main{margin-left:0!important;padding:12px!important;width:100%!important;max-width:100%!important}
+            .nda-sidebar>button{flex:0 0 auto!important;white-space:nowrap!important;padding:12px 14px!important;min-height:46px!important;touch-action:manipulation}
+            .nda-main{margin-left:0!important;padding:12px!important;width:100%!important;max-width:100%!important;overflow-x:hidden!important}
             .nda-hr-footer{margin-left:0!important;width:100%!important}
           }
           @media(max-width:600px){
@@ -5220,7 +5257,10 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
             .nda-main table{display:block!important;width:100%!important;max-width:100%!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}
             .nda-main th,.nda-main td{white-space:nowrap}
             .nda-main img{max-width:100%;height:auto}
-            .nda-main [role="dialog"]>div{width:calc(100vw - 20px)!important;max-width:calc(100vw - 20px)!important;max-height:88vh!important;padding:14px!important;box-sizing:border-box!important}
+            .nda-main button{min-height:40px;touch-action:manipulation}
+            .nda-main>div{min-width:0!important}
+            .nda-hr-header button{min-height:40px!important}
+            .nda-main [role="dialog"]>div{width:calc(100vw - 20px)!important;max-width:calc(100vw - 20px)!important;max-height:88vh!important;padding:14px!important;box-sizing:border-box!important;overflow:auto!important}
           }
           @media print{.nda-sidebar,header,.no-print{display:none!important}.nda-main{margin:0!important;padding:0!important;background:#fff!important}.nda-print-brand{display:block!important;text-align:center!important;border-bottom:3px solid #c69227!important;padding:8px!important;margin-bottom:12px!important}.nda-print-brand img{height:48px!important;object-fit:contain!important}.nda-main *{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
         `}</style>
