@@ -91,7 +91,7 @@ function shiftPayrollDateOneMonth(dateText) {
   return `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
 }
 
-function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDelete }) {
+function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
   const today = new Date().toISOString().slice(0, 10);
   const [customers, setCustomers] = useState([]);
   const [sales, setSales] = useState([]);
@@ -102,7 +102,6 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDe
   const [floor, setFloor] = useState('Ground Floor');
   const [month, setMonth] = useState(today.slice(0, 7));
   const [day, setDay] = useState(today);
-  const [saleTime, setSaleTime] = useState(new Date().toTimeString().slice(0,5));
   const [tab, setTab] = useState('daily');
   const [name, setName] = useState('');
   const [room, setRoom] = useState('');
@@ -120,7 +119,6 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDe
   const [deliveryDate, setDeliveryDate] = useState(today);
   const [deliveryType, setDeliveryType] = useState('weekly');
   const [deliveryBottles, setDeliveryBottles] = useState('');
-  const [emptyCansReturned, setEmptyCansReturned] = useState('0');
   const [companyRate, setCompanyRate] = useState('2');
   const [companyPaymentType, setCompanyPaymentType] = useState('Credit');
   const [companyPaidNow, setCompanyPaidNow] = useState('');
@@ -143,7 +141,7 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDe
         supabase.from('water_payments').select('*').eq('business_id',businessId).order('payment_date',{ascending:false}),
         isAdmin
           ? supabase.from('water_company_deliveries').select('*').eq('business_id',businessId).order('delivery_date',{ascending:false})
-          : supabase.from('water_company_deliveries').select('id,delivery_date,delivery_type,bottles_received,empty_cans_returned').eq('business_id',businessId).order('delivery_date',{ascending:false}),
+          : supabase.from('water_company_deliveries').select('id,delivery_date,delivery_type,bottles_received').eq('business_id',businessId).order('delivery_date',{ascending:false}),
         isAdmin
           ? supabase.from('water_company_payments').select('*').eq('business_id',businessId).order('payment_date',{ascending:false})
           : Promise.resolve({data:[],error:null})
@@ -183,7 +181,6 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDe
   const totalStockIn = stockDeliveries.reduce((a,x)=>a+Number(x.bottles_received||0),0);
   const totalStockOut = stockSales.reduce((a,x)=>a+Number(x.bottles||0),0);
   const currentStock = totalStockIn-totalStockOut;
-  const totalEmptyCansReturned = deliveries.reduce((a,x)=>a+Number(x.empty_cans_returned||0),0);
   const companyBillTotal = deliveries.reduce((a,x)=>a+Number(x.bill_amount||0),0);
   const companyPaidAtDelivery = deliveries.reduce((a,x)=>a+Number(x.paid_amount||0),0);
   const companyPaidLater = companyPayments.reduce((a,x)=>a+Number(x.amount||0),0);
@@ -202,32 +199,13 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDe
   async function addSale(e) {
     e.preventDefault();
     if (!canAdd) return alert('Aapko daily entry ki permission nahi hai.');
-    const c=customers.find(x=>String(x.id)===String(saleCustomer)); const qty=Number(bottles); const r=Number(c?.rate); const bill=qty*r;
+    const c=customers.find(x=>String(x.id)===String(saleCustomer)); const qty=Number(bottles); const r=Number(saleRate || c?.rate); const bill=qty*r;
     const cash=salePaymentType==='Cash'?bill:0;
-    if(!c||!day||!saleTime||!Number.isInteger(qty)||qty<=0||!(r>0)) return alert('Customer, date, bottles aur rate sahi enter karein.');
+    if(!c||!day||!Number.isInteger(qty)||qty<=0||!(r>0)) return alert('Customer, date, bottles aur rate sahi enter karein.');
     if(qty>currentStock) return alert(`Stock kam hai. Available stock sirf ${currentStock} bottles hai.`);
-    const {error}=await supabase.from('water_sales').insert([{business_id:Number(businessId),customer_id:c.id,sale_date:day,sale_time:saleTime,bottles:qty,rate:r,total_amount:bill,cash_received:cash,payment_mode:salePaymentType,remarks:saleRemarks.trim(),created_by:session?.user?.email||''}]);
+    const {error}=await supabase.from('water_sales').insert([{business_id:Number(businessId),customer_id:c.id,sale_date:day,bottles:qty,rate:r,total_amount:bill,cash_received:cash,payment_mode:salePaymentType,remarks:saleRemarks.trim(),created_by:session?.user?.email||''}]);
     if(error)return alert('Daily water entry save nahi hui: '+error.message);
     setBottles('');setSaleRemarks('');await refresh();alert(`Daily entry save ho gayi. ${salePaymentType==='Cash'?'Cash received':'Credit added'}: ${fmt(bill)}`);
-  }
-  async function editSale(row) {
-    if(!canEdit)return alert('Aapko edit permission nahi hai.');
-    const customer=customers.find(c=>String(c.id)===String(row.customer_id));
-    const date=window.prompt('Delivery date (YYYY-MM-DD)',row.sale_date||day); if(date===null)return;
-    const time=window.prompt('Delivery time (HH:MM)',row.sale_time||'09:00'); if(time===null)return;
-    const qty=Number(window.prompt('Bottles',String(row.bottles||1))); if(!Number.isInteger(qty)||qty<=0)return alert('Valid bottle quantity enter karein.');
-    const mode=window.prompt('Payment mode: Cash ya Credit',row.payment_mode||'Credit'); if(mode===null)return;
-    if(!['Cash','Credit'].includes(mode))return alert('Payment mode Cash ya Credit hona chahiye.');
-    const remarks=window.prompt('Remarks',row.remarks||''); if(remarks===null)return;
-    const rate=Number(customer?.rate||row.rate||0), total=qty*rate, cash=mode==='Cash'?total:0;
-    const {error}=await supabase.from('water_sales').update({sale_date:date,sale_time:time,bottles:qty,rate,total_amount:total,cash_received:cash,payment_mode:mode,remarks}).eq('id',row.id).eq('business_id',businessId);
-    if(error)return alert('Entry update nahi hui: '+error.message); await refresh();
-  }
-  async function deleteSale(row) {
-    if(!canDelete)return alert('Aapko delete permission nahi hai.');
-    if(!window.confirm(`${row.sale_date} ki ${row.bottles} bottles wali entry delete karni hai? Stock wapas add ho jayega.`))return;
-    const {error}=await supabase.from('water_sales').delete().eq('id',row.id).eq('business_id',businessId);
-    if(error)return alert('Entry delete nahi hui: '+error.message); await refresh();
   }
   async function addPayment(e) {
     e.preventDefault();
@@ -241,13 +219,13 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDe
   }
   async function addDelivery(e) {
     e.preventDefault(); if(!isAdmin)return alert('Company delivery entry sirf Admin kar sakta hai.');
-    const qty=Number(deliveryBottles), emptyQty=Number(emptyCansReturned||0), r=deliveryType==='opening'?0:Number(companyRate), bill=deliveryType==='opening'?0:qty*r;
+    const qty=Number(deliveryBottles), r=deliveryType==='opening'?0:Number(companyRate), bill=deliveryType==='opening'?0:qty*r;
     const paid=deliveryType==='opening'?0:(companyPaymentType==='Cash'?(companyPaidNow===''?bill:Number(companyPaidNow)):Number(companyPaidNow||0));
-    if(!deliveryDate||!Number.isInteger(qty)||qty<0||!Number.isInteger(emptyQty)||emptyQty<0||(deliveryType==='weekly'&&qty<=0)||(deliveryType==='weekly'&&!(r>0))||!Number.isFinite(paid)||paid<0||paid>bill)return alert('Delivery date, filled bottles, empty bottles, company rate aur paid amount check karein.');
+    if(!deliveryDate||!Number.isInteger(qty)||qty<0||(deliveryType==='weekly'&&qty<=0)||(deliveryType==='weekly'&&!(r>0))||!Number.isFinite(paid)||paid<0||paid>bill)return alert('Delivery date, bottles, company rate aur paid amount check karein.');
     if(deliveryType==='opening'&&deliveries.some(x=>x.delivery_type==='opening'))return alert('Opening Stock pehle se enter hai. Dobara opening stock add na karein; weekly delivery select karein.');
-    const {error}=await supabase.from('water_company_deliveries').insert([{business_id:Number(businessId),delivery_date:deliveryDate,delivery_type:deliveryType,bottles_received:qty,empty_cans_returned:emptyQty,company_rate:r,bill_amount:bill,paid_amount:paid,payment_mode:deliveryType==='opening'?'Credit':companyPaymentType,bill_no:companyBillNo.trim(),remarks:companyRemarks.trim(),created_by:session?.user?.email||''}]);
+    const {error}=await supabase.from('water_company_deliveries').insert([{business_id:Number(businessId),delivery_date:deliveryDate,delivery_type:deliveryType,bottles_received:qty,company_rate:r,bill_amount:bill,paid_amount:paid,payment_mode:deliveryType==='opening'?'Credit':companyPaymentType,bill_no:companyBillNo.trim(),remarks:companyRemarks.trim(),created_by:session?.user?.email||''}]);
     if(error)return alert('Company delivery save nahi hui: '+error.message);
-    setDeliveryBottles('');setEmptyCansReturned('0');setCompanyPaidNow('');setCompanyBillNo('');setDeliveryType('weekly');setCompanyRemarks('');await refresh();alert('Company delivery, empty cans return aur filled stock record ho gaya.');
+    setDeliveryBottles('');setCompanyPaidNow('');setCompanyBillNo('');setDeliveryType('weekly');setCompanyRemarks('');await refresh();alert('Company delivery aur stock add ho gaya.');
   }
   async function addCompanyPayment(e) {
     e.preventDefault(); if(!isAdmin)return alert('Company payment sirf Admin enter kar sakta hai.');
@@ -298,21 +276,21 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDe
       <div style={panelCard}><div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}><h3 style={{marginTop:0}}>Customer List</h3><label><input type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)}/> Show inactive</label></div><div style={{display:'flex',gap:8,marginBottom:10}}><select style={input} value={floor} onChange={e=>setFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></div><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Room','Customer','Rate','Total Bill','Received','Outstanding','Status','Action'].map(x=><th style={thStyle} key={x}>{x}</th>)}</tr></thead><tbody>{floorCustomers.map(c=>{const st=customerStats(c);return <tr key={c.id}><td style={tdStyle}>{c.room_no}</td><td style={tdStyle}>{c.customer_name}</td><td style={tdStyle}>{fmt(c.rate)}</td><td style={tdStyle}>{fmt(st.total)}</td><td style={tdStyle}>{fmt(st.paid)}</td><td style={{...tdStyle,color:st.balance?'#b91c1c':'#047857',fontWeight:800}}>{fmt(st.balance)}</td><td style={tdStyle}>{c.active===false?'Inactive':'Active'}</td><td style={tdStyle}>{canDelete&&<button onClick={()=>toggleCustomer(c)} style={{marginRight:5}}>{c.active===false?'Activate':'Inactive'}</button>}{canDelete&&<button onClick={()=>deleteCustomer(c)} style={{color:'#b91c1c'}}>Delete</button>}</td></tr>})}{!floorCustomers.length&&<tr><td colSpan="8" style={tdStyle}>Is floor par koi customer nahi.</td></tr>}</tbody></table></div></div>
     </>}
     {tab==='daily' && <>
-      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Water Sale Entry</h3><form onSubmit={addSale}><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Time<input type="time" style={input} value={saleTime} onChange={e=>setSaleTime(e.target.value)}/></label><label>Customer<select style={input} value={saleCustomer} onChange={e=>{setSaleCustomer(e.target.value);setSaleRate('')}} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false).map(c=><option key={c.id} value={c.id}>{c.room_no} · {c.customer_name}</option>)}</select></label><label>Total Bottles<input type="number" min="1" step="1" style={input} value={bottles} onChange={e=>setBottles(e.target.value)} required/></label><label>Payment Type<select style={input} value={salePaymentType} onChange={e=>setSalePaymentType(e.target.value)}><option value="Cash">Cash</option><option value="Credit">Credit</option></select></label></div><div style={{marginTop:10,fontWeight:800}}>Bill: {fmt(Number(bottles||0)*Number(customers.find(c=>String(c.id)===String(saleCustomer))?.rate||0))} · {salePaymentType==='Cash'?'Cash Received':'Credit Added'} · Available Stock: {currentStock}</div><button style={{...btn,marginTop:10}} disabled={!canAdd||busy}>Save Daily Entry</button></form></div>
+      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Water Sale Entry</h3><form onSubmit={addSale}><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={saleCustomer} onChange={e=>{setSaleCustomer(e.target.value);const c=customers.find(x=>String(x.id)===e.target.value);setSaleRate(c?String(c.rate):'')}} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false).map(c=><option key={c.id} value={c.id}>{c.room_no} · {c.customer_name}</option>)}</select></label><label>Total Bottles<input type="number" min="1" step="1" style={input} value={bottles} onChange={e=>setBottles(e.target.value)} required/></label><label>Rate / Bottle<input type="number" min="0.01" step="0.01" style={input} value={saleRate} onChange={e=>setSaleRate(e.target.value)} required/></label><label>Payment Type<select style={input} value={salePaymentType} onChange={e=>setSalePaymentType(e.target.value)}><option value="Cash">Cash</option><option value="Credit">Credit</option></select></label><label>Remarks<input style={input} value={saleRemarks} onChange={e=>setSaleRemarks(e.target.value)}/></label></div><div style={{marginTop:10,fontWeight:800}}>Bill: {fmt(Number(bottles||0)*Number(saleRate||0))} · {salePaymentType==='Cash'?'Cash Received':'Credit Added'}: {fmt(Number(bottles||0)*Number(saleRate||0))} · Available Stock: {currentStock}</div><button style={{...btn,marginTop:10}} disabled={!canAdd||busy}>Save Daily Entry</button></form></div>
       {canAdd&&<form onSubmit={addPayment} style={panelCard}><h3 style={{marginTop:0}}>Receive Previous Customer Credit</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={payCustomer} onChange={e=>setPayCustomer(e.target.value)} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false&&customerStats(c).balance>0).map(c=><option key={c.id} value={c.id}>{c.room_no} · {c.customer_name} · Due {fmt(customerStats(c).balance)}</option>)}</select></label><label>Cash Received<input type="number" min="0.01" step="0.01" style={input} value={payAmount} onChange={e=>setPayAmount(e.target.value)} required/></label><label>Remarks<input style={input} value={payRemarks} onChange={e=>setPayRemarks(e.target.value)}/></label></div><button style={{...btn,marginTop:10}}>Receive Old Credit</button></form>}
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}>{[['Daily Bill',dailyBilled],['Daily Cash',dailyCash],['Daily Credit Added',dailyCredit]].map(([l,v])=><div key={l} style={{...panelCard,margin:0}}><div style={{fontSize:12,color:'#64748b',fontWeight:700}}>{l}</div><div style={{fontSize:21,fontWeight:900}}>{fmt(v)}</div></div>)}</div>
-      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Activity · {day}</h3><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Customer','Room','Date','Time','Bottles','Bill','Payment Type','Actions'].map(x=><th key={x} style={thStyle}>{x}</th>)}</tr></thead><tbody>{dailySales.map(x=>{const c=customers.find(y=>String(y.id)===String(x.customer_id));return <tr key={x.id}><td style={tdStyle}>{c?.customer_name||'Deleted customer'}</td><td style={tdStyle}>{c?.room_no||'—'}</td><td style={tdStyle}>{x.sale_date}</td><td style={tdStyle}>{x.sale_time||'—'}</td><td style={tdStyle}>{x.bottles}</td><td style={tdStyle}>{fmt(x.total_amount)}</td><td style={tdStyle}>{x.payment_mode||(Number(x.cash_received)>=Number(x.total_amount)?'Cash':'Credit')}</td><td style={tdStyle}>{canEdit&&<button onClick={()=>editSale(x)} style={{marginRight:5}}>Edit</button>}{canDelete&&<button onClick={()=>deleteSale(x)} style={{color:'#b91c1c'}}>Delete</button>}</td></tr>})}{!dailySales.length&&<tr><td colSpan="9" style={tdStyle}>No daily entries.</td></tr>}</tbody></table></div><h4>Old Credit Received Today</h4>{dailyPayments.map(p=><div key={p.id} style={{padding:8,borderTop:'1px solid #eee'}}>{customers.find(c=>String(c.id)===String(p.customer_id))?.customer_name||'Customer'} · {fmt(p.amount)} · {p.remarks||'—'}</div>)}{!dailyPayments.length&&<small>No previous credit received today.</small>}</div>
+      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Activity · {day}</h3><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Customer','Room','Bottles','Bill','Payment Type','Credit','Remarks'].map(x=><th key={x} style={thStyle}>{x}</th>)}</tr></thead><tbody>{dailySales.map(x=>{const c=customers.find(y=>String(y.id)===String(x.customer_id));return <tr key={x.id}><td style={tdStyle}>{c?.customer_name||'Deleted customer'}</td><td style={tdStyle}>{c?.room_no||'—'}</td><td style={tdStyle}>{x.bottles}</td><td style={tdStyle}>{fmt(x.total_amount)}</td><td style={tdStyle}>{x.payment_mode||(Number(x.cash_received)>=Number(x.total_amount)?'Cash':'Credit')}</td><td style={tdStyle}>{fmt(Number(x.total_amount)-Number(x.cash_received))}</td><td style={tdStyle}>{x.remarks||'—'}</td></tr>})}{!dailySales.length&&<tr><td colSpan="7" style={tdStyle}>No daily entries.</td></tr>}</tbody></table></div><h4>Old Credit Received Today</h4>{dailyPayments.map(p=><div key={p.id} style={{padding:8,borderTop:'1px solid #eee'}}>{customers.find(c=>String(c.id)===String(p.customer_id))?.customer_name||'Customer'} · {fmt(p.amount)} · {p.remarks||'—'}</div>)}{!dailyPayments.length&&<small>No previous credit received today.</small>}</div>
     </>}
     {tab==='company' && <>
-      <div style={{...panelCard,background:'#eff6ff'}}><h3 style={{marginTop:0}}>Company Stock & Account Summary</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}><div><small>Total Stock Received</small><h2>{totalStockIn} Bottles</h2></div><div><small>Total Bottles Sold</small><h2>{totalStockOut} Bottles</h2></div><div><small>Available Filled Stock</small><h2 style={{color:currentStock<0?'#b91c1c':'#047857'}}>{currentStock} Bottles</h2></div><div><small>Empty Cans Returned to Company</small><h2>{totalEmptyCansReturned} Cans</h2></div><div><small>Total Company Bill</small><h2>{fmt(companyBillTotal)}</h2></div><div><small>Total Paid</small><h2 style={{color:'#047857'}}>{fmt(companyPaidAtDelivery+companyPaidLater)}</h2></div><div><small>Company Outstanding</small><h2 style={{color:'#b91c1c'}}>{fmt(companyOutstanding)}</h2></div></div></div>
-      {isAdmin&&<form onSubmit={addDelivery} style={panelCard}><h3 style={{marginTop:0}}>＋ Add Weekly Company Delivery / Opening Stock</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}><label>Entry Type<select style={input} value={deliveryType} onChange={e=>setDeliveryType(e.target.value)}><option value="weekly">Weekly Company Delivery</option><option value="opening">Opening Stock (existing bottles)</option></select></label><label>Delivery Date<input type="date" style={input} value={deliveryDate} onChange={e=>setDeliveryDate(e.target.value)} required/></label><label>Filled Bottles Received<input type="number" min={deliveryType==='opening'?0:1} step="1" style={input} value={deliveryBottles} onChange={e=>setDeliveryBottles(e.target.value)} required/></label><label>Empty Bottles Returned to Company<input type="number" min="0" step="1" style={input} value={emptyCansReturned} onChange={e=>setEmptyCansReturned(e.target.value)} placeholder="0"/></label><label>Company Rate / Bottle (AED)<input type="number" min="0.01" step="0.01" style={input} value={companyRate} onChange={e=>setCompanyRate(e.target.value)} disabled={deliveryType==='opening'} required={deliveryType==='weekly'}/></label><label>Payment Type<select style={input} value={companyPaymentType} disabled={deliveryType==='opening'} onChange={e=>{setCompanyPaymentType(e.target.value);if(e.target.value==='Cash')setCompanyPaidNow('')}}><option value="Cash">Cash</option><option value="Credit">Credit</option></select></label><label>Paid Now (AED)<input type="number" min="0" step="0.01" style={input} value={companyPaidNow} disabled={deliveryType==='opening'} onChange={e=>setCompanyPaidNow(e.target.value)} placeholder={companyPaymentType==='Cash'?'Full bill by default':'0 = full credit'}/></label><label>Bill / Invoice No.<input style={input} value={companyBillNo} onChange={e=>setCompanyBillNo(e.target.value)}/></label><label>Remarks<input style={input} value={companyRemarks} onChange={e=>setCompanyRemarks(e.target.value)}/></label></div><div style={{marginTop:10,fontWeight:800}}>Company Bill: {fmt(deliveryType==='opening'?0:Number(deliveryBottles||0)*Number(companyRate||0))} · Unpaid: {fmt(deliveryType==='opening'?0:Math.max(0,Number(deliveryBottles||0)*Number(companyRate||0)-(companyPaymentType==='Cash'?(companyPaidNow===''?Number(deliveryBottles||0)*Number(companyRate||0):Number(companyPaidNow)):Number(companyPaidNow||0))))}</div><button style={{...btn,marginTop:10}}>Save Company Delivery & Add Stock</button></form>}
+      <div style={{...panelCard,background:'#eff6ff'}}><h3 style={{marginTop:0}}>Company Stock & Account Summary</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}><div><small>Total Stock Received</small><h2>{totalStockIn} Bottles</h2></div><div><small>Total Bottles Sold</small><h2>{totalStockOut} Bottles</h2></div><div><small>Available Stock</small><h2 style={{color:currentStock<0?'#b91c1c':'#047857'}}>{currentStock} Bottles</h2></div><div><small>Total Company Bill</small><h2>{fmt(companyBillTotal)}</h2></div><div><small>Total Paid</small><h2 style={{color:'#047857'}}>{fmt(companyPaidAtDelivery+companyPaidLater)}</h2></div><div><small>Company Outstanding</small><h2 style={{color:'#b91c1c'}}>{fmt(companyOutstanding)}</h2></div></div></div>
+      {isAdmin&&<form onSubmit={addDelivery} style={panelCard}><h3 style={{marginTop:0}}>＋ Add Weekly Company Delivery / Opening Stock</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}><label>Entry Type<select style={input} value={deliveryType} onChange={e=>setDeliveryType(e.target.value)}><option value="weekly">Weekly Company Delivery</option><option value="opening">Opening Stock (existing bottles)</option></select></label><label>Delivery Date<input type="date" style={input} value={deliveryDate} onChange={e=>setDeliveryDate(e.target.value)} required/></label><label>Bottles Received<input type="number" min={deliveryType==='opening'?0:1} step="1" style={input} value={deliveryBottles} onChange={e=>setDeliveryBottles(e.target.value)} required/></label><label>Company Rate / Bottle (AED)<input type="number" min="0.01" step="0.01" style={input} value={companyRate} onChange={e=>setCompanyRate(e.target.value)} disabled={deliveryType==='opening'} required={deliveryType==='weekly'}/></label><label>Payment Type<select style={input} value={companyPaymentType} disabled={deliveryType==='opening'} onChange={e=>{setCompanyPaymentType(e.target.value);if(e.target.value==='Cash')setCompanyPaidNow('')}}><option value="Cash">Cash</option><option value="Credit">Credit</option></select></label><label>Paid Now (AED)<input type="number" min="0" step="0.01" style={input} value={companyPaidNow} disabled={deliveryType==='opening'} onChange={e=>setCompanyPaidNow(e.target.value)} placeholder={companyPaymentType==='Cash'?'Full bill by default':'0 = full credit'}/></label><label>Bill / Invoice No.<input style={input} value={companyBillNo} onChange={e=>setCompanyBillNo(e.target.value)}/></label><label>Remarks<input style={input} value={companyRemarks} onChange={e=>setCompanyRemarks(e.target.value)}/></label></div><div style={{marginTop:10,fontWeight:800}}>Company Bill: {fmt(deliveryType==='opening'?0:Number(deliveryBottles||0)*Number(companyRate||0))} · Unpaid: {fmt(deliveryType==='opening'?0:Math.max(0,Number(deliveryBottles||0)*Number(companyRate||0)-(companyPaymentType==='Cash'?(companyPaidNow===''?Number(deliveryBottles||0)*Number(companyRate||0):Number(companyPaidNow)):Number(companyPaidNow||0))))}</div><button style={{...btn,marginTop:10}}>Save Company Delivery & Add Stock</button></form>}
       {isAdmin&&<form onSubmit={addCompanyPayment} style={panelCard}><h3 style={{marginTop:0}}>Pay Company Outstanding Bill</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}><label>Payment Date<input type="date" style={input} value={companyPayDate} onChange={e=>setCompanyPayDate(e.target.value)}/></label><label>Payment Amount<input type="number" min="0.01" step="0.01" style={input} value={companyPayAmount} onChange={e=>setCompanyPayAmount(e.target.value)} required/></label><label>Remarks / Bill Reference<input style={input} value={companyPayRemarks} onChange={e=>setCompanyPayRemarks(e.target.value)}/></label></div><div style={{marginTop:8}}>Current Company Outstanding: <b>{fmt(companyOutstanding)}</b></div><button style={{...btn,marginTop:10}}>Save Company Payment</button></form>}
-      <div style={panelCard}><h3 style={{marginTop:0}}>Company Delivery History</h3><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Date','Entry Type','Filled Bottles In','Empty Cans Returned','Rate','Bill','Paid at Delivery','Payment Type','Bill No.','Unpaid'].map(x=><th key={x} style={thStyle}>{x}</th>)}</tr></thead><tbody>{deliveries.map(d=><tr key={d.id}><td style={tdStyle}>{d.delivery_date}</td><td style={tdStyle}>{d.delivery_type==='opening'?'Opening Stock':'Weekly Delivery'}</td><td style={tdStyle}>{d.bottles_received}</td><td style={tdStyle}>{Number(d.empty_cans_returned||0)}</td><td style={tdStyle}>{fmt(d.company_rate)}</td><td style={tdStyle}>{fmt(d.bill_amount)}</td><td style={tdStyle}>{fmt(d.paid_amount)}</td><td style={tdStyle}>{d.payment_mode}</td><td style={tdStyle}>{d.bill_no||'—'}</td><td style={tdStyle}>{fmt(Number(d.bill_amount)-Number(d.paid_amount))}</td></tr>)}{!deliveries.length&&<tr><td colSpan="10" style={tdStyle}>Abhi company delivery record nahi.</td></tr>}</tbody></table></div></div>
+      <div style={panelCard}><h3 style={{marginTop:0}}>Company Delivery History</h3><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Date','Entry Type','Bottles In','Rate','Bill','Paid at Delivery','Payment Type','Bill No.','Unpaid'].map(x=><th key={x} style={thStyle}>{x}</th>)}</tr></thead><tbody>{deliveries.map(d=><tr key={d.id}><td style={tdStyle}>{d.delivery_date}</td><td style={tdStyle}>{d.delivery_type==='opening'?'Opening Stock':'Weekly Delivery'}</td><td style={tdStyle}>{d.bottles_received}</td><td style={tdStyle}>{fmt(d.company_rate)}</td><td style={tdStyle}>{fmt(d.bill_amount)}</td><td style={tdStyle}>{fmt(d.paid_amount)}</td><td style={tdStyle}>{d.payment_mode}</td><td style={tdStyle}>{d.bill_no||'—'}</td><td style={tdStyle}>{fmt(Number(d.bill_amount)-Number(d.paid_amount))}</td></tr>)}{!deliveries.length&&<tr><td colSpan="9" style={tdStyle}>Abhi company delivery record nahi.</td></tr>}</tbody></table></div></div>
       <div style={panelCard}><h3 style={{marginTop:0}}>Company Payments History</h3>{companyPayments.map(p=><div key={p.id} style={{padding:8,borderTop:'1px solid #eee'}}>{p.payment_date} · {fmt(p.amount)} · {p.remarks||'Company bill payment'}</div>)}{!companyPayments.length&&<small>Abhi company ko payment record nahi hui.</small>}</div>
     </>}
     {tab==='monthly' && <>
       <div style={{...panelCard,display:'flex',gap:12,alignItems:'end',flexWrap:'wrap'}}><label>Month<input type="month" style={input} value={month} onChange={e=>setMonth(e.target.value)}/></label><label>Floor<select style={input} value={floor} onChange={e=>setFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></label><button style={btn} onClick={printRegister}>🖨️ Print Monthly Page</button><button style={{...btn,background:'#64748b'}} onClick={refresh}>Refresh</button></div>
-      <div id="water-month-register" style={panelCard}><div style={{display:'none'}} className="business-print-brand"><h2>NDA.PK · Water Supply Monthly Collection</h2></div><h2 style={{textAlign:'center',margin:'4px 0'}}>WATER SUPPLY · MONTHLY COLLECTION</h2><h3 style={{textAlign:'center',margin:'4px 0'}}>{floor} · {month}</h3><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><thead><tr>{['Room No.','Customer Name','Total Bottles','Previous Balance','Current Bill','Cash Received','Total Due / Credit','Remarks','Signature'].map(x=><th style={{border:'1px solid #94a3b8',padding:7,textAlign:'left'}} key={x}>{x}</th>)}</tr></thead><tbody>{customers.filter(c=>c.floor===floor&&c.active!==false).map(c=>{const ss=floorMonthSales.filter(x=>String(x.customer_id)===String(c.id));const pp=floorMonthPayments.filter(x=>String(x.customer_id)===String(c.id));const qty=ss.reduce((a,x)=>a+Number(x.bottles||0),0);const bill=ss.reduce((a,x)=>a+Number(x.total_amount||0),0);const openingSales=sales.filter(x=>String(x.customer_id)===String(c.id)&&String(x.sale_date)<month+'-01').reduce((a,x)=>a+Number(x.total_amount||0)-Number(x.cash_received||0),0);const openingPayments=payments.filter(x=>String(x.customer_id)===String(c.id)&&String(x.payment_date)<month+'-01').reduce((a,x)=>a+Number(x.amount||0),0);const opening=Math.max(0,openingSales-openingPayments);const paid=ss.reduce((a,x)=>a+Number(x.cash_received||0),0)+pp.reduce((a,x)=>a+Number(x.amount||0),0);const due=Math.max(0,opening+bill-paid);return <tr key={c.id}><td style={{border:'1px solid #94a3b8',padding:7}}>{c.room_no}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{c.customer_name}</td><td style={{border:'1px solid #94a3b8',padding:7}}><details><summary style={{cursor:'pointer',fontWeight:800,color:'#047857'}}>{qty} Bottles · View Details</summary><div style={{minWidth:220,padding:6}}>{ss.slice().sort((a,b)=>(String(a.sale_date)+String(a.sale_time||'')).localeCompare(String(b.sale_date)+String(b.sale_time||''))).map(x=><div key={x.id} style={{padding:'4px 0',borderBottom:'1px solid #e2e8f0'}}>{x.sale_date} · {x.sale_time||'Time not recorded'} · <b>{x.bottles} bottles</b></div>)}</div></details></td><td style={{border:'1px solid #94a3b8',padding:7}}>{opening.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{bill.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{paid.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{due.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{c.remarks||''}</td><td style={{border:'1px solid #94a3b8',padding:7,minWidth:65}}></td></tr>})}</tbody></table><div style={{display:'flex',justifyContent:'space-between',marginTop:28,fontSize:12}}><span>Cash Collected By: __________________</span><span>Checked By: __________________</span></div></div>
+      <div id="water-month-register" style={panelCard}><div className="business-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK" style={{width:95,height:58,objectFit:"contain"}}/><div><strong>NDA.PK BUSINESS SYSTEM</strong><div>Water Supply Monthly Collection · {month}</div></div></div><h2 style={{textAlign:'center',margin:'4px 0'}}>WATER SUPPLY · MONTHLY COLLECTION</h2><h3 style={{textAlign:'center',margin:'4px 0'}}>{floor} · {month}</h3><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><thead><tr>{['Room No.','Customer Name','Rate','Total Bottles','Previous Balance','Current Bill','Cash Received','Total Due / Credit','Remarks','Signature'].map(x=><th style={{border:'1px solid #94a3b8',padding:7,textAlign:'left'}} key={x}>{x}</th>)}</tr></thead><tbody>{customers.filter(c=>c.floor===floor&&c.active!==false).map(c=>{const ss=floorMonthSales.filter(x=>String(x.customer_id)===String(c.id));const pp=floorMonthPayments.filter(x=>String(x.customer_id)===String(c.id));const qty=ss.reduce((a,x)=>a+Number(x.bottles||0),0);const bill=ss.reduce((a,x)=>a+Number(x.total_amount||0),0);const openingSales=sales.filter(x=>String(x.customer_id)===String(c.id)&&String(x.sale_date)<month+'-01').reduce((a,x)=>a+Number(x.total_amount||0)-Number(x.cash_received||0),0);const openingPayments=payments.filter(x=>String(x.customer_id)===String(c.id)&&String(x.payment_date)<month+'-01').reduce((a,x)=>a+Number(x.amount||0),0);const opening=Math.max(0,openingSales-openingPayments);const paid=ss.reduce((a,x)=>a+Number(x.cash_received||0),0)+pp.reduce((a,x)=>a+Number(x.amount||0),0);const due=Math.max(0,opening+bill-paid);return <tr key={c.id}><td style={{border:'1px solid #94a3b8',padding:7}}>{c.room_no}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{c.customer_name}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{Number(c.rate).toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{qty}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{opening.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{bill.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{paid.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{due.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{c.remarks||''}</td><td style={{border:'1px solid #94a3b8',padding:7,minWidth:65}}></td></tr>})}</tbody></table><div style={{display:'flex',justifyContent:'space-between',marginTop:28,fontSize:12}}><span>Cash Collected By: __________________</span><span>Checked By: __________________</span></div></div>
       <div style={{...panelCard,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:12}}><div><small>Total Bill (month)</small><h3>{fmt(floorMonthSales.reduce((a,x)=>a+Number(x.total_amount||0),0))}</h3></div><div><small>Cash Received (month)</small><h3 style={{color:'#047857'}}>{fmt(floorMonthSales.reduce((a,x)=>a+Number(x.cash_received||0),0)+floorMonthPayments.reduce((a,x)=>a+Number(x.amount||0),0))}</h3></div><div><small>Credit / Balance</small><h3 style={{color:'#b91c1c'}}>{fmt(Math.max(0,floorMonthSales.reduce((a,x)=>a+Number(x.total_amount||0)-Number(x.cash_received||0),0)-floorMonthPayments.reduce((a,x)=>a+Number(x.amount||0),0)))}</h3></div></div>
       <div style={panelCard}><h3>Company Account · {month}</h3><p>Deliveries: {fmt(deliveryMonth.reduce((a,x)=>a+Number(x.bill_amount||0),0))} · Payments: {fmt(companyPaymentMonth.reduce((a,x)=>a+Number(x.amount||0),0))} · Current Outstanding: <b>{fmt(companyOutstanding)}</b></p></div>
     </>}
@@ -394,7 +372,7 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
   const panel={background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:14,marginBottom:12};
   const input={width:'100%',boxSizing:'border-box',padding:10,border:'1px solid #cbd5e1',borderRadius:8};
   return <section style={{background:'#f8fafc',borderRadius:14,padding:14}}>
-    <div style={{...panel,background:'#eff6ff'}}><h2 style={{margin:'0 0 4px'}}>📒 Personal Notebook / Hisab Kitab</h2><div style={{fontSize:13,color:'#475569'}}>Engineer Account, Udhaar, Ghar ke Akhrajat aur apni zaroorat ke mutabiq unlimited files.</div></div>
+    <div style={{...panel,background:'#eff6ff'}}><h2 style={{margin:'0 0 4px'}}>📒 Naveed Docs / Hisab Kitab</h2><div style={{fontSize:13,color:'#475569'}}>Engineer Account, Udhaar, Ghar ke Akhrajat aur apni zaroorat ke mutabiq unlimited files.</div></div>
     {errorText&&<div style={{...panel,color:'#991b1b'}}>Database error: {errorText}. Notebook SQL setup run karein.</div>}
     {isAdmin&&<form onSubmit={createFile} style={{...panel,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:10}}><input style={input} value={newFileName} onChange={e=>setNewFileName(e.target.value)} placeholder="New file name (e.g. Engineer Account)" required/><select style={input} value={newFileCurrency} onChange={e=>setNewFileCurrency(e.target.value)}><option value="AED">AED</option><option value="PKR">PKR</option></select><button style={{...primaryStyle,background:'#1d4ed8'}}>＋ Create Notebook File</button></form>}
     <div style={{...panel,display:'flex',gap:10,alignItems:'end',flexWrap:'wrap'}}><label style={{flex:'1 1 220px'}}>Open Notebook File<select style={{...input,marginTop:5}} value={activeFileId} onChange={e=>setActiveFileId(e.target.value)}><option value="">Select file</option>{files.map(f=><option key={f.id} value={f.id}>{f.file_name} ({f.currency})</option>)}</select></label>{activeFile&&isAdmin&&<button onClick={deleteFile} style={{...primaryStyle,width:'auto',background:'#b91c1c'}}>Delete File</button>}</div>
@@ -418,12 +396,12 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [accessRows, setAccessRows] = useState([]);
   const [access, setAccess] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [view, setView] = useState('vehicles');
+  const [view, setView] = useState('dashboard');
+  const [workspaceSection, setWorkspaceSection] = useState('dashboard');
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [cleanupMonth, setCleanupMonth] = useState(() => { const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; });
   const [cleanupPreview, setCleanupPreview] = useState(null);
-  const [cleanupType, setCleanupType] = useState('vehicle');
 
   // New Business Form
   const [newBusinessName, setNewBusinessName] = useState('');
@@ -518,7 +496,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     : ['Daily Sales / Income', 'Client Payment', 'Service Fee', 'Other Income'];
 
   const quickExpenseCategories = isTransportBusiness
-    ? ['Diesel / Petrol', 'Garage / Maintenance', 'Toll / Salik', 'Traffic Fine', 'Driver Food / Tea', 'Spare Parts', 'Other Expense']
+    ? ['Fuel', 'Maintenance', 'Other Expense']
     : ['Stock / Material', 'Shop Rent / Bills', 'Staff Expense', 'Maintenance / Repair', 'Transport / Delivery', 'Other Expense'];
 
   function resolveFirstAllowedView(accRow, isAdminUser) {
@@ -574,18 +552,9 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
         const row = rows.find(r => String(r.business_id) === next) || rows[0] || null;
         setAccess(row);
         if (row) {
-          setView(prev => {
-            const onlyWater = row.can_view && !row.can_view_daily && !row.can_edit && !row.can_delete && !row.can_view_vehicles && !row.can_manage_vehicles && !row.can_view_workers && !row.can_manage_workers && !row.can_view_monthly && !row.can_manage_access;
-            const allowed = onlyWater
-              ? prev === 'water'
-              : (prev === 'daily' && (row.can_view_daily || row.can_add || row.can_edit || row.can_delete)) ||
-                (prev === 'vehicles' && (row.can_view_vehicles || row.can_manage_vehicles)) ||
-                (prev === 'workers' && (row.can_view_workers || row.can_manage_workers)) ||
-                (prev === 'monthly' && row.can_view_monthly) ||
-                (prev === 'access' && row.can_manage_access) ||
-                (prev === 'water' && row.can_view);
-            return allowed ? prev : resolveFirstAllowedView(row, false);
-          });
+          const firstView = resolveFirstAllowedView(row, false);
+          setView(firstView);
+          setWorkspaceSection(firstView === 'water' ? 'water' : firstView === 'access' ? 'access' : 'transport');
         }
       }
     } catch (e) {
@@ -694,38 +663,27 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     const now=new Date(); const maxMonth=new Date(Date.UTC(now.getFullYear(),now.getMonth()-1,1)).toISOString().slice(0,7);
     if(cleanupMonth>maxMonth)return alert('Sirf previous ya us se purana month select kar sakte hain.');
     const start=cleanupMonth+'-01'; const [y,m]=cleanupMonth.split('-').map(Number); const end=new Date(Date.UTC(y,m,1)).toISOString().slice(0,10);
-    if(cleanupType==='vehicle'){
-      const q=await supabase.from('business_entries').select('id,amount,entry_kind,vehicle_id').eq('business_id',Number(businessId)).gte('entry_date',start).lt('entry_date',end);
-      if(q.error)return alert('Vehicle month preview load nahi hua: '+q.error.message);
-      setCleanupPreview({month:cleanupMonth,type:'vehicle',entries:q.data||[]});
-    } else {
-      const [s,p,d,cp]=await Promise.all([
-        supabase.from('water_sales').select('id,total_amount,cash_received').eq('business_id',Number(businessId)).gte('sale_date',start).lt('sale_date',end),
-        supabase.from('water_payments').select('id,amount').eq('business_id',Number(businessId)).gte('payment_date',start).lt('payment_date',end),
-        supabase.from('water_company_deliveries').select('id,bill_amount,bottles_received').eq('business_id',Number(businessId)).gte('delivery_date',start).lt('delivery_date',end),
-        supabase.from('water_company_payments').select('id,amount').eq('business_id',Number(businessId)).gte('payment_date',start).lt('payment_date',end)
-      ]);
-      const failed=[s,p,d,cp].find(x=>x.error); if(failed)return alert('Water month preview load nahi hua: '+failed.error.message);
-      setCleanupPreview({month:cleanupMonth,type:'water',sales:s.data||[],payments:p.data||[],deliveries:d.data||[],companyPayments:cp.data||[]});
-    }
+    const queries=await Promise.all([
+      supabase.from('business_entries').select('id,amount,entry_kind').eq('business_id',Number(businessId)).gte('entry_date',start).lt('entry_date',end),
+      supabase.from('water_sales').select('id,total_amount,cash_received').eq('business_id',Number(businessId)).gte('sale_date',start).lt('sale_date',end),
+      supabase.from('water_payments').select('id,amount').eq('business_id',Number(businessId)).gte('payment_date',start).lt('payment_date',end)
+    ]);
+    const failed=queries.find(x=>x.error); if(failed)return alert('Month preview load nahi hua: '+failed.error.message);
+    setCleanupPreview({month:cleanupMonth,entries:queries[0].data||[],sales:queries[1].data||[],payments:queries[2].data||[]});
   }
   async function deleteMonthData() {
-    if(!admin||!cleanupPreview||cleanupPreview.month!==cleanupMonth||cleanupPreview.type!==cleanupType)return;
-    const total=cleanupType==='vehicle'?cleanupPreview.entries.length:cleanupPreview.sales.length+cleanupPreview.payments.length+cleanupPreview.deliveries.length+cleanupPreview.companyPayments.length;
+    if(!admin||!cleanupPreview||cleanupPreview.month!==cleanupMonth)return;
+    const total=cleanupPreview.entries.length+cleanupPreview.sales.length+cleanupPreview.payments.length;
     if(!total)return alert('Is month mein delete karne ke liye koi record nahi mila.');
-    const label=cleanupType==='vehicle'?'Vehicle':'Water Supply';
-    if(!window.confirm(`${cleanupMonth} ke ${total} ${label} records permanently delete honge. Doosre business section aur HR System ka data delete nahi hoga. Kya aap sure hain?`))return;
+    if(!window.confirm(`${cleanupMonth} ke ${total} Business records permanently delete honge: daily entries ${cleanupPreview.entries.length}, water sales ${cleanupPreview.sales.length}, water payments ${cleanupPreview.payments.length}. Customers, notebook files aur HR data delete nahi hoga. Kya aap sure hain?`))return;
     const [y,m]=cleanupMonth.split('-').map(Number); const start=cleanupMonth+'-01'; const end=new Date(Date.UTC(y,m,1)).toISOString().slice(0,10);
-    let ops=[];
-    if(cleanupType==='vehicle') ops=[await supabase.from('business_entries').delete().eq('business_id',Number(businessId)).gte('entry_date',start).lt('entry_date',end)];
-    else ops=await Promise.all([
+    const ops=await Promise.all([
+      supabase.from('business_entries').delete().eq('business_id',Number(businessId)).gte('entry_date',start).lt('entry_date',end),
       supabase.from('water_sales').delete().eq('business_id',Number(businessId)).gte('sale_date',start).lt('sale_date',end),
-      supabase.from('water_payments').delete().eq('business_id',Number(businessId)).gte('payment_date',start).lt('payment_date',end),
-      supabase.from('water_company_deliveries').delete().eq('business_id',Number(businessId)).gte('delivery_date',start).lt('delivery_date',end),
-      supabase.from('water_company_payments').delete().eq('business_id',Number(businessId)).gte('payment_date',start).lt('payment_date',end)
+      supabase.from('water_payments').delete().eq('business_id',Number(businessId)).gte('payment_date',start).lt('payment_date',end)
     ]);
     const failed=ops.find(x=>x.error); if(failed)return alert('Kuch records delete nahi ho sake: '+failed.error.message);
-    setCleanupPreview(null); await loadBusinessData(); alert(`${cleanupMonth} ka ${label} data delete ho gaya. HR System untouched hai.`);
+    setCleanupPreview(null); await loadBusinessData(); alert(`${cleanupMonth} ka selected Business data delete ho gaya. HR System untouched hai.`);
   }
 
   async function addVehicle(e) {
@@ -1021,16 +979,16 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     return { date, rows, income: dayIncome, expense: dayExpense, net: dayIncome - dayExpense, status, reason };
   });
 
-  const panelTitle = currentBusiness?.name || 'Business Management';
+  const panelTitle = view === 'dashboard' ? 'Dashboard' : view === 'notebook' ? 'Naveed Docs' : currentBusiness?.name || 'Business Management';
 
-  const navTabs = [
-    (admin || access?.can_view_vehicles || can('can_manage_vehicles') || access?.can_view_daily || can('can_add')) && { id: 'vehicles', icon: '🚚', label: 'Vehicle Files' },
-    (admin || access?.can_view || can('can_add')) && { id: 'water', icon: '💧', label: 'Water Supply' },
-    admin && { id: 'notebook', icon: '📒', label: 'Personal Notebook' },
-    admin && { id: 'cleanup', icon: '🧹', label: 'Month Data Delete' },
-    (admin || access?.can_view_workers || can('can_manage_workers')) && { id: 'workers', icon: '👷', label: 'Drivers & Pay' },
-    can('can_manage_access') && { id: 'access', icon: '🔐', label: 'Staff Access' }
-  ].filter(Boolean);
+  const navTabs = workspaceSection === 'dashboard'
+    ? [...(admin ? [{ id: 'dashboard', icon: '🏠', label: 'Dashboard' }] : []), ...(admin ? [{ id: 'notebook', icon: '📒', label: 'Naveed Docs' }, { id: 'access', icon: '🔐', label: 'Staff Access' }] : [])]
+    : workspaceSection === 'transport'
+      ? [...(admin ? [{ id: 'dashboard', icon: '🏠', label: 'Dashboard' }] : []), ...(admin || access?.can_view_daily || (!waterOnlyStaff && (can('can_add') || can('can_edit') || can('can_delete'))) ? [{ id: 'daily', icon: '📝', label: 'Daily Entry' }] : []), ...(admin || access?.can_view_vehicles || can('can_manage_vehicles') ? [{ id: 'vehicles', icon: '🚚', label: 'Vehicle Files' }] : []), ...(admin || access?.can_view_monthly ? [{ id: 'monthly', icon: '📊', label: 'Monthly Sheet' }] : []), ...(admin || access?.can_view_workers || can('can_manage_workers') ? [{ id: 'workers', icon: '👷', label: 'Drivers & Pay' }] : []), ...(admin ? [{ id: 'cleanup', icon: '🧹', label: 'Month Data Delete' }] : [])]
+      : workspaceSection === 'water'
+        ? [...(admin ? [{ id: 'dashboard', icon: '🏠', label: 'Dashboard' }] : []), ...(admin || access?.can_view || can('can_add') ? [{ id: 'water', icon: '💧', label: 'Drinking Water' }] : [])]
+        : workspaceSection === 'notebook' ? [{ id: 'dashboard', icon: '🏠', label: 'Dashboard' }, { id: 'notebook', icon: '📒', label: 'Naveed Docs' }]
+        : [{ id: 'dashboard', icon: '🏠', label: 'Dashboard' }, ...(can('can_manage_access') ? [{ id: 'access', icon: '🔐', label: 'Staff Access' }] : [])];
 
   return (
     <div className="business-workspace" style={{ minHeight: '100vh', background: '#f1f5f9', fontFamily: "'Segoe UI', sans-serif", color: '#0f172a' }}>
@@ -1083,7 +1041,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
       </header>
 
       <main style={{ padding: '16px clamp(12px,2vw,26px)', maxWidth: 1450, margin: '0 auto' }}>
-        {/* TOP CONTROL BAR: ONLY BUSINESS MODULES; VEHICLE ACTIONS LIVE INSIDE VEHICLE FILES */}
+        {/* TOP CONTROL BAR: BIG EASY TABS + QUICK FILTERS */}
         <section style={{ ...card, marginBottom: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(135px,1fr))', gap: 8, marginBottom: 12 }}>
             {navTabs.map(tab => {
@@ -1092,7 +1050,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setView(tab.id)}
+                  onClick={() => { if (tab.id === 'dashboard') { setWorkspaceSection('dashboard'); setView('dashboard'); } else if (tab.id === 'notebook') { setWorkspaceSection('notebook'); setView('notebook'); } else if (tab.id === 'access') { setWorkspaceSection('access'); setView('access'); } else setView(tab.id); }}
                   style={{
                     ...btn,
                     padding: '13px 12px',
@@ -1110,7 +1068,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
             })}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 10, alignItems: 'end' }}>
+          {view !== 'dashboard' && view !== 'notebook' && view !== 'access' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 10, alignItems: 'end' }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
               🏢 Active Business
               <select
@@ -1124,7 +1082,9 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                   if (!admin) {
                     const row = accessRows.find(r => String(r.business_id) === String(nextId));
                     setAccess(row || null);
-                    setView(resolveFirstAllowedView(row, false));
+                    const firstView = resolveFirstAllowedView(row, false);
+          setView(firstView);
+          setWorkspaceSection(firstView === 'water' ? 'water' : firstView === 'access' ? 'access' : 'transport');
                   }
                 }}
               >
@@ -1169,12 +1129,12 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                 <option value="USD">USD</option>
               </select>
             </label>
-          </div>
+          </div>}
 
-          {admin && (
+          {admin && view !== 'dashboard' && view !== 'notebook' && view !== 'access' && (
             <details style={{ marginTop: 12, borderTop: '1px solid #e2e8f0', paddingTop: 10 }}>
               <summary style={{ cursor: 'pointer', fontWeight: 800, color: '#047857', fontSize: 14 }}>
-                ＋ Add New Business (Transport, Shop, Contracting, etc.)
+                ＋ Add New Business (Transport / Drinking Water)
               </summary>
               <form onSubmit={addBusiness} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10, marginTop: 10 }}>
                 <input
@@ -1185,7 +1145,8 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                   required
                 />
                 <select style={inputStyle} value={newBusinessKind} onChange={e => setNewBusinessKind(e.target.value)}>
-                  <option value="transport">Transport / Vehicle Business</option>
+                  <option value="transport">Transport</option>
+                  <option value="water">Drinking Water</option>
                   <option value="other">General / Other Business</option>
                 </select>
                 <button type="submit" style={btn}>Create Business</button>
@@ -1200,16 +1161,21 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
           )}
         </section>
 
-        {(view === 'daily' || view === 'monthly') && !waterOnlyStaff && (
-          <section style={{ ...card, marginBottom: 14, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button type="button" style={{ ...btn, background: '#475569' }} onClick={() => setView('vehicles')}>← Vehicle Files</button>
-            <strong style={{ marginRight: 8 }}>🚚 {vehicles.find(v => String(v.id) === String(activeVehicleId))?.plate_number || 'Vehicle'}</strong>
-            <button type="button" style={{ ...btn, background: view === 'daily' ? '#047857' : '#e2e8f0', color: view === 'daily' ? '#fff' : '#0f172a' }} onClick={() => setView('daily')}>📝 Daily Entry</button>
-            <button type="button" style={{ ...btn, background: view === 'monthly' ? '#1d4ed8' : '#e2e8f0', color: view === 'monthly' ? '#fff' : '#0f172a' }} onClick={() => setView('monthly')}>📊 Monthly Sheet</button>
+        {view === 'dashboard' && admin ? (
+          <section style={{...card, padding:24}}>
+            <h2 style={{marginTop:0,marginBottom:8}}>NDA.PK Business Dashboard</h2>
+            <p style={{color:'#64748b',marginTop:0}}>Apna business section select karein.</p>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:18,marginTop:20}}>
+              <button type="button" onClick={() => { const b=businesses.find(x=>(x.business_kind||'transport')==='transport'); if(!b){alert('Pehle Transport business create karein.');return;} setBusinessId(String(b.id));setWorkspaceSection('transport');setView('daily'); }} style={{minHeight:190,border:0,borderRadius:20,padding:26,textAlign:'left',background:'linear-gradient(135deg,#064e3b,#059669)',color:'#fff',cursor:'pointer',boxShadow:'0 8px 24px #064e3b30'}}>
+                <div style={{fontSize:46}}>🚚</div><div style={{fontSize:28,fontWeight:900,marginTop:10}}>Transport</div><div style={{fontSize:14,opacity:.9,marginTop:6}}>Daily Entry · Vehicle Files · Monthly Sheet · Drivers & Pay</div>
+              </button>
+              <button type="button" onClick={() => { const b=businesses.find(x=>x.business_kind==='water'||/water/i.test(x.name||'')); if(!b){alert('Pehle Add New Business mein Drinking Water create karein.');return;} setBusinessId(String(b.id));setWorkspaceSection('water');setView('water'); }} style={{minHeight:190,border:0,borderRadius:20,padding:26,textAlign:'left',background:'linear-gradient(135deg,#075985,#0ea5e9)',color:'#fff',cursor:'pointer',boxShadow:'0 8px 24px #07598530'}}>
+                <div style={{fontSize:46}}>💧</div><div style={{fontSize:28,fontWeight:900,marginTop:10}}>Drinking Water</div><div style={{fontSize:14,opacity:.9,marginTop:6}}>Daily Entry · Monthly Sheet · Customer Files · Company Account · Water Stock</div>
+              </button>
+            </div>
+            <details style={{marginTop:18}}><summary style={{cursor:'pointer',fontWeight:800,color:'#047857'}}>＋ Create Transport / Drinking Water Business</summary><form onSubmit={addBusiness} style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:10,marginTop:12}}><input style={inputStyle} value={newBusinessName} onChange={e=>setNewBusinessName(e.target.value)} placeholder="Business Name" required/><select style={inputStyle} value={newBusinessKind} onChange={e=>setNewBusinessKind(e.target.value)}><option value="transport">Transport</option><option value="water">Drinking Water</option></select><button type="submit" style={btn}>Create Business</button></form></details>
           </section>
-        )}
-
-        {!businessId ? (
+        ) : !businessId && view !== 'notebook' && view !== 'access' ? (
           <section style={card}>
             <h3 style={{ marginTop: 0 }}>No Business Selected</h3>
             <p style={{ color: '#475569' }}>
@@ -1702,7 +1668,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead>
                         <tr style={{ background: '#f8fafc' }}>
-                          {['Date', 'Vehicle', 'Category & Details', 'Income', 'Expense', 'Net', ...(can('can_edit') || can('can_delete') ? ['Actions'] : [])].map(h => (
+                          {['Date', 'Vehicle', 'Category & Details', 'Income', 'Expense', 'Net'].map(h => (
                             <th key={h} style={{ padding: 9, textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>{h}</th>
                           ))}
                         </tr>
@@ -1720,7 +1686,6 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                               <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9', color: '#15803d', fontWeight: 700 }}>{!isExp ? money(r.amount) : '—'}</td>
                               <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9', color: '#b91c1c', fontWeight: 700 }}>{isExp ? money(r.amount) : '—'}</td>
                               <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9', fontWeight: 800, color: isExp ? '#b91c1c' : '#047857' }}>{isExp ? `-${money(r.amount)}` : money(r.amount)}</td>
-                              {(can('can_edit') || can('can_delete')) && <td style={{ padding: 9, borderBottom: '1px solid #f1f5f9', whiteSpace:'nowrap' }}>{can('can_edit')&&<button type="button" onClick={()=>editEntry(r)} style={{...btn,padding:'5px 8px',marginRight:4}}>Edit</button>}{can('can_delete')&&<button type="button" onClick={()=>deleteEntry(r)} style={{...btn,background:'#b91c1c',padding:'5px 8px'}}>Delete</button>}</td>}
                             </tr>
                           );
                         })}
@@ -1735,7 +1700,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
 
               {/* WATER SUPPLY CUSTOMER KHATA — BUSINESS SYSTEM ONLY */}
               {view === 'water' && (admin || access?.can_view || can('can_add')) && (
-                <WaterSupplyPanel session={session} businessId={businessId} isAdmin={admin} canAdd={admin || can('can_add')} canEdit={admin || can('can_edit')} canDelete={admin || can('can_delete')} />
+                <WaterSupplyPanel session={session} businessId={businessId} isAdmin={admin} canAdd={admin || can('can_add')} canDelete={admin || can('can_delete')} />
               )}
 
               {view === 'notebook' && admin && (
@@ -1745,9 +1710,9 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
               {view === 'cleanup' && admin && (
                 <section style={card}>
                   <h2 style={{marginTop:0}}>🧹 Previous Month Business Data Delete</h2>
-                  <p style={{color:'#475569',fontSize:13}}>Vehicle aur Water Supply ka data alag alag preview aur delete hoga. HR System aur doosre section ka data safe rahega.</p>
-                  <div style={{display:'flex',gap:10,alignItems:'end',flexWrap:'wrap'}}><label>Business Data<select style={{...inputStyle,marginTop:4}} value={cleanupType} onChange={e=>{setCleanupType(e.target.value);setCleanupPreview(null);}}><option value="vehicle">🚚 Vehicle Data</option><option value="water">💧 Water Supply Data</option></select></label><label>Previous Month<input type="month" style={{...inputStyle,marginTop:4}} value={cleanupMonth} max={new Date(Date.UTC(new Date().getFullYear(),new Date().getMonth()-1,1)).toISOString().slice(0,7)} onChange={e=>{setCleanupMonth(e.target.value);setCleanupPreview(null);}} /></label><button type="button" style={btn} onClick={previewMonthCleanup}>Preview Month Data</button></div>
-                  {cleanupPreview&&<div style={{marginTop:14,padding:14,border:'1px solid #fbbf24',background:'#fffbeb',borderRadius:10}}><h3 style={{marginTop:0}}>Preview · {cleanupPreview.month} · {cleanupPreview.type==='vehicle'?'Vehicle':'Water Supply'}</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}>{cleanupPreview.type==='vehicle'?<div><b>Vehicle Entries</b><div>{cleanupPreview.entries.length}</div></div>:<><div><b>Customer Deliveries</b><div>{cleanupPreview.sales.length}</div></div><div><b>Customer Payments</b><div>{cleanupPreview.payments.length}</div></div><div><b>Company Deliveries</b><div>{cleanupPreview.deliveries.length}</div></div><div><b>Company Payments</b><div>{cleanupPreview.companyPayments.length}</div></div></>}<div><b>Total Records</b><div>{cleanupPreview.type==='vehicle'?cleanupPreview.entries.length:cleanupPreview.sales.length+cleanupPreview.payments.length+cleanupPreview.deliveries.length+cleanupPreview.companyPayments.length}</div></div></div><button type="button" style={{...btn,background:'#b91c1c',marginTop:12}} onClick={deleteMonthData}>Permanently Delete This Month</button></div>}
+                  <p style={{color:'#475569',fontSize:13}}>Pehle month select karke preview dekhein. Delete karne se sirf is Business ke daily entries, Water Supply sales aur payments delete honge. Customer profiles, notebook aur HR System ka data safe rahega.</p>
+                  <div style={{display:'flex',gap:10,alignItems:'end',flexWrap:'wrap'}}><label>Previous Month<input type="month" style={{...inputStyle,marginTop:4}} value={cleanupMonth} max={new Date(Date.UTC(new Date().getFullYear(),new Date().getMonth()-1,1)).toISOString().slice(0,7)} onChange={e=>{setCleanupMonth(e.target.value);setCleanupPreview(null);}} /></label><button type="button" style={btn} onClick={previewMonthCleanup}>Preview Month Data</button></div>
+                  {cleanupPreview&&<div style={{marginTop:14,padding:14,border:'1px solid #fbbf24',background:'#fffbeb',borderRadius:10}}><h3 style={{marginTop:0}}>Preview · {cleanupPreview.month}</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}><div><b>Business Entries</b><div>{cleanupPreview.entries.length}</div></div><div><b>Water Sales</b><div>{cleanupPreview.sales.length}</div></div><div><b>Water Payments</b><div>{cleanupPreview.payments.length}</div></div><div><b>Total Records</b><div>{cleanupPreview.entries.length+cleanupPreview.sales.length+cleanupPreview.payments.length}</div></div></div><button type="button" style={{...btn,background:'#b91c1c',marginTop:12}} onClick={deleteMonthData}>Permanently Delete This Month</button></div>}
                 </section>
               )}
 
