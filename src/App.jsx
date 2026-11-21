@@ -389,7 +389,7 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
 
 function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [businesses, setBusinesses] = useState([]);
-  const [businessId, setBusinessId] = useState(() => { try { return sessionStorage.getItem('nda_business_selected_id') || ''; } catch { return ''; } });
+  const [businessId, setBusinessId] = useState(() => { try { return localStorage.getItem('nda_business_selected_id') || sessionStorage.getItem('nda_business_selected_id') || ''; } catch { return ''; } });
   const [activeVehicleId, setActiveVehicleId] = useState('');
   const [vehicles, setVehicles] = useState([]);
   const [people, setPeople] = useState([]);
@@ -397,8 +397,8 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [accessRows, setAccessRows] = useState([]);
   const [access, setAccess] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [view, setView] = useState(() => { try { return sessionStorage.getItem('nda_business_last_view') || 'dashboard'; } catch { return 'dashboard'; } });
-  const [workspaceSection, setWorkspaceSection] = useState(() => { try { return sessionStorage.getItem('nda_business_last_section') || 'dashboard'; } catch { return 'dashboard'; } });
+  const [view, setView] = useState(() => { try { return localStorage.getItem('nda_business_last_view') || sessionStorage.getItem('nda_business_last_view') || 'dashboard'; } catch { return 'dashboard'; } });
+  const [workspaceSection, setWorkspaceSection] = useState(() => { try { return localStorage.getItem('nda_business_last_section') || sessionStorage.getItem('nda_business_last_section') || 'dashboard'; } catch { return 'dashboard'; } });
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [cleanupMonth, setCleanupMonth] = useState(() => { const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; });
@@ -601,8 +601,15 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   useEffect(() => { loadBusinesses(businessId); }, [session?.user?.email, admin]);
   useEffect(() => {
     try {
-      if (businessId) sessionStorage.setItem('nda_business_selected_id', String(businessId));
-      else sessionStorage.removeItem('nda_business_selected_id');
+      if (businessId) {
+        localStorage.setItem('nda_business_selected_id', String(businessId));
+        sessionStorage.setItem('nda_business_selected_id', String(businessId));
+      } else {
+        localStorage.removeItem('nda_business_selected_id');
+        sessionStorage.removeItem('nda_business_selected_id');
+      }
+      localStorage.setItem('nda_business_last_view', view || 'dashboard');
+      localStorage.setItem('nda_business_last_section', workspaceSection || 'dashboard');
       sessionStorage.setItem('nda_business_last_view', view || 'dashboard');
       sessionStorage.setItem('nda_business_last_section', workspaceSection || 'dashboard');
     } catch (e) { console.warn('Business workspace state could not be saved:', e); }
@@ -1942,7 +1949,10 @@ export default function App() {
       return null;
     } catch { return null; }
   }); // 'hr' | 'business'
-  const [businessType, setBusinessType] = useState('transport');
+  const [sessionRestoreReady, setSessionRestoreReady] = useState(false);
+  const [businessType, setBusinessType] = useState(() => {
+    try { return localStorage.getItem('nda_business_type') || 'transport'; } catch { return 'transport'; }
+  });
   const [businessTransactions, setBusinessTransactions] = useState([]);
   const [businessWorkers, setBusinessWorkers] = useState([]);
   const [businessSalaryPayments, setBusinessSalaryPayments] = useState([]);
@@ -2515,11 +2525,70 @@ const [newDesignation, setNewDesignation] = useState('');
     } catch (err) { console.warn('App session could not be saved:', err); }
   }, [session]);
 
+  // Restore Supabase's real Business Auth tokens before mounting either workspace.
+  // The previous build restored only the app's display session; it did not explicitly
+  // restore the Supabase access/refresh tokens needed by Business database requests.
+  useEffect(() => {
+    let active = true;
+    const restore = async () => {
+      try {
+        if (session?.system_scope === 'business') {
+          let savedAuth = null;
+          try { savedAuth = JSON.parse(localStorage.getItem('nda_business_auth_session') || 'null'); } catch {}
+          let restored = false;
+          if (savedAuth?.access_token && savedAuth?.refresh_token) {
+            const { data, error } = await supabase.auth.setSession({
+              access_token: savedAuth.access_token,
+              refresh_token: savedAuth.refresh_token
+            });
+            restored = !error && !!data?.session;
+            if (error) console.warn('Business auth restore failed:', error.message);
+          }
+          if (!restored) {
+            const { data, error } = await supabase.auth.getSession();
+            restored = !error && !!data?.session;
+            if (restored) {
+              try { localStorage.setItem('nda_business_auth_session', JSON.stringify(data.session)); } catch {}
+            }
+          }
+          if (!restored && active) {
+            // Old saved app sessions did not contain Supabase tokens. Ask for one fresh login.
+            setSession(null);
+            setSelectedSystem('business');
+          }
+        }
+      } catch (err) {
+        console.error('Session restore error:', err);
+        if (session?.system_scope === 'business' && active) {
+          setSession(null);
+          setSelectedSystem('business');
+        }
+      } finally {
+        if (active) setSessionRestoreReady(true);
+      }
+    };
+    restore();
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, authSession) => {
+      try {
+        if (authSession?.access_token && authSession?.refresh_token) {
+          localStorage.setItem('nda_business_auth_session', JSON.stringify(authSession));
+        } else if (event === 'SIGNED_OUT') {
+          localStorage.removeItem('nda_business_auth_session');
+        }
+      } catch (err) { console.warn('Business auth token could not be saved:', err); }
+    });
+    return () => {
+      active = false;
+      authListener?.subscription?.unsubscribe?.();
+    };
+  }, []);
+
   useEffect(() => {
     try {
       if (selectedSystem === 'hr' || selectedSystem === 'business') {
         localStorage.setItem('nda_selected_system', selectedSystem);
         sessionStorage.setItem('nda_selected_system', selectedSystem);
+        if (selectedSystem === 'business') localStorage.setItem('nda_business_type', businessType || 'transport');
       } else if (selectedSystem === null && !session) {
         localStorage.removeItem('nda_selected_system');
         sessionStorage.removeItem('nda_selected_system');
@@ -2528,7 +2597,7 @@ const [newDesignation, setNewDesignation] = useState('');
         sessionStorage.setItem('nda_selected_system', 'none');
       }
     } catch (err) { console.warn('Selected system could not be saved:', err); }
-  }, [selectedSystem, session]);
+  }, [selectedSystem, session, businessType]);
 
  useEffect(() => {
   if (session) {
@@ -3704,7 +3773,18 @@ async function handleToggleHolidayDate() {
         const businessRole = isAdminForBusiness
           ? { is_admin: true, assigned_department: 'All', assigned_site: 'All', can_view_business: true, can_manage_business: true }
           : { is_admin: false, business_only: true, can_view_business: true };
+        // Save the actual Supabase auth tokens synchronously so a browser refresh
+        // cannot leave the custom app session without database authorization.
+        if (authData?.session?.access_token && authData?.session?.refresh_token) {
+          try { localStorage.setItem('nda_business_auth_session', JSON.stringify(authData.session)); } catch (storageError) {
+            console.warn('Business auth session could not be saved:', storageError);
+          }
+        }
         const businessSession = { user: { email: cleanEmail }, role: businessRole, system_scope: 'business' };
+        try {
+          localStorage.setItem('nda_user_session', JSON.stringify(businessSession));
+          localStorage.setItem('nda_selected_system', 'business');
+        } catch (storageError) { console.warn('Business app session could not be saved:', storageError); }
         setSession(businessSession);
         setUserRole(businessRole);
         setSelectedSystem('business');
@@ -3871,6 +3951,7 @@ async function handleToggleHolidayDate() {
       sessionStorage.removeItem('nda_worker_docs_token');
       localStorage.removeItem('nda_user_session');
       localStorage.removeItem('nda_selected_system');
+      localStorage.removeItem('nda_business_auth_session');
       setWorkerDocToken('');
     } catch (err) {
       console.warn('Could not clear saved session:', err);
@@ -5108,6 +5189,18 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         <script>window.onload=function(){var logo=document.querySelector('.brand img');var go=function(){setTimeout(function(){window.focus();window.print();},250);};if(logo&&!logo.complete){logo.onload=go;logo.onerror=go;}else{go();}};<\/script>
       </body></html>`);
     printWindow.document.close();
+  }
+
+  if (!sessionRestoreReady) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a', color: '#fff', fontFamily: "'Segoe UI', sans-serif", padding: 20 }}>
+        <div style={{ textAlign: 'center', maxWidth: 340 }}>
+          <div style={{ fontSize: 28, marginBottom: 12 }}>🔐</div>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>Restoring Secure Session…</div>
+          <div style={{ color: '#cbd5e1', fontSize: 13, marginTop: 8 }}>Please wait. Aap ka login aur data access verify ho raha hai.</div>
+        </div>
+      </div>
+    );
   }
 
   if (!selectedSystem) {
