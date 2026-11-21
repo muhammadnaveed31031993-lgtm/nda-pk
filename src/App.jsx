@@ -6,10 +6,31 @@ function printNdaPage(targetId, isAdmin = false) {
   const target = document.getElementById(targetId);
   if (!target) { alert('Print page nahi mil saka. Page refresh karke dobara try karein.'); return; }
   document.querySelectorAll('.nda-print-target').forEach(node => node.classList.remove('nda-print-target'));
+  const originalParent = target.parentNode;
+  const originalNextSibling = target.nextSibling;
+  const placeholder = document.createComment('nda-print-placeholder');
+  originalParent.insertBefore(placeholder, target);
   target.classList.add('nda-print-target');
+  // Print only the selected report: detach it from the long app layout so
+  // hidden dashboards/tabs cannot create trailing blank pages.
+  document.body.classList.add('nda-printing');
+  document.body.appendChild(target);
   const images = Array.from(target.querySelectorAll('img'));
   Promise.all(images.map(img => img.complete ? Promise.resolve() : new Promise(resolve => { img.onload = resolve; img.onerror = resolve; }))).then(() => {
-    const cleanup = () => { target.classList.remove('nda-print-target'); window.removeEventListener('afterprint', cleanup); };
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      target.classList.remove('nda-print-target');
+      document.body.classList.remove('nda-printing');
+      if (placeholder.parentNode) {
+        placeholder.parentNode.insertBefore(target, placeholder);
+        placeholder.parentNode.removeChild(placeholder);
+      } else if (originalParent) {
+        originalParent.insertBefore(target, originalNextSibling && originalNextSibling.parentNode === originalParent ? originalNextSibling : null);
+      }
+      window.removeEventListener('afterprint', cleanup);
+    };
     window.addEventListener('afterprint', cleanup);
     window.print();
     setTimeout(cleanup, 30000);
@@ -8246,6 +8267,16 @@ return monthlyRows.map((att, idx) => {
   </div>
 )}
       </main>
+      <style>{`@media print {
+        @page { margin: 8mm; }
+        html, body { height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
+        body.nda-printing > *:not(.nda-print-target) { display: none !important; }
+        body.nda-printing > .nda-print-target { display: block !important; position: relative !important; inset: auto !important; width: 100% !important; max-width: none !important; min-height: 0 !important; height: auto !important; margin: 0 !important; overflow: visible !important; box-shadow: none !important; }
+        body.nda-printing > .nda-print-target * { max-height: none; }
+        body.nda-printing > .nda-print-target table { page-break-inside: auto !important; break-inside: auto !important; }
+        body.nda-printing > .nda-print-target tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+        body.nda-printing > .nda-print-target .no-print, body.nda-printing > .nda-print-target button { display: none !important; }
+      }`}</style>
      
 {/* Footer */}
 <div
