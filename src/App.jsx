@@ -105,6 +105,7 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
   const [tab, setTab] = useState('daily');
   const [name, setName] = useState('');
   const [room, setRoom] = useState('');
+  const [editingCustomer, setEditingCustomer] = useState(null);
   const [customerFloor, setCustomerFloor] = useState('Ground Floor');
   const [rate, setRate] = useState('6');
   const [customerRemarks, setCustomerRemarks] = useState('');
@@ -190,12 +191,21 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
 
   async function addCustomer(e) {
     e.preventDefault();
-    if (!canAdd) return alert('Aapko customer add karne ki permission nahi hai.');
-    if (!name.trim() || !room.trim() || !(Number(rate)>0)) return alert('Customer name, room number aur valid rate enter karein.');
-    const {error} = await supabase.from('water_customers').insert([{business_id:Number(businessId),customer_name:name.trim(),room_no:room.trim(),floor:customerFloor,rate:Number(rate),currency,remarks:customerRemarks.trim(),active:true,created_by:session?.user?.email||''}]);
-    if(error) return alert('Customer save nahi hua: '+error.message);
-    setName('');setRoom('');setRate('6');setCustomerRemarks('');await refresh();
+    if (!canAdd) return alert('Aapko customer add/edit karne ki permission nahi hai.');
+    if (!name.trim() || !(Number(rate)>0)) return alert('Customer name aur valid rate enter karein. Room number optional hai.');
+    const payload={customer_name:name.trim(),room_no:room.trim(),floor:customerFloor,rate:Number(rate),currency,remarks:customerRemarks.trim()};
+    const result = editingCustomer
+      ? await supabase.from('water_customers').update(payload).eq('id',editingCustomer.id).eq('business_id',businessId)
+      : await supabase.from('water_customers').insert([{...payload,business_id:Number(businessId),active:true,created_by:session?.user?.email||''}]);
+    if(result.error) return alert((editingCustomer?'Customer update':'Customer save')+' nahi hua: '+result.error.message);
+    setName('');setRoom('');setRate('6');setCustomerRemarks('');setCustomerFloor('Ground Floor');setEditingCustomer(null);await refresh();
   }
+  function startEditCustomer(c) {
+    if(!canAdd)return alert('Aapko customer edit karne ki permission nahi hai.');
+    setEditingCustomer(c);setName(c.customer_name||'');setRoom(c.room_no||'');setCustomerFloor(c.floor||'Ground Floor');setRate(String(c.rate||6));setCustomerRemarks(c.remarks||'');setTab('customers');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+  function cancelEditCustomer(){setEditingCustomer(null);setName('');setRoom('');setRate('6');setCustomerRemarks('');setCustomerFloor('Ground Floor');}
   async function addSale(e) {
     e.preventDefault();
     if (!canAdd) return alert('Aapko daily entry ki permission nahi hai.');
@@ -271,13 +281,13 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
     </div>
     <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>{[['daily','🧾 Daily Entry'],['customers','👥 Customers'],...(isAdmin?[['company','🏭 Company Account']]:[]),['monthly','📄 Monthly Print']].map(([id,label])=><button key={id} style={{...btn,background:tab===id?'#065f46':'#64748b'}} onClick={()=>setTab(id)}>{label}</button>)}</div>
     {tab==='customers' && <>
-      {canAdd && <form onSubmit={addCustomer} style={panelCard}><h3 style={{marginTop:0}}>➕ Add Water Customer</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}>
-        <label>Customer Name<input style={input} value={name} onChange={e=>setName(e.target.value)} required/></label><label>Room Number<input style={input} value={room} onChange={e=>setRoom(e.target.value)} placeholder="G-01 / 101" required/></label><label>Floor<select style={input} value={customerFloor} onChange={e=>setCustomerFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></label><label>Rate per Bottle (AED)<input style={input} type="number" min="0.01" step="0.01" value={rate} onChange={e=>setRate(e.target.value)} required/></label><label>Remarks<input style={input} value={customerRemarks} onChange={e=>setCustomerRemarks(e.target.value)}/></label></div><button style={{...btn,marginTop:10}}>Save Customer</button></form>}
-      <div style={panelCard}><div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}><h3 style={{marginTop:0}}>Customer List</h3><label><input type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)}/> Show inactive</label></div><div style={{display:'flex',gap:8,marginBottom:10}}><select style={input} value={floor} onChange={e=>setFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></div><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Room','Customer','Rate','Total Bill','Received','Outstanding','Status','Action'].map(x=><th style={thStyle} key={x}>{x}</th>)}</tr></thead><tbody>{floorCustomers.map(c=>{const st=customerStats(c);return <tr key={c.id}><td style={tdStyle}>{c.room_no}</td><td style={tdStyle}>{c.customer_name}</td><td style={tdStyle}>{fmt(c.rate)}</td><td style={tdStyle}>{fmt(st.total)}</td><td style={tdStyle}>{fmt(st.paid)}</td><td style={{...tdStyle,color:st.balance?'#b91c1c':'#047857',fontWeight:800}}>{fmt(st.balance)}</td><td style={tdStyle}>{c.active===false?'Inactive':'Active'}</td><td style={tdStyle}>{canDelete&&<button onClick={()=>toggleCustomer(c)} style={{marginRight:5}}>{c.active===false?'Activate':'Inactive'}</button>}{canDelete&&<button onClick={()=>deleteCustomer(c)} style={{color:'#b91c1c'}}>Delete</button>}</td></tr>})}{!floorCustomers.length&&<tr><td colSpan="8" style={tdStyle}>Is floor par koi customer nahi.</td></tr>}</tbody></table></div></div>
+      {canAdd && <form onSubmit={addCustomer} style={panelCard}><h3 style={{marginTop:0}}>{editingCustomer?'✏️ Edit Water Customer':'➕ Add Water Customer'}</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}>
+        <label>Customer Name<input style={input} value={name} onChange={e=>setName(e.target.value)} required/></label><label>Room Number<input style={input} value={room} onChange={e=>setRoom(e.target.value)} placeholder="Optional — G-01 / 101"/></label><label>Floor<select style={input} value={customerFloor} onChange={e=>setCustomerFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></label><label>Rate per Bottle (AED)<input style={input} type="number" min="0.01" step="0.01" value={rate} onChange={e=>setRate(e.target.value)} required/></label><label>Remarks<input style={input} value={customerRemarks} onChange={e=>setCustomerRemarks(e.target.value)}/></label></div><button style={{...btn,marginTop:10}}>{editingCustomer?'Update Customer':'Save Customer'}</button>{editingCustomer&&<button type="button" onClick={cancelEditCustomer} style={{...btn,marginTop:10,marginLeft:8,background:'#64748b'}}>Cancel</button>}</form>}
+      <div style={panelCard}><div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}><h3 style={{marginTop:0}}>Customer List</h3><label><input type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)}/> Show inactive</label></div><div style={{display:'flex',gap:8,marginBottom:10}}><select style={input} value={floor} onChange={e=>setFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></div><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Room','Customer','Rate','Total Bill','Received','Outstanding','Status','Action'].map(x=><th style={thStyle} key={x}>{x}</th>)}</tr></thead><tbody>{floorCustomers.map(c=>{const st=customerStats(c);return <tr key={c.id}><td style={tdStyle}>{c.room_no||'—'}</td><td style={tdStyle}>{c.customer_name}</td><td style={tdStyle}>{fmt(c.rate)}</td><td style={tdStyle}>{fmt(st.total)}</td><td style={tdStyle}>{fmt(st.paid)}</td><td style={{...tdStyle,color:st.balance?'#b91c1c':'#047857',fontWeight:800}}>{fmt(st.balance)}</td><td style={tdStyle}>{c.active===false?'Inactive':'Active'}</td><td style={tdStyle}>{canAdd&&<button type="button" onClick={()=>startEditCustomer(c)} style={{marginRight:5}}>Edit</button>}{canDelete&&<button type="button" onClick={()=>toggleCustomer(c)} style={{marginRight:5}}>{c.active===false?'Activate':'Inactive'}</button>}{canDelete&&<button type="button" onClick={()=>deleteCustomer(c)} style={{color:'#b91c1c'}}>Delete</button>}</td></tr>})}{!floorCustomers.length&&<tr><td colSpan="8" style={tdStyle}>Is floor par koi customer nahi.</td></tr>}</tbody></table></div></div>
     </>}
     {tab==='daily' && <>
-      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Water Sale Entry</h3><form onSubmit={addSale}><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={saleCustomer} onChange={e=>{setSaleCustomer(e.target.value);const c=customers.find(x=>String(x.id)===e.target.value);setSaleRate(c?String(c.rate):'')}} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false).map(c=><option key={c.id} value={c.id}>{c.room_no} · {c.customer_name}</option>)}</select></label><label>Total Bottles<input type="number" min="1" step="1" style={input} value={bottles} onChange={e=>setBottles(e.target.value)} required/></label><label>Rate / Bottle<input type="number" min="0.01" step="0.01" style={input} value={saleRate} onChange={e=>setSaleRate(e.target.value)} required/></label><label>Payment Type<select style={input} value={salePaymentType} onChange={e=>setSalePaymentType(e.target.value)}><option value="Cash">Cash</option><option value="Credit">Credit</option></select></label><label>Remarks<input style={input} value={saleRemarks} onChange={e=>setSaleRemarks(e.target.value)}/></label></div><div style={{marginTop:10,fontWeight:800}}>Bill: {fmt(Number(bottles||0)*Number(saleRate||0))} · {salePaymentType==='Cash'?'Cash Received':'Credit Added'}: {fmt(Number(bottles||0)*Number(saleRate||0))} · Available Stock: {currentStock}</div><button style={{...btn,marginTop:10}} disabled={!canAdd||busy}>Save Daily Entry</button></form></div>
-      {canAdd&&<form onSubmit={addPayment} style={panelCard}><h3 style={{marginTop:0}}>Receive Previous Customer Credit</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={payCustomer} onChange={e=>setPayCustomer(e.target.value)} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false&&customerStats(c).balance>0).map(c=><option key={c.id} value={c.id}>{c.room_no} · {c.customer_name} · Due {fmt(customerStats(c).balance)}</option>)}</select></label><label>Cash Received<input type="number" min="0.01" step="0.01" style={input} value={payAmount} onChange={e=>setPayAmount(e.target.value)} required/></label><label>Remarks<input style={input} value={payRemarks} onChange={e=>setPayRemarks(e.target.value)}/></label></div><button style={{...btn,marginTop:10}}>Receive Old Credit</button></form>}
+      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Water Sale Entry</h3><form onSubmit={addSale}><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={saleCustomer} onChange={e=>{setSaleCustomer(e.target.value);const c=customers.find(x=>String(x.id)===e.target.value);setSaleRate(c?String(c.rate):'')}} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false).map(c=><option key={c.id} value={c.id}>{c.room_no ? c.room_no+' · ' : ''}{c.customer_name}</option>)}</select></label><label>Total Bottles<input type="number" min="1" step="1" style={input} value={bottles} onChange={e=>setBottles(e.target.value)} required/></label><label>Rate / Bottle<input type="number" min="0.01" step="0.01" style={input} value={saleRate} onChange={e=>setSaleRate(e.target.value)} required/></label><label>Payment Type<select style={input} value={salePaymentType} onChange={e=>setSalePaymentType(e.target.value)}><option value="Cash">Cash</option><option value="Credit">Credit</option></select></label><label>Remarks<input style={input} value={saleRemarks} onChange={e=>setSaleRemarks(e.target.value)}/></label></div><div style={{marginTop:10,fontWeight:800}}>Bill: {fmt(Number(bottles||0)*Number(saleRate||0))} · {salePaymentType==='Cash'?'Cash Received':'Credit Added'}: {fmt(Number(bottles||0)*Number(saleRate||0))} · Available Stock: {currentStock}</div><button style={{...btn,marginTop:10}} disabled={!canAdd||busy}>Save Daily Entry</button></form></div>
+      {canAdd&&<form onSubmit={addPayment} style={panelCard}><h3 style={{marginTop:0}}>Receive Previous Customer Credit</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={payCustomer} onChange={e=>setPayCustomer(e.target.value)} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false&&customerStats(c).balance>0).map(c=><option key={c.id} value={c.id}>{c.room_no ? c.room_no+' · ' : ''}{c.customer_name} · Due {fmt(customerStats(c).balance)}</option>)}</select></label><label>Cash Received<input type="number" min="0.01" step="0.01" style={input} value={payAmount} onChange={e=>setPayAmount(e.target.value)} required/></label><label>Remarks<input style={input} value={payRemarks} onChange={e=>setPayRemarks(e.target.value)}/></label></div><button style={{...btn,marginTop:10}}>Receive Old Credit</button></form>}
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}>{[['Daily Bill',dailyBilled],['Daily Cash',dailyCash],['Daily Credit Added',dailyCredit]].map(([l,v])=><div key={l} style={{...panelCard,margin:0}}><div style={{fontSize:12,color:'#64748b',fontWeight:700}}>{l}</div><div style={{fontSize:21,fontWeight:900}}>{fmt(v)}</div></div>)}</div>
       <div style={panelCard}><h3 style={{marginTop:0}}>Daily Activity · {day}</h3><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Customer','Room','Bottles','Bill','Payment Type','Credit','Remarks'].map(x=><th key={x} style={thStyle}>{x}</th>)}</tr></thead><tbody>{dailySales.map(x=>{const c=customers.find(y=>String(y.id)===String(x.customer_id));return <tr key={x.id}><td style={tdStyle}>{c?.customer_name||'Deleted customer'}</td><td style={tdStyle}>{c?.room_no||'—'}</td><td style={tdStyle}>{x.bottles}</td><td style={tdStyle}>{fmt(x.total_amount)}</td><td style={tdStyle}>{x.payment_mode||(Number(x.cash_received)>=Number(x.total_amount)?'Cash':'Credit')}</td><td style={tdStyle}>{fmt(Number(x.total_amount)-Number(x.cash_received))}</td><td style={tdStyle}>{x.remarks||'—'}</td></tr>})}{!dailySales.length&&<tr><td colSpan="7" style={tdStyle}>No daily entries.</td></tr>}</tbody></table></div><h4>Old Credit Received Today</h4>{dailyPayments.map(p=><div key={p.id} style={{padding:8,borderTop:'1px solid #eee'}}>{customers.find(c=>String(c.id)===String(p.customer_id))?.customer_name||'Customer'} · {fmt(p.amount)} · {p.remarks||'—'}</div>)}{!dailyPayments.length&&<small>No previous credit received today.</small>}</div>
     </>}
@@ -437,6 +447,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [accessPassword, setAccessPassword] = useState('');
   const [accessBusinessId, setAccessBusinessId] = useState('');
   const [accessFilterBusinessId, setAccessFilterBusinessId] = useState('');
+  const [accessSelectedKind, setAccessSelectedKind] = useState('');
   const [accessFlags, setAccessFlags] = useState({
     can_view: true,
     can_view_daily: true,
@@ -886,6 +897,9 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     setAccessEmail(row.user_email || '');
     setAccessPassword('');
     setAccessBusinessId(String(row.business_id));
+    setAccessFilterBusinessId(String(row.business_id));
+    const editBusiness = businesses.find(b => String(b.id) === String(row.business_id));
+    setAccessSelectedKind(editBusiness && (editBusiness.business_kind === 'water' || /water|drinking|pani/i.test(editBusiness.name || '')) ? 'water' : 'transport');
     setAccessFlags({
       can_view: !!row.can_view,
       can_view_daily: !!row.can_view_daily,
@@ -921,6 +935,23 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     if (editingAccessRow?.user_email === row.user_email) cancelEditAccess();
     await loadBusinesses(businessId);
     alert(data?.message || 'Staff login removed.');
+  }
+
+  function selectAccessBusiness(found, kind) {
+    if (!found) return;
+    setAccessBusinessId(String(found.id));
+    setAccessFilterBusinessId(String(found.id));
+    setAccessSelectedKind(kind);
+    if (editingAccessRow && String(editingAccessRow.business_id) !== String(found.id)) cancelEditAccess();
+    setAccessFlags(kind === 'water' ? {
+      can_view:true, can_view_daily:true, can_add:true, can_edit:false, can_delete:false,
+      can_view_vehicles:false, can_manage_vehicles:false, can_view_workers:false,
+      can_manage_workers:false, can_view_monthly:true, can_manage_access:false
+    } : {
+      can_view:true, can_view_daily:true, can_add:true, can_edit:false, can_delete:false,
+      can_view_vehicles:true, can_manage_vehicles:false, can_view_workers:false,
+      can_manage_workers:false, can_view_monthly:false, can_manage_access:false
+    });
   }
 
   function applyStaffPreset(preset) {
@@ -1756,112 +1787,30 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                     Create login ID and password for your drivers or staff. Choose exactly which business and functions they can view or enter.
                   </p>
 
-                  <form onSubmit={saveAccess} style={{ padding: 14, border: '1px solid #cbd5e1', borderRadius: 12, background: '#f8fafc', marginBottom: 16 }}>
-                    <div style={{ fontWeight: 800, fontSize: 15, color: editingAccessRow ? '#b45309' : '#047857', marginBottom: 10 }}>
-                      {editingAccessRow ? `✏️ Editing Staff: ${editingAccessRow.user_email}` : '➕ Create New Staff Login'}
-                    </div>
+                  <p style={{ fontSize: 13, color: '#475569', marginTop: 0 }}>Sirf Transport ya Drinking Water select karein. Har business ki permissions alag rahengi.</p>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10, marginBottom: 12 }}>
-                      <label style={{ fontSize: 12, fontWeight: 700 }}>
-                        Login ID (Email) *
-                        <input
-                          style={{ ...inputStyle, marginTop: 4 }}
-                          type="email"
-                          value={accessEmail}
-                          onChange={e => setAccessEmail(e.target.value)}
-                          placeholder="driver1@nda.pk"
-                          autoComplete="username"
-                          required
-                        />
-                      </label>
-
-                      <label style={{ fontSize: 12, fontWeight: 700 }}>
-                        Password *
-                        <input
-                          style={{ ...inputStyle, marginTop: 4 }}
-                          type="password"
-                          value={accessPassword}
-                          onChange={e => setAccessPassword(e.target.value)}
-                          placeholder={editingAccessRow ? 'Leave blank to keep old password' : 'Min 6 characters'}
-                          autoComplete="new-password"
-                          minLength={6}
-                          required={!editingAccessRow}
-                        />
-                      </label>
-
-                      <label style={{ fontSize: 12, fontWeight: 700 }}>
-                        Assign Business *
-                        <select style={{ ...inputStyle, marginTop: 4 }} value={accessBusinessId} onChange={e => setAccessBusinessId(e.target.value)} required>
-                          <option value="">Select Business</option>
-                          {businesses.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                        </select>
-                      </label>
-                    </div>
-
-                    {/* Quick Role Presets */}
-                    <div style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: '#334155', marginBottom: 6 }}>Quick Role Setup (One-Click Permissions):</div>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button type="button" onClick={() => applyStaffPreset('driver_entry')} style={{ ...btn, background: '#0284c7', padding: '8px 12px', fontSize: 12 }}>
-                          🚚 Driver (Daily Entry Only)
-                        </button>
-                        <button type="button" onClick={() => applyStaffPreset('supervisor')} style={{ ...btn, background: '#7c3aed', padding: '8px 12px', fontSize: 12 }}>
-                          📋 Manager / Supervisor
-                        </button>
-                        <button type="button" onClick={() => applyStaffPreset('view_only')} style={{ ...btn, background: '#475569', padding: '8px 12px', fontSize: 12 }}>
-                          👁️ View Only
-                        </button>
-                        <button type="button" onClick={() => applyStaffPreset('water_only')} style={{ ...btn, background: '#0f766e', padding: '8px 12px', fontSize: 12 }}>
-                          💧 Water Supply Only
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Granular Checkboxes */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 8, background: '#fff', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 12 }}>
-                      {Object.entries({
-                        can_view: '1. Allow Login to Business',
-                        can_view_daily: '2. View Daily Entries',
-                        can_add: '3. Add New Daily Entries',
-                        can_edit: '4. Edit Entries',
-                        can_delete: '5. Delete Entries',
-                        can_view_vehicles: '6. View Vehicle Files',
-                        can_manage_vehicles: '7. Add / Manage Vehicle Files',
-                        can_view_workers: '8. View Drivers & Pay',
-                        can_manage_workers: '9. Add / Manage Drivers',
-                        can_view_monthly: '10. View Monthly Sheets',
-                        can_manage_access: '11. Manage Staff Logins'
-                      }).map(([key, label]) => (
-                        <label key={key} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                          <input
-                            type="checkbox"
-                            checked={!!accessFlags[key]}
-                            onChange={e => setAccessFlags(old => ({ ...old, [key]: e.target.checked }))}
-                          />
-                          <span>{label}</span>
-                        </label>
-                      ))}
-                    </div>
-
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button type="submit" style={btn}>
-                        {editingAccessRow ? '✅ Save Changes' : '✅ Create Staff ID & Save'}
-                      </button>
-                      {editingAccessRow && (
-                        <button type="button" onClick={cancelEditAccess} style={{ ...btn, background: '#64748b' }}>
-                          Cancel
-                        </button>
-                      )}
-                    </div>
-                  </form>
-
-                  <div style={{ margin: '12px 0', maxWidth: 420 }}>
-                    <label style={{ display: 'block', fontSize: 13, fontWeight: 800, marginBottom: 5 }}>Staff Access dekhne ke liye Business select karein</label>
-                    <select style={inputStyle} value={accessFilterBusinessId || businessId || ''} onChange={e => { setAccessFilterBusinessId(e.target.value); if (editingAccessRow && String(editingAccessRow.business_id) !== String(e.target.value)) cancelEditAccess(); }}>
-                      <option value=''>Select Business</option>
-                      {businesses.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </select>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10,marginBottom:14}}>
+                    {[
+                      {kind:'transport',label:'🚚 Transport',match:b=>b.business_kind==='transport'||/transport|vehicle|truck/i.test(b.name||''),fallback:()=>businesses.filter(b=>b.business_kind!=='water'&&!/water|pani/i.test(b.name||'')).length===1?businesses.find(b=>b.business_kind!=='water'&&!/water|pani/i.test(b.name||'')):null},
+                      {kind:'water',label:'💧 Drinking Water',match:b=>b.business_kind==='water'||/water|drinking|pani/i.test(b.name||''),fallback:()=>{const t=businesses.find(b=>b.business_kind==='transport'||/transport|vehicle|truck/i.test(b.name||''));return businesses.length===2&&t?businesses.find(b=>String(b.id)!==String(t.id)):null}}
+                    ].map(opt=>{const found=businesses.find(opt.match)||opt.fallback();const selected=accessSelectedKind===opt.kind;return <button key={opt.kind} type="button" disabled={!found} onClick={()=>selectAccessBusiness(found,opt.kind)} style={{padding:14,borderRadius:12,border:selected?'2px solid #047857':'1px solid #cbd5e1',background:selected?'#ecfdf5':'#fff',color:'#0f172a',fontWeight:800,cursor:found?'pointer':'not-allowed',opacity:found?1:.5,textAlign:'left'}}><div style={{fontSize:18}}>{opt.label}</div><div style={{fontSize:11,fontWeight:500,color:'#64748b',marginTop:4}}>{found?found.name:'Business record not found'}</div></button>})}
                   </div>
+
+                  {accessSelectedKind && (accessBusinessId||accessFilterBusinessId) && <form onSubmit={saveAccess} style={{ padding: 14, border: '1px solid #cbd5e1', borderRadius: 12, background: '#f8fafc', marginBottom: 16 }}>
+                    <div style={{ fontWeight: 800, fontSize: 15, color: editingAccessRow ? '#b45309' : '#047857', marginBottom: 10 }}>{editingAccessRow ? `✏️ Editing Staff: ${editingAccessRow.user_email}` : '➕ Create New Staff Login'}</div>
+                    <div style={{fontSize:12,color:'#475569',fontWeight:700,marginBottom:10}}>Selected: {businesses.find(b=>String(b.id)===String(accessBusinessId||accessFilterBusinessId))?.name||'Business'}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10, marginBottom: 12 }}>
+                      <label style={{ fontSize: 12, fontWeight: 700 }}>Login ID (Email) *<input style={{ ...inputStyle, marginTop: 4 }} type="email" value={accessEmail} onChange={e => setAccessEmail(e.target.value)} placeholder="staff@nda.pk" autoComplete="username" required /></label>
+                      <label style={{ fontSize: 12, fontWeight: 700 }}>Password *<input style={{ ...inputStyle, marginTop: 4 }} type="password" value={accessPassword} onChange={e => setAccessPassword(e.target.value)} placeholder={editingAccessRow ? 'Blank = keep old password' : 'Min 6 characters'} autoComplete="new-password" minLength={6} required={!editingAccessRow} /></label>
+                    </div>
+                    <div style={{fontSize:13,fontWeight:800,marginBottom:8,color:'#334155'}}>Permissions — {(()=>{const b=businesses.find(x=>String(x.id)===String(accessBusinessId||accessFilterBusinessId));return b&&(b.business_kind==='water'||/water|drinking|pani/i.test(b.name||''))?'Drinking Water':'Transport'})()}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 8, background: '#fff', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 12 }}>
+                      {Object.entries((()=>{const b=businesses.find(x=>String(x.id)===String(accessBusinessId||accessFilterBusinessId));const water=!!(b&&(b.business_kind==='water'||/water|drinking|pani/i.test(b.name||'')));return water?{can_view:'Allow Water Login',can_view_daily:'View Daily Water Entries',can_add:'Add Daily Water Entries',can_edit:'Edit Water Entries',can_delete:'Delete Water Entries',can_view_monthly:'View Water Monthly Sheet'}:{can_view:'Allow Transport Login',can_view_daily:'View Daily Entries',can_add:'Add New Daily Entries',can_edit:'Edit Entries',can_delete:'Delete Entries',can_view_vehicles:'View Vehicle Files',can_manage_vehicles:'Add / Manage Vehicle Files',can_view_workers:'View Drivers & Pay',can_manage_workers:'Add / Manage Drivers',can_view_monthly:'View Monthly Sheets'};})()).map(([key,label])=><label key={key} style={{display:'flex',gap:8,alignItems:'center',fontSize:13,fontWeight:600,cursor:'pointer'}}><input type="checkbox" checked={!!accessFlags[key]} onChange={e=>setAccessFlags(old=>({...old,[key]:e.target.checked}))}/><span>{label}</span></label>)}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button type="submit" style={btn}>{editingAccessRow ? '✅ Save Changes' : '✅ Create Staff Login'}</button>{editingAccessRow&&<button type="button" onClick={cancelEditAccess} style={{...btn,background:'#64748b'}}>Cancel</button>}</div>
+                  </form>}
+
+                  {accessSelectedKind && (accessFilterBusinessId||accessBusinessId) && <div style={{margin:'12px 0 8px',fontWeight:800,color:'#334155'}}>Selected business staff logins</div>}
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead>
@@ -1872,7 +1821,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {accessRows.filter(r => String(r.business_id) === String(accessFilterBusinessId || businessId || '')).map(r => (
+                        {accessRows.filter(r => String(r.business_id) === String(accessFilterBusinessId || accessBusinessId || '')).map(r => (
                           <tr key={r.id}>
                             <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9', fontWeight: 700 }}>{r.user_email}</td>
                             <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9' }}>{r.business_profiles?.name || businesses.find(b => String(b.id) === String(r.business_id))?.name || `Business #${r.business_id}`}</td>
@@ -1901,8 +1850,8 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                             </td>
                           </tr>
                         ))}
-                        {!accessRows.some(r => String(r.business_id) === String(accessFilterBusinessId || businessId || '')) && (
-                          <tr><td colSpan="5" style={{ padding: 14, color: '#64748b' }}>Is business ke liye abhi koi staff access nahi diya gaya.</td></tr>
+                        {!accessRows.some(r => String(r.business_id) === String(accessFilterBusinessId || accessBusinessId || '')) && (
+                          <tr><td colSpan="5" style={{ padding: 14, color: '#64748b' }}>Is business ke liye abhi koi staff login nahi banaya gaya.</td></tr>
                         )}
                       </tbody>
                     </table>
