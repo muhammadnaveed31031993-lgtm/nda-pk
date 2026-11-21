@@ -491,10 +491,13 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
 
   const admin = !!userRole?.is_admin;
   const can = (key) => admin || !!access?.[key];
-  const waterOnlyStaff = !admin && !!access?.can_view && !access?.can_view_daily && !access?.can_edit && !access?.can_delete && !access?.can_view_vehicles && !access?.can_manage_vehicles && !access?.can_view_workers && !access?.can_manage_workers && !access?.can_view_monthly && !access?.can_manage_access;
+  const isWaterBusinessRecord = (b) => !!b && (String(b.business_kind || '').toLowerCase() === 'water' || /water|drinking|pani/i.test(String(b.name || '')));
+  const isTransportBusinessRecord = (b) => !!b && (String(b.business_kind || '').toLowerCase() === 'transport' || /transport|vehicle|truck/i.test(String(b.name || '')));
   const currentBusiness = businesses.find(b => String(b.id) === String(businessId));
-  // Legacy business rows may have business_kind='other'. Treat every non-water business as Transport.
-  const isTransportBusiness = currentBusiness?.business_kind !== 'water';
+  // Business identity, not the permission checkbox combination, decides which system a staff login can see.
+  const waterOnlyStaff = !admin && (isWaterBusinessRecord(currentBusiness) || (!currentBusiness && isWaterBusinessRecord(access?.business_profiles)));
+  const transportOnlyStaff = !admin && (isTransportBusinessRecord(currentBusiness) || (!currentBusiness && isTransportBusinessRecord(access?.business_profiles)));
+  const isTransportBusiness = !isWaterBusinessRecord(currentBusiness);
   const money = n => `${currency} ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const inputStyle = {
@@ -582,10 +585,11 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
           .eq('can_view', true);
         if (ae) throw ae;
         const allRows = ar || [];
-        const isWaterOnlyRow = r => r.can_view && !r.can_view_daily && !r.can_edit && !r.can_delete && !r.can_view_vehicles && !r.can_manage_vehicles && !r.can_view_workers && !r.can_manage_workers && !r.can_view_monthly && !r.can_manage_access;
-        const waterOnlyRows = allRows.filter(isWaterOnlyRow);
-        // If this login has any Water-only assignment, expose only those assigned Water business rows.
-        const rows = waterOnlyRows.length ? waterOnlyRows : allRows;
+        const waterBusinessRows = allRows.filter(r => isWaterBusinessRecord(r.business_profiles));
+        const transportBusinessRows = allRows.filter(r => isTransportBusinessRecord(r.business_profiles));
+        const isLegacyWaterPermissionRow = r => r.can_view && !r.can_view_daily && !r.can_edit && !r.can_delete && !r.can_view_vehicles && !r.can_manage_vehicles && !r.can_view_workers && !r.can_manage_workers && !r.can_view_monthly && !r.can_manage_access;
+        // First trust the assigned business record. Permissions alone are not reliable because Water staff may also have daily/add/edit flags enabled.
+        const rows = waterBusinessRows.length ? waterBusinessRows : transportBusinessRows.length ? transportBusinessRows : (allRows.some(isLegacyWaterPermissionRow) ? allRows.filter(isLegacyWaterPermissionRow) : allRows);
         setAccessRows(rows);
         setBusinesses(rows.map(r => r.business_profiles).filter(Boolean));
         const requestedId = preferredId || businessId || '';
@@ -594,9 +598,10 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
         const row = rows.find(r => String(r.business_id) === next) || rows[0] || null;
         setAccess(row);
         if (row) {
-          const firstView = resolveFirstAllowedView(row, false);
+          const assignedWater = isWaterBusinessRecord(row.business_profiles);
+          const firstView = assignedWater ? 'water' : resolveFirstAllowedView(row, false);
           setView(firstView);
-          setWorkspaceSection(firstView === 'water' ? 'water' : firstView === 'access' ? 'access' : 'transport');
+          setWorkspaceSection(assignedWater || firstView === 'water' ? 'water' : firstView === 'access' ? 'access' : 'transport');
         }
       }
     } catch (e) {
@@ -1111,6 +1116,17 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
 
   const panelTitle = view === 'dashboard' ? 'Dashboard' : view === 'notebook' ? 'Naveed Docs' : currentBusiness?.name || 'Business Management';
 
+  useEffect(() => {
+    if (!admin && waterOnlyStaff && (workspaceSection !== 'water' || view !== 'water')) {
+      setWorkspaceSection('water');
+      setView('water');
+    } else if (!admin && transportOnlyStaff && (workspaceSection !== 'transport' || view === 'water' || view === 'dashboard')) {
+      const safeTransportView = resolveFirstAllowedView(access, false);
+      setWorkspaceSection('transport');
+      setView(safeTransportView === 'water' ? 'daily' : safeTransportView);
+    }
+  }, [admin, waterOnlyStaff, transportOnlyStaff, workspaceSection, view, access]);
+
   const navTabs = workspaceSection === 'dashboard'
     ? [...(admin ? [{ id: 'dashboard', icon: '🏠', label: 'Dashboard' }] : []), ...(admin ? [{ id: 'notebook', icon: '📒', label: 'Naveed Docs' }, { id: 'access', icon: '🔐', label: 'Staff Access' }] : [])]
     : workspaceSection === 'transport'
@@ -1222,9 +1238,11 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                   if (!admin) {
                     const row = accessRows.find(r => String(r.business_id) === String(nextId));
                     setAccess(row || null);
-                    const firstView = resolveFirstAllowedView(row, false);
-          setView(firstView);
-          setWorkspaceSection(firstView === 'water' ? 'water' : firstView === 'access' ? 'access' : 'transport');
+                    const assignedBusiness = businesses.find(b => String(b.id) === String(nextId));
+                    const assignedWater = isWaterBusinessRecord(assignedBusiness);
+                    const firstView = assignedWater ? 'water' : resolveFirstAllowedView(row, false);
+                    setView(firstView);
+                    setWorkspaceSection(assignedWater || firstView === 'water' ? 'water' : firstView === 'access' ? 'access' : 'transport');
                   }
                 }}
               >
