@@ -318,7 +318,8 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
   async function loadFiles(preferred) {
     if (!businessId) return;
     setLoading(true); setErrorText('');
-    const {data,error} = await supabase.from('business_notebook_files').select('*').eq('business_id',businessId).order('created_at',{ascending:true});
+    const query = supabase.from('business_notebook_files').select('*').order('created_at',{ascending:true});
+    const {data,error} = await (isAdmin ? query : query.eq('business_id',businessId));
     if (error) { setErrorText(error.message); setLoading(false); return; }
     const rows=data||[]; setFiles(rows);
     const next=String(preferred === '' ? (rows[0]?.id || '') : (preferred||activeFileId||rows[0]?.id||'')); setActiveFileId(next);
@@ -329,7 +330,7 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
     const {data,error}=await supabase.from('business_notebook_entries').select('*').eq('file_id',fileId).order('entry_date',{ascending:false}).order('created_at',{ascending:false});
     if(error){setErrorText(error.message);return;} setEntries(data||[]);
   }
-  useEffect(()=>{ if(businessId) void loadFiles(); },[businessId]);
+  useEffect(()=>{ if(isAdmin || businessId) void loadFiles(); },[businessId,isAdmin]);
   useEffect(()=>{ if(activeFileId) void loadEntries(activeFileId); else setEntries([]); },[activeFileId]);
 
   async function createFile(e) {
@@ -342,7 +343,7 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
   async function addEntry(e) {
     e.preventDefault(); if(!isAdmin) return;
     const value=Number(entryAmount); if(!activeFileId||!entryDate||!Number.isFinite(value)||value<=0||!entryDetails.trim()) return alert('Date, details aur valid amount enter karein.');
-    const {error}=await supabase.from('business_notebook_entries').insert([{file_id:Number(activeFileId),business_id:Number(businessId),entry_date:entryDate,entry_type:entryType,amount:value,details:entryDetails.trim(),notes:entryNotes.trim(),created_by:session?.user?.email||''}]);
+    const {error}=await supabase.from('business_notebook_entries').insert([{file_id:Number(activeFileId),business_id:Number(activeFile.business_id),entry_date:entryDate,entry_type:entryType,amount:value,details:entryDetails.trim(),notes:entryNotes.trim(),created_by:session?.user?.email||''}]);
     if(error) return alert('Entry save nahi hui: '+error.message);
     setEntryAmount('');setEntryDetails('');setEntryNotes('');await loadEntries();
   }
@@ -363,7 +364,7 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
   async function deleteFile() {
     if(!isAdmin||!activeFile)return;
     if(!window.confirm(`"${activeFile.file_name}" aur iski tamam entries permanently delete karni hain?`))return;
-    const {error}=await supabase.from('business_notebook_files').delete().eq('id',Number(activeFileId)).eq('business_id',Number(businessId));
+    const {error}=await supabase.from('business_notebook_files').delete().eq('id',Number(activeFileId)).eq('business_id',Number(activeFile.business_id));
     if(error)return alert(error.message); setActiveFileId(''); await loadFiles('');
   }
   const received=entries.filter(x=>x.entry_type==='income').reduce((a,x)=>a+Number(x.amount||0),0);
@@ -381,7 +382,7 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
       {isAdmin&&<form onSubmit={addEntry} style={panel}><h3 style={{marginTop:0}}>＋ New Amount / Expense</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={entryDate} onChange={e=>setEntryDate(e.target.value)} required/></label><label>Entry Type<select style={input} value={entryType} onChange={e=>setEntryType(e.target.value)}><option value="income">Received / Income (+)</option><option value="expense">Expense (-)</option></select></label><label>Amount<input type="number" min="0.01" step="0.01" style={input} value={entryAmount} onChange={e=>setEntryAmount(e.target.value)} required/></label><label>Details<input style={input} value={entryDetails} onChange={e=>setEntryDetails(e.target.value)} placeholder="Material bill / payment received" required/></label><label>Remarks<input style={input} value={entryNotes} onChange={e=>setEntryNotes(e.target.value)} placeholder="Optional notes"/></label></div><button style={{...primaryStyle,marginTop:10}}>Save Entry</button></form>}
       <div style={panel}><h3 style={{marginTop:0}}>{activeFile.file_name} · Entry History</h3><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Date','Details','Income (+)','Expense (-)','Balance','Remarks',...(isAdmin?['Actions']:[])].map(h=><th key={h} style={{padding:8,borderBottom:'1px solid #cbd5e1',textAlign:'left'}}>{h}</th>)}</tr></thead><tbody>{[...entries].reverse().map((r,i)=>{const running=[...entries].reverse().slice(0,i+1).reduce((a,x)=>a+(x.entry_type==='income'?1:-1)*Number(x.amount||0),0);return <tr key={r.id}><td style={{padding:8,borderBottom:'1px solid #eee'}}>{r.entry_date}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{r.details}</td><td style={{padding:8,color:'#047857'}}>{r.entry_type==='income'?fmt(r.amount):'—'}</td><td style={{padding:8,color:'#b91c1c'}}>{r.entry_type==='expense'?fmt(r.amount):'—'}</td><td style={{padding:8,fontWeight:700}}>{fmt(running)}</td><td style={{padding:8}}>{r.notes||'—'}</td>{isAdmin&&<td style={{padding:8,whiteSpace:'nowrap'}}><button onClick={()=>editEntry(r)} style={{marginRight:5}}>Edit</button><button onClick={()=>deleteEntry(r)} style={{color:'#b91c1c'}}>Delete</button></td>}</tr>})}{!entries.length&&<tr><td colSpan={isAdmin?7:6} style={{padding:12}}>Is file mein abhi koi entry nahi.</td></tr>}</tbody></table></div></div>
     </>}
-    {!files.length&&!loading&&<div style={panel}>Abhi koi notebook file nahi bani. Upar se pehli file create karein.</div>}
+    {!files.length&&!loading&&!errorText&&<div style={panel}>Abhi koi notebook file nahi bani. Upar se pehli file create karein.</div>}
     {loading&&<div>Loading notebook...</div>}
   </section>;
 }
@@ -435,6 +436,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [accessEmail, setAccessEmail] = useState('');
   const [accessPassword, setAccessPassword] = useState('');
   const [accessBusinessId, setAccessBusinessId] = useState('');
+  const [accessFilterBusinessId, setAccessFilterBusinessId] = useState('');
   const [accessFlags, setAccessFlags] = useState({
     can_view: true,
     can_view_daily: true,
@@ -518,10 +520,11 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     setLoading(true);
     try {
       if (admin) {
-        const { data, error } = await supabase.from('business_profiles').select('*').eq('active', true).order('name');
+        const { data, error } = await supabase.from('business_profiles').select('*').order('name');
         if (error) throw error;
         const rows = data || [];
         setBusinesses(rows);
+        if (!accessFilterBusinessId) setAccessFilterBusinessId(String(businessId || rows[0]?.id || ''));
         const requestedId = preferredId === '' ? '' : (preferredId || businessId || '');
         const next = String(rows.some(r => String(r.id) === String(requestedId)) ? requestedId : (rows[0]?.id || ''));
         setBusinessId(next);
@@ -1188,10 +1191,10 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
             <h2 style={{marginTop:0,marginBottom:8}}>NDA.PK Business Dashboard</h2>
             <p style={{color:'#64748b',marginTop:0}}>Apna business section select karein.</p>
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:18,marginTop:20}}>
-              <button type="button" onClick={() => { const b=businesses.find(x=>x.business_kind==='transport') || businesses.find(x=>/transport|vehicle|truck/i.test(x.name||'')) || (businesses.filter(x=>x.business_kind!=='water').length===1 ? businesses.find(x=>x.business_kind!=='water') : null); if(!b){alert(businesses.length ? 'Transport business identify nahi ho raha. Existing business ka naam aur type check karein; naya business banane ki zaroorat nahi jab tak confirm na ho.' : 'Abhi koi active business load nahi hua. Refresh ke baad list dobara check karein.');return;} setBusinessId(String(b.id));setWorkspaceSection('transport');setView('daily'); }} style={{minHeight:190,border:0,borderRadius:20,padding:26,textAlign:'left',background:'linear-gradient(135deg,#064e3b,#059669)',color:'#fff',cursor:'pointer',boxShadow:'0 8px 24px #064e3b30'}}>
+              <button type="button" onClick={() => { const b=businesses.find(x=>x.business_kind==='transport') || businesses.find(x=>/transport|vehicle|truck/i.test(x.name||'')) || (businesses.filter(x=>x.business_kind!=='water' && !/water|pani/i.test(x.name||'')).length===1 ? businesses.find(x=>x.business_kind!=='water' && !/water|pani/i.test(x.name||'')) : null); if(!b){alert(businesses.length ? 'Transport business identify nahi ho raha. Existing business ka naam aur type check karein; naya business banane ki zaroorat nahi jab tak confirm na ho.' : 'Abhi koi active business load nahi hua. Refresh ke baad list dobara check karein.');return;} setBusinessId(String(b.id));setWorkspaceSection('transport');setView('daily'); }} style={{minHeight:190,border:0,borderRadius:20,padding:26,textAlign:'left',background:'linear-gradient(135deg,#064e3b,#059669)',color:'#fff',cursor:'pointer',boxShadow:'0 8px 24px #064e3b30'}}>
                 <div style={{fontSize:46}}>🚚</div><div style={{fontSize:28,fontWeight:900,marginTop:10}}>Transport</div><div style={{fontSize:14,opacity:.9,marginTop:6}}>Daily Entry · Vehicle Files · Monthly Sheet · Drivers & Pay</div>
               </button>
-              <button type="button" onClick={() => { const b=businesses.find(x=>x.business_kind==='water'||/water/i.test(x.name||'')); if(!b){alert('Pehle Add New Business mein Drinking Water create karein.');return;} setBusinessId(String(b.id));setWorkspaceSection('water');setView('water'); }} style={{minHeight:190,border:0,borderRadius:20,padding:26,textAlign:'left',background:'linear-gradient(135deg,#075985,#0ea5e9)',color:'#fff',cursor:'pointer',boxShadow:'0 8px 24px #07598530'}}>
+              <button type="button" onClick={() => { const waterMatch=businesses.find(x=>x.business_kind==='water'||/water|drinking|pani/i.test(x.name||'')); const transportMatch=businesses.find(x=>x.business_kind==='transport'||/transport|vehicle|truck/i.test(x.name||'')); const b=waterMatch || (businesses.length===2 && transportMatch ? businesses.find(x=>String(x.id)!==String(transportMatch.id)) : null); if(!b){alert('Existing business list mein Drinking Water ki file identify nahi ho rahi. Koi nayi file create na karein; Admin se business names/types verify karwayein.');return;} setBusinessId(String(b.id));setWorkspaceSection('water');setView('water'); }} style={{minHeight:190,border:0,borderRadius:20,padding:26,textAlign:'left',background:'linear-gradient(135deg,#075985,#0ea5e9)',color:'#fff',cursor:'pointer',boxShadow:'0 8px 24px #07598530'}}>
                 <div style={{fontSize:46}}>💧</div><div style={{fontSize:28,fontWeight:900,marginTop:10}}>Drinking Water</div><div style={{fontSize:14,opacity:.9,marginTop:6}}>Daily Entry · Monthly Sheet · Customer Files · Company Account · Water Stock</div>
               </button>
             </div>
@@ -1845,6 +1848,13 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                     </div>
                   </form>
 
+                  <div style={{ margin: '12px 0', maxWidth: 420 }}>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 800, marginBottom: 5 }}>Staff Access dekhne ke liye Business select karein</label>
+                    <select style={inputStyle} value={accessFilterBusinessId || businessId || ''} onChange={e => { setAccessFilterBusinessId(e.target.value); if (editingAccessRow && String(editingAccessRow.business_id) !== String(e.target.value)) cancelEditAccess(); }}>
+                      <option value=''>Select Business</option>
+                      {businesses.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  </div>
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead>
@@ -1855,7 +1865,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {accessRows.map(r => (
+                        {accessRows.filter(r => String(r.business_id) === String(accessFilterBusinessId || businessId || '')).map(r => (
                           <tr key={r.id}>
                             <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9', fontWeight: 700 }}>{r.user_email}</td>
                             <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9' }}>{r.business_profiles?.name || businesses.find(b => String(b.id) === String(r.business_id))?.name || `Business #${r.business_id}`}</td>
@@ -1884,8 +1894,8 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                             </td>
                           </tr>
                         ))}
-                        {!accessRows.length && (
-                          <tr><td colSpan="5" style={{ padding: 14, color: '#64748b' }}>No staff accounts created yet.</td></tr>
+                        {!accessRows.some(r => String(r.business_id) === String(accessFilterBusinessId || businessId || '')) && (
+                          <tr><td colSpan="5" style={{ padding: 14, color: '#64748b' }}>Is business ke liye abhi koi staff access nahi diya gaya.</td></tr>
                         )}
                       </tbody>
                     </table>
