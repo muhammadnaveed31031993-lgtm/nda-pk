@@ -115,7 +115,6 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
   const [salePaymentType, setSalePaymentType] = useState('Cash');
   const [saleRemarks, setSaleRemarks] = useState('');
   const [editingWaterSale, setEditingWaterSale] = useState(null);
-  const [editingWaterPayment, setEditingWaterPayment] = useState(null);
   const [payCustomer, setPayCustomer] = useState('');
   const [payAmount, setPayAmount] = useState('');
   const [payRemarks, setPayRemarks] = useState('');
@@ -229,38 +228,21 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
     if(error)return alert('Customer credit payment save nahi hui: '+error.message);
     setPayAmount('');setPayRemarks('');await refresh();alert('Customer ka purana credit receive ho gaya.');
   }
-  function startEditWaterPayment(row) {
-    if(!isAdmin)return alert('Credit received entry sirf Admin edit kar sakta hai.');
-    setEditingWaterPayment({...row,payment_date:row.payment_date||day,customer_id:String(row.customer_id||''),amount:String(row.amount||''),remarks:row.remarks||''});
-  }
-  async function saveWaterPaymentEdit() {
-    if(!isAdmin||!editingWaterPayment)return;
-    const r=editingWaterPayment, amount=Number(r.amount), customer=customers.find(c=>String(c.id)===String(r.customer_id));
-    if(!customer||!r.payment_date||!(amount>0))return alert('Customer, date aur amount sahi enter karein.');
-    const otherPayments=payments.filter(p=>String(p.customer_id)===String(r.customer_id)&&String(p.id)!==String(r.id)).reduce((a,p)=>a+Number(p.amount||0),0);
-    const customerSales=sales.filter(x=>String(x.customer_id)===String(r.customer_id)).reduce((a,x)=>a+Number(x.total_amount||0),0);
-    const saleCash=sales.filter(x=>String(x.customer_id)===String(r.customer_id)).reduce((a,x)=>a+Number(x.cash_received||0),0);
-    const outstanding=Math.max(0,customerSales-saleCash-otherPayments);
-    if(amount>outstanding)return alert(`Is customer ka available outstanding ${fmt(outstanding)} hai.`);
-    const {error}=await supabase.from('water_payments').update({customer_id:customer.id,payment_date:r.payment_date,amount,currency,remarks:String(r.remarks||'').trim()}).eq('id',r.id).eq('business_id',Number(businessId));
-    if(error)return alert('Credit received entry update nahi hui: '+error.message);
-    setDay(r.payment_date);setEditingWaterPayment(null);await refresh();
-  }
-
   function editWaterSale(row) {
-    if(!isAdmin)return alert('Daily entry sirf Admin edit kar sakta hai.');
-    setEditingWaterSale({ ...row, sale_date: row.sale_date || day, customer_id: String(row.customer_id || ''), bottles: String(row.bottles || ''), rate: String(row.rate || ''), payment_mode: row.payment_mode || (Number(row.cash_received)>=Number(row.total_amount)?'Cash':'Credit'), remarks: row.remarks || '' });
+    if (!isAdmin) return alert('Daily entry sirf Admin edit kar sakta hai.');
+    setEditingWaterSale({ ...row, sale_date: row.sale_date || day, customer_id: String(row.customer_id || ''), bottles: String(row.bottles || ''), rate: String(row.rate || ''), payment_mode: row.payment_mode || (Number(row.cash_received) >= Number(row.total_amount) ? 'Cash' : 'Credit'), remarks: row.remarks || '' });
   }
   async function saveWaterSaleEdit() {
-    if(!isAdmin || !editingWaterSale)return;
-    const row=editingWaterSale; const customer=customers.find(c=>String(c.id)===String(row.customer_id));
-    const qty=Number(row.bottles), rateValue=Number(row.rate), total=qty*rateValue;
-    if(!customer||!row.sale_date||!Number.isInteger(qty)||qty<=0||!(rateValue>0)||!['Cash','Credit'].includes(row.payment_mode))return alert('Customer, date, bottles, rate aur payment type sahi enter karein.');
-    const availableAfterUndo=currentStock+Number(sales.find(x=>String(x.id)===String(row.id))?.bottles||0);
-    if(qty>availableAfterUndo)return alert(`Stock kam hai. Is entry ko adjust karne ke baad available stock ${availableAfterUndo} bottles hai.`);
-    const {error}=await supabase.from('water_sales').update({customer_id:customer.id,sale_date:row.sale_date,bottles:qty,rate:rateValue,total_amount:total,cash_received:row.payment_mode==='Cash'?total:0,payment_mode:row.payment_mode,remarks:String(row.remarks||'').trim()}).eq('id',row.id).eq('business_id',Number(businessId));
-    if(error)return alert('Daily water entry update nahi hui: '+error.message);
-    setDay(row.sale_date);setEditingWaterSale(null);await refresh();
+    if (!isAdmin || !editingWaterSale) return;
+    const row = editingWaterSale;
+    const customer = customers.find(c => String(c.id) === String(row.customer_id));
+    const qty = Number(row.bottles), rateValue = Number(row.rate), total = qty * rateValue;
+    if (!customer || !row.sale_date || !Number.isInteger(qty) || qty <= 0 || !(rateValue > 0) || !['Cash','Credit'].includes(row.payment_mode)) return alert('Customer, date, bottles, rate aur payment type sahi enter karein.');
+    const availableAfterUndo = currentStock + Number(sales.find(x => String(x.id) === String(row.id))?.bottles || 0);
+    if (qty > availableAfterUndo) return alert(`Stock kam hai. Is entry ko adjust karne ke baad available stock ${availableAfterUndo} bottles hai.`);
+    const { error } = await supabase.from('water_sales').update({ customer_id: customer.id, sale_date: row.sale_date, bottles: qty, rate: rateValue, total_amount: total, cash_received: row.payment_mode === 'Cash' ? total : 0, payment_mode: row.payment_mode, remarks: String(row.remarks || '').trim() }).eq('id', row.id).eq('business_id', Number(businessId));
+    if (error) return alert('Daily water entry update nahi hui: ' + error.message);
+    setDay(row.sale_date); setEditingWaterSale(null); await refresh();
   }
   async function deleteWaterSale(row) {
     if(!isAdmin)return alert('Daily entry sirf Admin delete kar sakta hai.');
@@ -331,7 +313,7 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
       <div style={panelCard}><h3 style={{marginTop:0}}>Daily Water Sale Entry</h3><form onSubmit={addSale}><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={saleCustomer} onChange={e=>{setSaleCustomer(e.target.value);const c=customers.find(x=>String(x.id)===e.target.value);setSaleRate(c?String(c.rate):'')}} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false).map(c=><option key={c.id} value={c.id}>{c.room_no ? c.room_no+' · ' : ''}{c.customer_name}</option>)}</select></label><label>Total Bottles<input type="number" min="1" step="1" style={input} value={bottles} onChange={e=>setBottles(e.target.value)} required/></label><label>Rate / Bottle<input type="number" min="0.01" step="0.01" style={input} value={saleRate} onChange={e=>setSaleRate(e.target.value)} required/></label><label>Payment Type<select style={input} value={salePaymentType} onChange={e=>setSalePaymentType(e.target.value)}><option value="Cash">Cash</option><option value="Credit">Credit</option></select></label><label>Remarks<input style={input} value={saleRemarks} onChange={e=>setSaleRemarks(e.target.value)}/></label></div><div style={{marginTop:10,fontWeight:800}}>Bill: {fmt(Number(bottles||0)*Number(saleRate||0))} · {salePaymentType==='Cash'?'Cash Received':'Credit Added'}: {fmt(Number(bottles||0)*Number(saleRate||0))} · Available Stock: {currentStock}</div><button style={{...btn,marginTop:10}} disabled={!canAdd||busy}>Save Daily Entry</button></form></div>
       {canAdd&&<form onSubmit={addPayment} style={panelCard}><h3 style={{marginTop:0}}>Receive Previous Customer Credit</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={payCustomer} onChange={e=>setPayCustomer(e.target.value)} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false&&customerStats(c).balance>0).map(c=><option key={c.id} value={c.id}>{c.room_no ? c.room_no+' · ' : ''}{c.customer_name} · Due {fmt(customerStats(c).balance)}</option>)}</select></label><label>Cash Received<input type="number" min="0.01" step="0.01" style={input} value={payAmount} onChange={e=>setPayAmount(e.target.value)} required/></label><label>Remarks<input style={input} value={payRemarks} onChange={e=>setPayRemarks(e.target.value)}/></label></div><button style={{...btn,marginTop:10}}>Receive Old Credit</button></form>}
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}>{[['Daily Bill',dailyBilled],['Daily Cash',dailyCash],['Daily Credit Added',dailyCredit]].map(([l,v])=><div key={l} style={{...panelCard,margin:0}}><div style={{fontSize:12,color:'#64748b',fontWeight:700}}>{l}</div><div style={{fontSize:21,fontWeight:900}}>{fmt(v)}</div></div>)}</div>
-      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Activity · {day}</h3><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Customer','Room','Date','Bottles','Rate','Bill','Payment Type','Credit','Remarks',...(isAdmin?['Actions']:[])].map(x=><th key={x} style={thStyle}>{x}</th>)}</tr></thead><tbody>{dailySales.map(x=>{const c=customers.find(y=>String(y.id)===String(x.customer_id));const editing=String(editingWaterSale?.id)===String(x.id);return <tr key={x.id} style={editing?{background:'#eff6ff'}:{}}><td style={tdStyle}>{editing?<select style={input} value={editingWaterSale.customer_id} onChange={e=>setEditingWaterSale(v=>({...v,customer_id:e.target.value}))}><option value="">Select customer</option>{customers.map(y=><option key={y.id} value={y.id}>{y.room_no?y.room_no+' · ':''}{y.customer_name}</option>)}</select>:(c?.customer_name||'Deleted customer')}</td><td style={tdStyle}>{c?.room_no||'—'}</td><td style={tdStyle}>{editing?<input type="date" style={input} value={editingWaterSale.sale_date} onChange={e=>setEditingWaterSale(v=>({...v,sale_date:e.target.value}))}/>:x.sale_date}</td><td style={tdStyle}>{editing?<input type="number" min="1" step="1" style={{...input,width:75}} value={editingWaterSale.bottles} onChange={e=>setEditingWaterSale(v=>({...v,bottles:e.target.value}))}/>:x.bottles}</td><td style={tdStyle}>{editing?<input aria-label="Rate per bottle" title="Rate per bottle" type="number" min="0.01" step="0.01" style={{...input,width:85}} value={editingWaterSale.rate} onChange={e=>setEditingWaterSale(v=>({...v,rate:e.target.value}))}/>:fmt(x.rate)}</td><td style={tdStyle}>{editing?fmt(Number(editingWaterSale.bottles||0)*Number(editingWaterSale.rate||0)):fmt(x.total_amount)}</td><td style={tdStyle}>{editing?<select style={input} value={editingWaterSale.payment_mode} onChange={e=>setEditingWaterSale(v=>({...v,payment_mode:e.target.value}))}><option value="Cash">Cash</option><option value="Credit">Credit</option></select>:(x.payment_mode||(Number(x.cash_received)>=Number(x.total_amount)?'Cash':'Credit'))}</td><td style={tdStyle}>{editing?fmt(editingWaterSale.payment_mode==='Cash'?0:Number(editingWaterSale.bottles||0)*Number(editingWaterSale.rate||0)):fmt(Number(x.total_amount)-Number(x.cash_received))}</td><td style={tdStyle}>{editing?<input style={input} value={editingWaterSale.remarks} onChange={e=>setEditingWaterSale(v=>({...v,remarks:e.target.value}))}/>:(x.remarks||'—')}</td>{isAdmin&&<td style={tdStyle}>{editing?<><button type="button" onClick={saveWaterSaleEdit} style={{marginRight:5}}>Save</button><button type="button" onClick={()=>setEditingWaterSale(null)}>Cancel</button></>:<><button type="button" onClick={()=>editWaterSale(x)} style={{marginRight:5}}>Edit</button><button type="button" onClick={()=>deleteWaterSale(x)} style={{color:'#b91c1c'}}>Delete</button></>}</td>}</tr>})}{!dailySales.length&&<tr><td colSpan={isAdmin?10:9} style={tdStyle}>No daily entries.</td></tr>}</tbody></table></div><h4>Old Credit Received Today</h4>{dailyPayments.map(p=>{const editing=String(editingWaterPayment?.id)===String(p.id);return <div key={p.id} style={{padding:8,borderTop:'1px solid #eee',display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',background:editing?'#eff6ff':'transparent'}}>{editing?<><select style={{...input,width:170}} value={editingWaterPayment.customer_id} onChange={e=>setEditingWaterPayment(v=>({...v,customer_id:e.target.value}))}>{customers.map(c=><option key={c.id} value={c.id}>{c.customer_name}</option>)}</select><input type="date" style={{...input,width:145}} value={editingWaterPayment.payment_date} onChange={e=>setEditingWaterPayment(v=>({...v,payment_date:e.target.value}))}/><input type="number" min="0.01" step="0.01" style={{...input,width:110}} value={editingWaterPayment.amount} onChange={e=>setEditingWaterPayment(v=>({...v,amount:e.target.value}))}/><input style={{...input,flex:1,minWidth:130}} value={editingWaterPayment.remarks} onChange={e=>setEditingWaterPayment(v=>({...v,remarks:e.target.value}))}/></>:<span>{customers.find(c=>String(c.id)===String(p.customer_id))?.customer_name||'Customer'} · {fmt(p.amount)} · {p.remarks||'—'}</span>}{isAdmin&&(editing?<><button type="button" onClick={saveWaterPaymentEdit}>Save</button><button type="button" onClick={()=>setEditingWaterPayment(null)}>Cancel</button></>:<button type="button" onClick={()=>startEditWaterPayment(p)}>Edit</button>)}</div>})}{!dailyPayments.length&&<small>No previous credit received today.</small>}</div>
+      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Activity · {day}</h3><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Date','Customer','Room','Bottles','Bill','Payment Type','Credit','Remarks',...(isAdmin?['Actions']:[])].map(x=><th key={x} style={thStyle}>{x}</th>)}</tr></thead><tbody>{dailySales.map(x=>{const c=customers.find(y=>String(y.id)===String(x.customer_id));const editing=String(editingWaterSale?.id)===String(x.id);const editBill=Number(editingWaterSale?.bottles||0)*Number(editingWaterSale?.rate||0);return <tr key={x.id} style={editing?{background:'#eff6ff'}:{}}><td style={tdStyle}>{editing?<input type="date" style={input} value={editingWaterSale.sale_date} onChange={e=>setEditingWaterSale(v=>({...v,sale_date:e.target.value}))}/>:x.sale_date}</td><td style={tdStyle}>{editing?<select style={input} value={editingWaterSale.customer_id} onChange={e=>setEditingWaterSale(v=>({...v,customer_id:e.target.value}))}><option value="">Select customer</option>{customers.map(y=><option key={y.id} value={y.id}>{y.room_no?y.room_no+' · ':''}{y.customer_name}</option>)}</select>:(c?.customer_name||'Deleted customer')}</td><td style={tdStyle}>{c?.room_no||'—'}</td><td style={tdStyle}>{editing?<input type="number" min="1" step="1" style={{...input,width:75}} value={editingWaterSale.bottles} onChange={e=>setEditingWaterSale(v=>({...v,bottles:e.target.value}))}/>:x.bottles}</td><td style={tdStyle}>{editing?fmt(editBill):fmt(x.total_amount)}</td><td style={tdStyle}>{editing?<><select style={input} value={editingWaterSale.payment_mode} onChange={e=>setEditingWaterSale(v=>({...v,payment_mode:e.target.value}))}><option value="Cash">Cash</option><option value="Credit">Credit</option></select><input aria-label="Rate per bottle" title="Rate per bottle" type="number" min="0.01" step="0.01" style={{...input,width:85,marginTop:4}} value={editingWaterSale.rate} onChange={e=>setEditingWaterSale(v=>({...v,rate:e.target.value}))}/></>:(x.payment_mode||(Number(x.cash_received)>=Number(x.total_amount)?'Cash':'Credit'))}</td><td style={tdStyle}>{editing?fmt(editingWaterSale.payment_mode==='Cash'?0:editBill):fmt(Number(x.total_amount)-Number(x.cash_received))}</td><td style={tdStyle}>{editing?<input style={input} value={editingWaterSale.remarks} onChange={e=>setEditingWaterSale(v=>({...v,remarks:e.target.value}))}/> : (x.remarks||'—')}</td>{isAdmin&&<td style={tdStyle}>{editing?<><button type="button" onClick={saveWaterSaleEdit} style={{marginRight:5}}>Save</button><button type="button" onClick={()=>setEditingWaterSale(null)}>Cancel</button></>:<><button type="button" onClick={()=>editWaterSale(x)} style={{marginRight:5}}>Edit</button><button type="button" onClick={()=>deleteWaterSale(x)} style={{color:'#b91c1c'}}>Delete</button></>}</td>}</tr>})}{!dailySales.length&&<tr><td colSpan={isAdmin?9:8} style={tdStyle}>No daily entries.</td></tr>}</tbody></table></div><h4>Old Credit Received Today</h4>{dailyPayments.map(p=><div key={p.id} style={{padding:8,borderTop:'1px solid #eee'}}>{customers.find(c=>String(c.id)===String(p.customer_id))?.customer_name||'Customer'} · {fmt(p.amount)} · {p.remarks||'—'}</div>)}{!dailyPayments.length&&<small>No previous credit received today.</small>}</div>
     </>}
     {tab==='company' && <>
       <div style={{...panelCard,background:'#eff6ff'}}><h3 style={{marginTop:0}}>Company Stock & Account Summary</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}><div><small>Total Stock Received</small><h2>{totalStockIn} Bottles</h2></div><div><small>Total Bottles Sold</small><h2>{totalStockOut} Bottles</h2></div><div><small>Available Stock</small><h2 style={{color:currentStock<0?'#b91c1c':'#047857'}}>{currentStock} Bottles</h2></div><div><small>Total Company Bill</small><h2>{fmt(companyBillTotal)}</h2></div><div><small>Total Paid</small><h2 style={{color:'#047857'}}>{fmt(companyPaidAtDelivery+companyPaidLater)}</h2></div><div><small>Company Outstanding</small><h2 style={{color:'#b91c1c'}}>{fmt(companyOutstanding)}</h2></div></div></div>
@@ -399,23 +381,502 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
     if(error) return alert('Entry save nahi hui: '+error.message);
     setEntryAmount('');setEntryDetails('');setEntryNotes('');await loadEntries();
   }
+  async function editEntry(row) {
+    if(!isAdmin) return;
+    const d=window.prompt('Date (YYYY-MM-DD)',row.entry_date); if(d===null)return;
+    const details=window.prompt('Details',row.details||''); if(details===null)return;
+    const amount=Number(window.prompt('Amount',String(row.amount))); if(!Number.isFinite(amount)||amount<=0)return alert('Valid amount enter karein.');
+    const notes=window.prompt('Remarks / Notes',row.notes||''); if(notes===null)return;
+    const {error}=await supabase.from('business_notebook_entries').update({entry_date:d,details,amount,notes}).eq('id',row.id).eq('file_id',Number(activeFileId));
+    if(error)return alert(error.message); await loadEntries();
+  }
+  async function deleteEntry(row) {
+    if(!isAdmin||!window.confirm('Is notebook entry ko permanently delete karna hai?'))return;
+    const {error}=await supabase.from('business_notebook_entries').delete().eq('id',row.id).eq('file_id',Number(activeFileId));
+    if(error)return alert(error.message); await loadEntries();
+  }
+  async function deleteFile() {
+    if(!isAdmin||!activeFile)return;
+    if(!window.confirm(`"${activeFile.file_name}" aur iski tamam entries permanently delete karni hain?`))return;
+    const {error}=await supabase.from('business_notebook_files').delete().eq('id',Number(activeFileId)).eq('business_id',Number(activeFile.business_id));
+    if(error)return alert(error.message); setActiveFileId(''); await loadFiles('');
+  }
+  const received=entries.filter(x=>x.entry_type==='income').reduce((a,x)=>a+Number(x.amount||0),0);
+  const spent=entries.filter(x=>x.entry_type==='expense').reduce((a,x)=>a+Number(x.amount||0),0);
+  const balance=received-spent;
+  const panel={background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:14,marginBottom:12};
+  const input={width:'100%',boxSizing:'border-box',padding:10,border:'1px solid #cbd5e1',borderRadius:8};
+  return <section style={{background:'#f8fafc',borderRadius:14,padding:14}}>
+    <div style={{...panel,background:'#eff6ff'}}><h2 style={{margin:'0 0 4px'}}>📒 Naveed Docs / Hisab Kitab</h2><div style={{fontSize:13,color:'#475569'}}>Engineer Account, Udhaar, Ghar ke Akhrajat aur apni zaroorat ke mutabiq unlimited files.</div></div>
+    {errorText&&<div style={{...panel,color:'#991b1b'}}>Database error: {errorText}. Notebook SQL setup run karein.</div>}
+    {isAdmin&&<form onSubmit={createFile} style={{...panel,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:10}}><input style={input} value={newFileName} onChange={e=>setNewFileName(e.target.value)} placeholder="New file name (e.g. Engineer Account)" required/><select style={input} value={newFileCurrency} onChange={e=>setNewFileCurrency(e.target.value)}><option value="AED">AED</option><option value="PKR">PKR</option></select><button style={{...primaryStyle,background:'#1d4ed8'}}>＋ Create Notebook File</button></form>}
+    <div style={{...panel,display:'flex',gap:10,alignItems:'end',flexWrap:'wrap'}}><label style={{flex:'1 1 220px'}}>Open Notebook File<select style={{...input,marginTop:5}} value={activeFileId} onChange={e=>setActiveFileId(e.target.value)}><option value="">Select file</option>{files.map(f=><option key={f.id} value={f.id}>{f.file_name} ({f.currency})</option>)}</select></label>{activeFile&&isAdmin&&<button onClick={deleteFile} style={{...primaryStyle,width:'auto',background:'#b91c1c'}}>Delete File</button>}</div>
+    {activeFile&&<>
+      <div style={{...panel,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}><div><small>Received Amount</small><h2 style={{margin:'5px 0',color:'#047857'}}>{fmt(received)}</h2></div><div><small>Total Expenses</small><h2 style={{margin:'5px 0',color:'#b91c1c'}}>{fmt(spent)}</h2></div><div><small>Remaining Balance</small><h2 style={{margin:'5px 0',color:balance<0?'#b91c1c':'#1d4ed8'}}>{fmt(balance)}</h2></div></div>
+      {isAdmin&&<form onSubmit={addEntry} style={panel}><h3 style={{marginTop:0}}>＋ New Amount / Expense</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={entryDate} onChange={e=>setEntryDate(e.target.value)} required/></label><label>Entry Type<select style={input} value={entryType} onChange={e=>setEntryType(e.target.value)}><option value="income">Received / Income (+)</option><option value="expense">Expense (-)</option></select></label><label>Amount<input type="number" min="0.01" step="0.01" style={input} value={entryAmount} onChange={e=>setEntryAmount(e.target.value)} required/></label><label>Details<input style={input} value={entryDetails} onChange={e=>setEntryDetails(e.target.value)} placeholder="Material bill / payment received" required/></label><label>Remarks<input style={input} value={entryNotes} onChange={e=>setEntryNotes(e.target.value)} placeholder="Optional notes"/></label></div><button style={{...primaryStyle,marginTop:10}}>Save Entry</button></form>}
+      <div style={panel}><h3 style={{marginTop:0}}>{activeFile.file_name} · Entry History</h3><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Date','Details','Income (+)','Expense (-)','Balance','Remarks',...(isAdmin?['Actions']:[])].map(h=><th key={h} style={{padding:8,borderBottom:'1px solid #cbd5e1',textAlign:'left'}}>{h}</th>)}</tr></thead><tbody>{[...entries].reverse().map((r,i)=>{const running=[...entries].reverse().slice(0,i+1).reduce((a,x)=>a+(x.entry_type==='income'?1:-1)*Number(x.amount||0),0);return <tr key={r.id}><td style={{padding:8,borderBottom:'1px solid #eee'}}>{r.entry_date}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{r.details}</td><td style={{padding:8,color:'#047857'}}>{r.entry_type==='income'?fmt(r.amount):'—'}</td><td style={{padding:8,color:'#b91c1c'}}>{r.entry_type==='expense'?fmt(r.amount):'—'}</td><td style={{padding:8,fontWeight:700}}>{fmt(running)}</td><td style={{padding:8}}>{r.notes||'—'}</td>{isAdmin&&<td style={{padding:8,whiteSpace:'nowrap'}}><button onClick={()=>editEntry(r)} style={{marginRight:5}}>Edit</button><button onClick={()=>deleteEntry(r)} style={{color:'#b91c1c'}}>Delete</button></td>}</tr>})}{!entries.length&&<tr><td colSpan={isAdmin?7:6} style={{padding:12}}>Is file mein abhi koi entry nahi.</td></tr>}</tbody></table></div></div>
+    </>}
+    {!files.length&&!loading&&!errorText&&<div style={panel}>Abhi koi notebook file nahi bani. Upar se pehli file create karein.</div>}
+    {loading&&<div>Loading notebook...</div>}
+  </section>;
+}
+
+function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
+  const [businesses, setBusinesses] = useState([]);
+  const [businessId, setBusinessId] = useState(() => { try { return localStorage.getItem('nda_business_selected_id') || sessionStorage.getItem('nda_business_selected_id') || ''; } catch { return ''; } });
+  const [activeVehicleId, setActiveVehicleId] = useState('');
+  const [vehicles, setVehicles] = useState([]);
+  const [people, setPeople] = useState([]);
+  const [entries, setEntries] = useState([]);
+  const [accessRows, setAccessRows] = useState([]);
+  const [access, setAccess] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [view, setView] = useState(() => { try { return localStorage.getItem('nda_business_last_view') || sessionStorage.getItem('nda_business_last_view') || 'dashboard'; } catch { return 'dashboard'; } });
+  const [workspaceSection, setWorkspaceSection] = useState(() => { try { return localStorage.getItem('nda_business_last_section') || sessionStorage.getItem('nda_business_last_section') || 'dashboard'; } catch { return 'dashboard'; } });
+  const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [cleanupMonth, setCleanupMonth] = useState(() => { const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; });
+  const [cleanupPreview, setCleanupPreview] = useState(null);
+
+  // New Business Form
+  const [newBusinessName, setNewBusinessName] = useState('');
+  const [newBusinessKind, setNewBusinessKind] = useState('transport');
+
+  // New Vehicle File Form
+  const [vehiclePlate, setVehiclePlate] = useState('');
+  const [vehicleName, setVehicleName] = useState('');
+  const [vehicleNotes, setVehicleNotes] = useState('');
+
+  // Staff / Driver Profile Form
+  const [personName, setPersonName] = useState('');
+  const [personRole, setPersonRole] = useState('Driver');
+  const [personPhone, setPersonPhone] = useState('');
+  const [payType, setPayType] = useState('fixed');
+  const [payAmount, setPayAmount] = useState('');
+  const [profitPercent, setProfitPercent] = useState('30');
+
+  // Daily Entry Form
+  const [entryKind, setEntryKind] = useState('income');
+  const [category, setCategory] = useState('Daily Trip / Income');
+  const [amount, setAmount] = useState('');
+  const [paymentMode, setPaymentMode] = useState('Cash');
+  const [vehicleId, setVehicleId] = useState('');
+  const [driverId, setDriverId] = useState('');
+  const [description, setDescription] = useState('');
+  const [remarks, setRemarks] = useState('');
+  const [billFile, setBillFile] = useState(null);
+  const [editingDailyEntry, setEditingDailyEntry] = useState(null);
+
+  // Staff Login & Permissions Form
+  const [accessEmail, setAccessEmail] = useState('');
+  const [accessPassword, setAccessPassword] = useState('');
+  const [accessBusinessId, setAccessBusinessId] = useState('');
+  const [accessFilterBusinessId, setAccessFilterBusinessId] = useState('');
+  const [accessSelectedKind, setAccessSelectedKind] = useState('');
+  const [accessFlags, setAccessFlags] = useState({
+    can_view: true,
+    can_view_daily: true,
+    can_add: true,
+    can_edit: false,
+    can_delete: false,
+    can_view_vehicles: true,
+    can_manage_vehicles: false,
+    can_view_workers: false,
+    can_manage_workers: false,
+    can_view_monthly: false,
+    can_manage_access: false
+  });
+  const [editingAccessRow, setEditingAccessRow] = useState(null);
+  const [currency, setCurrency] = useState('AED');
+
+  const admin = !!userRole?.is_admin;
+  const can = (key) => admin || !!access?.[key];
+  const waterOnlyStaff = !admin && !!access?.can_view && !access?.can_view_daily && !access?.can_edit && !access?.can_delete && !access?.can_view_vehicles && !access?.can_manage_vehicles && !access?.can_view_workers && !access?.can_manage_workers && !access?.can_view_monthly && !access?.can_manage_access;
+  const currentBusiness = businesses.find(b => String(b.id) === String(businessId));
+  // Legacy business rows may have business_kind='other'. Treat every non-water business as Transport.
+  const isTransportBusiness = currentBusiness?.business_kind !== 'water';
+  const money = n => `${currency} ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const inputStyle = {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '12px 14px',
+    border: '1px solid #cbd5e1',
+    borderRadius: 10,
+    background: '#fff',
+    color: '#0f172a',
+    fontSize: 15
+  };
+  const btn = {
+    padding: '12px 16px',
+    border: 0,
+    borderRadius: 10,
+    background: '#047857',
+    color: '#fff',
+    fontWeight: 700,
+    fontSize: 14,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6
+  };
+  const card = {
+    background: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    boxShadow: '0 4px 18px #0f172a0d',
+    border: '1px solid #e2e8f0',
+    minWidth: 0
+  };
+
+  const quickIncomeCategories = isTransportBusiness
+    ? ['Daily Trip / Income', 'Contract / Monthly Rent', 'Extra Trip', 'Other Income']
+    : ['Daily Sales / Income', 'Client Payment', 'Service Fee', 'Other Income'];
+
+  const quickExpenseCategories = isTransportBusiness
+    ? ['Fuel', 'Maintenance', 'Other Expense']
+    : ['Stock / Material', 'Shop Rent / Bills', 'Staff Expense', 'Maintenance / Repair', 'Transport / Delivery', 'Other Expense'];
+
+  function resolveFirstAllowedView(accRow, isAdminUser) {
+    if (isAdminUser) return 'daily';
+    if (!accRow) return 'daily';
+    const onlyWater = accRow.can_view && !accRow.can_view_daily && !accRow.can_edit && !accRow.can_delete && !accRow.can_view_vehicles && !accRow.can_manage_vehicles && !accRow.can_view_workers && !accRow.can_manage_workers && !accRow.can_view_monthly && !accRow.can_manage_access;
+    if (onlyWater) return 'water';
+    if (accRow.can_view_daily || accRow.can_add || accRow.can_edit || accRow.can_delete) return 'daily';
+    if (accRow.can_view_vehicles || accRow.can_manage_vehicles) return 'vehicles';
+    if (accRow.can_view_monthly) return 'monthly';
+    if (accRow.can_view_workers || accRow.can_manage_workers) return 'workers';
+    if (accRow.can_manage_access) return 'access';
+    if (accRow.can_view) return 'water';
+    return 'daily';
+  }
+
+  async function loadBusinesses(preferredId) {
+    setLoading(true);
+    try {
+      if (admin) {
+        const { data, error } = await supabase.from('business_profiles').select('*').order('name');
+        if (error) throw error;
+        const rows = data || [];
+        setBusinesses(rows);
+        if (!accessFilterBusinessId) setAccessFilterBusinessId(String(businessId || rows[0]?.id || ''));
+        const requestedId = preferredId === '' ? '' : (preferredId || businessId || '');
+        const next = String(rows.some(r => String(r.id) === String(requestedId)) ? requestedId : (rows[0]?.id || ''));
+        setBusinessId(next);
+        if (next) {
+          setAccess({
+            can_view: true, can_view_daily: true, can_add: true, can_edit: true, can_delete: true,
+            can_view_vehicles: true, can_manage_vehicles: true, can_view_workers: true,
+            can_manage_workers: true, can_view_monthly: true, can_manage_access: true
+          });
+        }
+        const { data: ar, error: ae } = await supabase.from('business_access').select('*,business_profiles(name)').order('user_email');
+        if (!ae) setAccessRows(ar || []);
+      } else {
+        const { data: ar, error: ae } = await supabase
+          .from('business_access')
+          .select('*,business_profiles(*)')
+          .ilike('user_email', session?.user?.email || '')
+          .eq('active', true)
+          .eq('can_view', true);
+        if (ae) throw ae;
+        const allRows = ar || [];
+        const isWaterOnlyRow = r => r.can_view && !r.can_view_daily && !r.can_edit && !r.can_delete && !r.can_view_vehicles && !r.can_manage_vehicles && !r.can_view_workers && !r.can_manage_workers && !r.can_view_monthly && !r.can_manage_access;
+        const waterOnlyRows = allRows.filter(isWaterOnlyRow);
+        // If this login has any Water-only assignment, expose only those assigned Water business rows.
+        const rows = waterOnlyRows.length ? waterOnlyRows : allRows;
+        setAccessRows(rows);
+        setBusinesses(rows.map(r => r.business_profiles).filter(Boolean));
+        const requestedId = preferredId || businessId || '';
+        const next = String(rows.some(r => String(r.business_id) === String(requestedId)) ? requestedId : (rows[0]?.business_id || ''));
+        setBusinessId(next);
+        const row = rows.find(r => String(r.business_id) === next) || rows[0] || null;
+        setAccess(row);
+        if (row) {
+          const firstView = resolveFirstAllowedView(row, false);
+          setView(firstView);
+          setWorkspaceSection(firstView === 'water' ? 'water' : firstView === 'access' ? 'access' : 'transport');
+        }
+      }
+    } catch (e) {
+      alert('Failed to load business list: ' + (e?.message || e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadBusinessData(id = businessId) {
+    if (!id) return;
+    if (waterOnlyStaff) { setVehicles([]); setPeople([]); setEntries([]); return; }
+    setLoading(true);
+    try {
+      const [v, p, e] = await Promise.all([
+        supabase.from('business_vehicles').select('*').eq('business_id', id).eq('active', true).order('plate_number'),
+        supabase.from('business_people').select('*').eq('business_id', id).eq('active', true).order('person_name'),
+        supabase.from('business_entries').select('*').eq('business_id', id).order('entry_date', { ascending: false }).order('created_at', { ascending: false })
+      ]);
+      const loadError = v.error || p.error || e.error;
+      if (loadError) throw loadError;
+      const loadedVehicles = v.data || [];
+      const loadedPeople = p.data || [];
+      const loadedEntries = e.data || [];
+      setVehicles(loadedVehicles);
+      setPeople(loadedPeople);
+      setEntries(loadedEntries);
+      if (loadedVehicles.length === 1) {
+        setVehicleId(String(loadedVehicles[0].id));
+      }
+    } catch (e) {
+      alert('Failed to load business details: ' + (e?.message || e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { loadBusinesses(businessId); }, [session?.user?.email, admin]);
+  useEffect(() => {
+    try {
+      if (businessId) {
+        localStorage.setItem('nda_business_selected_id', String(businessId));
+        sessionStorage.setItem('nda_business_selected_id', String(businessId));
+      } else {
+        localStorage.removeItem('nda_business_selected_id');
+        sessionStorage.removeItem('nda_business_selected_id');
+      }
+      localStorage.setItem('nda_business_last_view', view || 'dashboard');
+      localStorage.setItem('nda_business_last_section', workspaceSection || 'dashboard');
+      sessionStorage.setItem('nda_business_last_view', view || 'dashboard');
+      sessionStorage.setItem('nda_business_last_section', workspaceSection || 'dashboard');
+    } catch (e) { console.warn('Business workspace state could not be saved:', e); }
+  }, [businessId, view, workspaceSection]);
+  useEffect(() => { if (businessId) loadBusinessData(businessId); else { setVehicles([]); setPeople([]); setEntries([]); } }, [businessId]);
+
+  async function addBusiness(e) {
+    e.preventDefault();
+    if (!admin) return;
+    const name = newBusinessName.trim();
+    if (!name) return;
+    const { data, error } = await supabase
+      .from('business_profiles')
+      .insert([{ name, business_kind: newBusinessKind, active: true, created_by: session?.user?.email || '' }])
+      .select('*')
+      .single();
+    if (error) return alert('Could not create business: ' + error.message);
+    setNewBusinessName('');
+    await loadBusinesses(data.id);
+    setBusinessId(String(data.id));
+    alert('New business created successfully.');
+  }
+
+  async function deleteBusinessRecord(b) {
+    if (!admin || !b) return;
+    const checks = await Promise.all([
+      supabase.from('business_vehicles').select('id',{count:'exact',head:true}).eq('business_id',b.id),
+      supabase.from('business_people').select('id',{count:'exact',head:true}).eq('business_id',b.id),
+      supabase.from('business_entries').select('id',{count:'exact',head:true}).eq('business_id',b.id),
+      supabase.from('water_customers').select('id',{count:'exact',head:true}).eq('business_id',b.id),
+      supabase.from('water_sales').select('id',{count:'exact',head:true}).eq('business_id',b.id),
+      supabase.from('water_payments').select('id',{count:'exact',head:true}).eq('business_id',b.id),
+      supabase.from('business_access').select('id',{count:'exact',head:true}).eq('business_id',b.id),
+      supabase.from('business_notebook_files').select('id',{count:'exact',head:true}).eq('business_id',b.id)
+    ]);
+    const count=checks.reduce((n,r)=>n+Number(r.count||0),0);
+    if(checks.some(r=>r.error)) return alert('Business records check nahi ho saka. Delete nahi kiya gaya. '+checks.find(r=>r.error)?.error?.message);
+    if(count>0) {
+      if(!window.confirm(`"${b.name}" ke saath ${count} related record(s) mojood hain. Data delete nahi hoga. Business ko sirf inactive kiya jayega aur list se hide ho jayega. Continue?`)) return;
+      const {error}=await supabase.from('business_profiles').update({active:false}).eq('id',b.id);
+      if(error)return alert('Business inactive nahi hua: '+error.message);
+      if(String(businessId)===String(b.id)){setBusinessId('');setVehicles([]);setPeople([]);setEntries([]);}
+      await loadBusinesses('');
+      alert('Business inactive kar diya gaya. Purana data safe hai.');
+    } else {
+      if(!window.confirm(`"${b.name}" ka koi linked business data nahi mila. Kya aap is business ko permanently delete karna chahte hain?`)) return;
+      const {error}=await supabase.from('business_profiles').delete().eq('id',b.id);
+      if(error)return alert('Business delete nahi hua: '+error.message);
+      if(String(businessId)===String(b.id))setBusinessId('');
+      await loadBusinesses(''); alert('Business permanently delete ho gaya.');
+    }
+  }
+
+  async function deleteVehicleFile(v) {
+    if(!admin||!v)return;
+    const {count,error:countError}=await supabase.from('business_entries').select('id',{count:'exact',head:true}).eq('business_id',Number(businessId)).eq('vehicle_id',v.id);
+    if(countError)return alert('Vehicle records check nahi ho sake. Delete nahi kiya gaya: '+countError.message);
+    if(Number(count||0)>0){
+      if(!window.confirm(`${v.plate_number} ke ${count} purane entry record(s) mojood hain. Purana data safe rakhne ke liye vehicle ko sirf inactive karna hai. Continue?`))return;
+      const {error}=await supabase.from('business_vehicles').update({active:false}).eq('id',v.id).eq('business_id',Number(businessId));
+      if(error)return alert(error.message); alert('Vehicle inactive ho gaya; purani entries safe hain.');
+    } else {
+      if(!window.confirm(`${v.plate_number} ko permanently delete karna hai?`))return;
+      const {error}=await supabase.from('business_vehicles').delete().eq('id',v.id).eq('business_id',Number(businessId));
+      if(error)return alert('Vehicle delete nahi hua: '+error.message); alert('Vehicle file delete ho gayi.');
+    }
+    if(String(activeVehicleId)===String(v.id)){setActiveVehicleId('');setVehicleId('');}
+    await loadBusinessData();
+  }
+
+  async function previewMonthCleanup() {
+    if(!admin||!cleanupMonth)return;
+    const now=new Date(); const maxMonth=new Date(Date.UTC(now.getFullYear(),now.getMonth()-1,1)).toISOString().slice(0,7);
+    if(cleanupMonth>maxMonth)return alert('Sirf previous ya us se purana month select kar sakte hain.');
+    const start=cleanupMonth+'-01'; const [y,m]=cleanupMonth.split('-').map(Number); const end=new Date(Date.UTC(y,m,1)).toISOString().slice(0,10);
+    const queries=await Promise.all([
+      supabase.from('business_entries').select('id,amount,entry_kind').eq('business_id',Number(businessId)).gte('entry_date',start).lt('entry_date',end),
+      supabase.from('water_sales').select('id,total_amount,cash_received').eq('business_id',Number(businessId)).gte('sale_date',start).lt('sale_date',end),
+      supabase.from('water_payments').select('id,amount').eq('business_id',Number(businessId)).gte('payment_date',start).lt('payment_date',end)
+    ]);
+    const failed=queries.find(x=>x.error); if(failed)return alert('Month preview load nahi hua: '+failed.error.message);
+    setCleanupPreview({month:cleanupMonth,entries:queries[0].data||[],sales:queries[1].data||[],payments:queries[2].data||[]});
+  }
+  async function deleteMonthData() {
+    if(!admin||!cleanupPreview||cleanupPreview.month!==cleanupMonth)return;
+    const total=cleanupPreview.entries.length+cleanupPreview.sales.length+cleanupPreview.payments.length;
+    if(!total)return alert('Is month mein delete karne ke liye koi record nahi mila.');
+    if(!window.confirm(`${cleanupMonth} ke ${total} Business records permanently delete honge: daily entries ${cleanupPreview.entries.length}, water sales ${cleanupPreview.sales.length}, water payments ${cleanupPreview.payments.length}. Customers, notebook files aur HR data delete nahi hoga. Kya aap sure hain?`))return;
+    const [y,m]=cleanupMonth.split('-').map(Number); const start=cleanupMonth+'-01'; const end=new Date(Date.UTC(y,m,1)).toISOString().slice(0,10);
+    const ops=await Promise.all([
+      supabase.from('business_entries').delete().eq('business_id',Number(businessId)).gte('entry_date',start).lt('entry_date',end),
+      supabase.from('water_sales').delete().eq('business_id',Number(businessId)).gte('sale_date',start).lt('sale_date',end),
+      supabase.from('water_payments').delete().eq('business_id',Number(businessId)).gte('payment_date',start).lt('payment_date',end)
+    ]);
+    const failed=ops.find(x=>x.error); if(failed)return alert('Kuch records delete nahi ho sake: '+failed.error.message);
+    setCleanupPreview(null); await loadBusinessData(); alert(`${cleanupMonth} ka selected Business data delete ho gaya. HR System untouched hai.`);
+  }
+
+  async function addVehicle(e) {
+    e.preventDefault();
+    if (!can('can_manage_vehicles')) return alert('You do not have permission to add vehicles.');
+    if (!vehiclePlate.trim()) return alert('Please enter the vehicle plate number.');
+    const { error } = await supabase.from('business_vehicles').insert([{
+      business_id: Number(businessId),
+      plate_number: vehiclePlate.trim().toUpperCase(),
+      vehicle_name: vehicleName.trim(),
+      notes: vehicleNotes.trim(),
+      active: true
+    }]);
+    if (error) return alert('Could not save vehicle file: ' + error.message);
+    setVehiclePlate('');
+    setVehicleName('');
+    setVehicleNotes('');
+    await loadBusinessData();
+    alert('Vehicle file created successfully.');
+  }
+
+  async function addPerson(e) {
+    e.preventDefault();
+    if (!can('can_manage_workers')) return alert('You do not have permission to add drivers/staff.');
+    if (!personName.trim()) return alert('Please enter driver or staff name.');
+    const payload = {
+      business_id: Number(businessId),
+      person_name: personName.trim(),
+      job_title: personRole.trim() || 'Driver',
+      phone: personPhone.trim(),
+      pay_type: payType,
+      monthly_salary: payType === 'fixed' ? (Number(payAmount) || 0) : 0,
+      profit_percent: payType === 'profit_percent' ? (Number(profitPercent) || 0) : 0,
+      active: true
+    };
+    if (payload.profit_percent < 0 || payload.profit_percent > 100) {
+      return alert('Profit percentage must be between 0 and 100.');
+    }
+    const existingPercent = people.filter(p => p.pay_type === 'profit_percent').reduce((n, p) => n + Number(p.profit_percent || 0), 0);
+    if (payload.pay_type === 'profit_percent' && existingPercent + payload.profit_percent > 100) {
+      return alert('Combined profit share of all drivers cannot exceed 100%.');
+    }
+    const { error } = await supabase.from('business_people').insert([payload]);
+    if (error) return alert('Could not save driver/staff: ' + error.message);
+    setPersonName('');
+    setPersonPhone('');
+    setPayAmount('');
+    await loadBusinessData();
+    alert('Driver / Staff added successfully.');
+  }
+
+  async function addEntry(e) {
+    e.preventDefault();
+    if (!can('can_add')) return alert('You do not have permission to add entries.');
+    const val = Number(amount);
+    if (!entryDate || !Number.isFinite(val) || val <= 0) return alert('Please enter a valid date and amount.');
+    if (isTransportBusiness && !vehicleId) {
+      return alert('Please select a vehicle first (or ask Admin to add the vehicle in Vehicle Files).');
+    }
+    const isMaintenanceEntry = /maintenance|garage|repair|workshop/i.test(`${category} ${description} ${remarks}`);
+    if (entryKind === 'income' && isMaintenanceEntry) {
+      return alert('Do not enter Income on a Maintenance / Garage day. Save only Expense entries.');
+    }
+    if (entryKind === 'income' && entries.some(r =>
+      r.entry_date === entryDate &&
+      String(r.vehicle_id || '') === String(vehicleId || '') &&
+      r.entry_kind === 'expense' &&
+      /maintenance|garage|repair|workshop/i.test(`${r.category || ''} ${r.description || ''} ${r.remarks || ''}`)
+    )) {
+      return alert('Maintenance expense is already recorded for this vehicle today. Keep income zero on garage days.');
+    }
+    if (entryKind === 'expense' && isMaintenanceEntry && entries.some(r =>
+      r.entry_date === entryDate &&
+      String(r.vehicle_id || '') === String(vehicleId || '') &&
+      r.entry_kind === 'income'
+    )) {
+      return alert('Income is already saved for this vehicle today. Delete/edit the income entry first if today is a garage/maintenance day.');
+    }
+
+    let billUrl = '';
+    if (billFile) {
+      const safeName = `${businessId}/${entryDate}/${Date.now()}-${billFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const { error: upErr } = await supabase.storage.from('business-bills').upload(safeName, billFile, { upsert: false });
+      if (upErr) return alert('Bill upload failed: ' + upErr.message);
+      const { data } = supabase.storage.from('business-bills').getPublicUrl(safeName);
+      billUrl = data?.publicUrl || '';
+    }
+
+    const payload = {
+      business_id: Number(businessId),
+      entry_date: entryDate,
+      entry_kind: entryKind,
+      category: category.trim() || 'General',
+      amount: val,
+      payment_mode: paymentMode,
+      vehicle_id: vehicleId ? Number(vehicleId) : null,
+      driver_id: driverId ? Number(driverId) : null,
+      description: description.trim() || category.trim(),
+      remarks: remarks.trim(),
+      bill_url: billUrl,
+      created_by: session?.user?.email || ''
+    };
+    const { error } = await supabase.from('business_entries').insert([payload]);
+    if (error) return alert('Could not save daily entry: ' + error.message);
+
+    setAmount('');
+    setDescription('');
+    setRemarks('');
+    setBillFile(null);
+    await loadBusinessData();
+    alert('Saved! Daily record updated.');
+  }
+
+  async function deleteEntry(row) {
+    if (!admin) return alert('Daily entry sirf Admin delete kar sakta hai.');
+    if (!window.confirm('Delete this entry permanently?')) return;
+    const { error } = await supabase.from('business_entries').delete().eq('id', row.id).eq('business_id', Number(businessId));
+    if (error) return alert(error.message);
+    await loadBusinessData();
+  }
+
   function editEntry(row) {
     if (!admin) return alert('Daily entry sirf Admin edit kar sakta hai.');
     setEditingDailyEntry({ ...row, entry_date: row.entry_date || entryDate, amount: String(row.amount || ''), vehicle_id: String(row.vehicle_id || ''), driver_id: String(row.driver_id || ''), category: row.category || 'General', payment_mode: row.payment_mode || 'Cash', description: row.description || '', remarks: row.remarks || '' });
   }
-
   async function saveDailyEntryEdit() {
     if (!admin || !editingDailyEntry) return;
-    const r=editingDailyEntry, value=Number(r.amount);
-    if (!r.entry_date || !String(r.category||'').trim() || !Number.isFinite(value) || value<=0) return alert('Please enter valid date, category and amount.');
+    const r = editingDailyEntry, value = Number(r.amount);
+    if (!r.entry_date || !String(r.category || '').trim() || !Number.isFinite(value) || value <= 0) return alert('Date, category aur amount sahi enter karein.');
     if (isTransportBusiness && !r.vehicle_id) return alert('Please select a vehicle.');
-    const isMaintenanceEntry=/maintenance|garage|repair|workshop/i.test(`${r.category} ${r.description} ${r.remarks}`);
-    if (r.entry_kind==='income' && isMaintenanceEntry) return alert('Maintenance / Garage day par Income entry nahi ho sakti.');
-    if (r.entry_kind==='income' && entries.some(x=>String(x.id)!==String(r.id)&&x.entry_date===r.entry_date&&String(x.vehicle_id||'')===String(r.vehicle_id||'')&&x.entry_kind==='expense'&&/maintenance|garage|repair|workshop/i.test(`${x.category||''} ${x.description||''} ${x.remarks||''}`))) return alert('Is vehicle ki maintenance expense isi date par pehle se saved hai.');
-    if (r.entry_kind==='expense' && isMaintenanceEntry && entries.some(x=>String(x.id)!==String(r.id)&&x.entry_date===r.entry_date&&String(x.vehicle_id||'')===String(r.vehicle_id||'')&&x.entry_kind==='income')) return alert('Is vehicle ki income isi date par pehle se saved hai.');
-    const { error } = await supabase.from('business_entries').update({entry_date:r.entry_date,entry_kind:r.entry_kind,category:String(r.category).trim(),amount:value,payment_mode:r.payment_mode,vehicle_id:r.vehicle_id?Number(r.vehicle_id):null,driver_id:r.driver_id?Number(r.driver_id):null,description:String(r.description||'').trim(),remarks:String(r.remarks||'').trim()}).eq('id',r.id).eq('business_id',Number(businessId));
+    const isMaintenanceEntry = /maintenance|garage|repair|workshop/i.test(`${r.category} ${r.description} ${r.remarks}`);
+    if (r.entry_kind === 'income' && isMaintenanceEntry) return alert('Maintenance / Garage day par Income entry nahi ho sakti.');
+    const { error } = await supabase.from('business_entries').update({ entry_date:r.entry_date, entry_kind:r.entry_kind, category:String(r.category).trim(), amount:value, payment_mode:r.payment_mode, vehicle_id:r.vehicle_id?Number(r.vehicle_id):null, driver_id:r.driver_id?Number(r.driver_id):null, description:String(r.description||'').trim(), remarks:String(r.remarks||'').trim() }).eq('id',r.id).eq('business_id',Number(businessId));
     if (error) return alert('Could not update entry: ' + error.message);
-    setEntryDate(r.entry_date);setEditingDailyEntry(null);await loadBusinessData();
+    setEntryDate(r.entry_date); setEditingDailyEntry(null); await loadBusinessData();
   }
 
   async function saveAccess(e) {
@@ -990,7 +1451,7 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead>
                         <tr style={{ background: '#f8fafc' }}>
-                          {['Type', 'Date', 'Category', 'Vehicle', 'Driver / Staff', 'Details', 'Mode', 'Amount', 'Bill', ...(admin ? ['Actions'] : [])].map(h => (
+                          {['Type', 'Category', 'Vehicle', 'Driver / Staff', 'Details', 'Mode', 'Amount', 'Date / Bill / Remarks', ...(admin ? ['Actions'] : [])].map(h => (
                             <th key={h} style={{ padding: 10, borderBottom: '2px solid #e2e8f0', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
                           ))}
                         </tr>
@@ -998,32 +1459,25 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
                       <tbody>
                         {selectedEntries.map(r => {
                           const isInc = r.entry_kind === 'income';
+                          const editing = String(editingDailyEntry?.id) === String(r.id);
+                          const cell = { padding: 10, borderBottom: '1px solid #e2e8f0' };
                           return (
-                            <tr key={r.id} style={{ background: String(editingDailyEntry?.id)===String(r.id) ? '#eff6ff' : (isInc ? '#f0fdf4' : '#fef2f2') }}>
-                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 800, color: isInc ? '#15803d' : '#b91c1c' }}>
-                                {editingDailyEntry?.id===r.id ? <select style={inputStyle} value={editingDailyEntry.entry_kind} onChange={e=>setEditingDailyEntry(v=>({...v,entry_kind:e.target.value}))}><option value="income">INCOME</option><option value="expense">EXPENSE</option></select> : (isInc ? '🟢 INCOME' : '🔴 EXPENSE')}
-                              </td>
-                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>{editingDailyEntry?.id===r.id?<input type="date" style={inputStyle} value={editingDailyEntry.entry_date} onChange={e=>setEditingDailyEntry(v=>({...v,entry_date:e.target.value}))}/>:r.entry_date}</td>
-                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 700 }}>{editingDailyEntry?.id===r.id?<input style={inputStyle} value={editingDailyEntry.category} onChange={e=>setEditingDailyEntry(v=>({...v,category:e.target.value}))}/>:r.category}</td>
-                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>{editingDailyEntry?.id===r.id?<select style={inputStyle} value={editingDailyEntry.vehicle_id} onChange={e=>setEditingDailyEntry(v=>({...v,vehicle_id:e.target.value}))}><option value="">Select Vehicle</option>{vehicles.map(v=><option key={v.id} value={v.id}>{v.plate_number} {v.vehicle_name}</option>)}</select>:labelForVehicle(r.vehicle_id)}</td>
-                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>{editingDailyEntry?.id===r.id?<select style={inputStyle} value={editingDailyEntry.driver_id} onChange={e=>setEditingDailyEntry(v=>({...v,driver_id:e.target.value}))}><option value="">Select Driver / Staff</option>{people.map(p=><option key={p.id} value={p.id}>{p.person_name} ({p.job_title})</option>)}</select>:labelForPerson(r.driver_id)}</td>
-                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>{editingDailyEntry?.id===r.id?<><input style={inputStyle} value={editingDailyEntry.description} placeholder="Details" onChange={e=>setEditingDailyEntry(v=>({...v,description:e.target.value}))}/><input style={{...inputStyle,marginTop:4}} value={editingDailyEntry.remarks} placeholder="Remarks" onChange={e=>setEditingDailyEntry(v=>({...v,remarks:e.target.value}))}/></>: (r.description || r.remarks || '—')}</td>
-                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>{editingDailyEntry?.id===r.id?<select style={inputStyle} value={editingDailyEntry.payment_mode} onChange={e=>setEditingDailyEntry(v=>({...v,payment_mode:e.target.value}))}><option value="Cash">Cash</option><option value="Credit">Credit / Udhaar</option><option value="Bank">Bank / Transfer</option></select>:r.payment_mode}</td>
-                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 900, color: isInc ? '#15803d' : '#b91c1c' }}>
-                                {editingDailyEntry?.id===r.id?<input type="number" min="0.01" step="0.01" style={{...inputStyle,width:100}} value={editingDailyEntry.amount} onChange={e=>setEditingDailyEntry(v=>({...v,amount:e.target.value}))}/>:<>{isInc ? '+' : '-'}{money(r.amount)}</>}
-                              </td>
-                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
-                                {r.bill_url ? <a href={r.bill_url} target="_blank" rel="noreferrer" style={{ color: '#1d4ed8', fontWeight: 700 }}>View Bill</a> : '—'}
-                              </td>
-                              {admin && <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0', whiteSpace:'nowrap' }}>
-                                {editingDailyEntry?.id===r.id?<><button type="button" onClick={saveDailyEntryEdit} style={{ ...btn, background:'#15803d',padding:'6px 10px',fontSize:12,marginRight:5 }}>Save</button><button type="button" onClick={()=>setEditingDailyEntry(null)} style={{ ...btn, background:'#64748b',padding:'6px 10px',fontSize:12 }}>Cancel</button></>:<><button type="button" onClick={() => editEntry(r)} style={{ ...btn, background: '#1d4ed8', padding: '6px 10px', fontSize: 12, marginRight: 5 }}>Edit</button><button type="button" onClick={() => deleteEntry(r)} style={{ ...btn, background: '#b91c1c', padding: '6px 10px', fontSize: 12 }}>Delete</button></>}
-                              </td>}
+                            <tr key={r.id} style={{ background: editing ? '#eff6ff' : (isInc ? '#f0fdf4' : '#fef2f2') }}>
+                              <td style={{ ...cell, fontWeight: 800, color: isInc ? '#15803d' : '#b91c1c' }}>{editing ? <select style={{...inputStyle,minWidth:105}} value={editingDailyEntry.entry_kind} onChange={e=>setEditingDailyEntry(v=>({...v,entry_kind:e.target.value}))}><option value="income">INCOME</option><option value="expense">EXPENSE</option></select> : (isInc ? '🟢 INCOME' : '🔴 EXPENSE')}</td>
+                              <td style={cell}>{editing ? <input style={{...inputStyle,minWidth:120}} value={editingDailyEntry.category} onChange={e=>setEditingDailyEntry(v=>({...v,category:e.target.value}))}/> : <b>{r.category}</b>}</td>
+                              <td style={cell}>{editing ? <select style={{...inputStyle,minWidth:120}} value={editingDailyEntry.vehicle_id} onChange={e=>setEditingDailyEntry(v=>({...v,vehicle_id:e.target.value}))}><option value="">Select Vehicle</option>{vehicles.map(v=><option key={v.id} value={v.id}>{v.plate_number} {v.vehicle_name}</option>)}</select> : labelForVehicle(r.vehicle_id)}</td>
+                              <td style={cell}>{editing ? <select style={{...inputStyle,minWidth:120}} value={editingDailyEntry.driver_id} onChange={e=>setEditingDailyEntry(v=>({...v,driver_id:e.target.value}))}><option value="">Select Driver / Staff</option>{people.map(p=><option key={p.id} value={p.id}>{p.person_name}</option>)}</select> : labelForPerson(r.driver_id)}</td>
+                              <td style={cell}>{editing ? <input style={{...inputStyle,minWidth:140}} value={editingDailyEntry.description} onChange={e=>setEditingDailyEntry(v=>({...v,description:e.target.value}))}/> : (r.description || r.remarks || '—')}</td>
+                              <td style={cell}>{editing ? <select style={{...inputStyle,minWidth:105}} value={editingDailyEntry.payment_mode} onChange={e=>setEditingDailyEntry(v=>({...v,payment_mode:e.target.value}))}><option value="Cash">Cash</option><option value="Credit">Credit / Udhaar</option><option value="Bank">Bank / Transfer</option></select> : r.payment_mode}</td>
+                              <td style={{...cell,fontWeight:900,color:isInc?'#15803d':'#b91c1c'}}>{editing ? <input type="number" min="0.01" step="0.01" style={{...inputStyle,width:105}} value={editingDailyEntry.amount} onChange={e=>setEditingDailyEntry(v=>({...v,amount:e.target.value}))}/> : `${isInc?'+':'-'}${money(r.amount)}`}</td>
+                              <td style={cell}>{editing ? <><input type="date" style={{...inputStyle,minWidth:130}} value={editingDailyEntry.entry_date} onChange={e=>setEditingDailyEntry(v=>({...v,entry_date:e.target.value}))}/><input placeholder="Remarks" style={{...inputStyle,minWidth:130,marginTop:4}} value={editingDailyEntry.remarks} onChange={e=>setEditingDailyEntry(v=>({...v,remarks:e.target.value}))}/></> : (r.bill_url ? <a href={r.bill_url} target="_blank" rel="noreferrer" style={{color:'#1d4ed8',fontWeight:700}}>View Bill</a> : '—')}</td>
+                              {admin && <td style={cell}>{editing ? <><button type="button" onClick={saveDailyEntryEdit} style={{...btn,background:'#15803d',padding:'6px 10px',fontSize:12,marginRight:5}}>Save</button><button type="button" onClick={()=>setEditingDailyEntry(null)} style={{...btn,background:'#64748b',padding:'6px 10px',fontSize:12}}>Cancel</button></> : <><button type="button" onClick={()=>editEntry(r)} style={{...btn,background:'#1d4ed8',padding:'6px 10px',fontSize:12,marginRight:5}}>Edit</button><button type="button" onClick={()=>deleteEntry(r)} style={{...btn,background:'#b91c1c',padding:'6px 10px',fontSize:12}}>Delete</button></>}</td>}
                             </tr>
                           );
                         })}
                         {!selectedEntries.length && (
                           <tr>
-                            <td colSpan={admin ? 10 : 9} style={{ padding: 16, color: '#64748b', textAlign: 'center' }}>
+                            <td colSpan={admin ? 9 : 8} style={{ padding: 16, color: '#64748b', textAlign: 'center' }}>
                               No entries recorded for {entryDate}.
                             </td>
                           </tr>
