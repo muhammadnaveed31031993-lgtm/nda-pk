@@ -1917,28 +1917,26 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
 }
 
 export default function App() {
-  // Keep the login for this browser tab: refresh will restore it, while closing the tab
-  // normally clears sessionStorage. Do not use localStorage for persistent login.
+  // Keep the authenticated app session across page refreshes. It is removed only
+  // by the explicit Logout action; sessionStorage is used only as a migration fallback.
   const [session, setSession] = useState(() => {
     try {
-      const saved = sessionStorage.getItem('nda_user_session');
+      const saved = localStorage.getItem('nda_user_session') || sessionStorage.getItem('nda_user_session');
       if (!saved) return null;
       const parsed = JSON.parse(saved);
       if (parsed?.user?.email && parsed?.role) return parsed;
+      localStorage.removeItem('nda_user_session');
       sessionStorage.removeItem('nda_user_session');
       return null;
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   });
-  // Restore the selected workspace on refresh. The tab session survives refresh,
-  // but is cleared when the browser tab/window is closed (normal sessionStorage behavior).
+  // Restore the exact workspace after refresh instead of returning to the system picker.
   const [selectedSystem, setSelectedSystem] = useState(() => {
     try {
-      const savedSystem = sessionStorage.getItem('nda_selected_system');
+      const savedSystem = localStorage.getItem('nda_selected_system') || sessionStorage.getItem('nda_selected_system');
       if (savedSystem === 'none') return null;
       if (savedSystem === 'hr' || savedSystem === 'business') return savedSystem;
-      const savedSession = JSON.parse(sessionStorage.getItem('nda_user_session') || 'null');
+      const savedSession = JSON.parse(localStorage.getItem('nda_user_session') || sessionStorage.getItem('nda_user_session') || 'null');
       if (savedSession?.system_scope === 'business') return 'business';
       if (savedSession?.user?.email && savedSession?.role) return 'hr';
       return null;
@@ -2503,33 +2501,33 @@ const [newDesignation, setNewDesignation] = useState('');
   const currentMonth = now.getMonth();
   const totalDaysInCurrentMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
-  // Keep login + selected workspace through refresh; explicit Logout clears both.
-  // sessionStorage intentionally expires when this browser tab/window is closed.
+  // Persist login and workspace across refreshes. Only handleLogout clears these keys.
   useEffect(() => {
     try {
       if (session?.user?.email && session?.role) {
-        sessionStorage.setItem('nda_user_session', JSON.stringify(session));
+        const serialized = JSON.stringify(session);
+        localStorage.setItem('nda_user_session', serialized);
+        sessionStorage.setItem('nda_user_session', serialized); // compatibility with older build
       } else {
+        localStorage.removeItem('nda_user_session');
         sessionStorage.removeItem('nda_user_session');
-        sessionStorage.removeItem('nda_selected_system');
       }
-    } catch (err) {
-      console.warn('Tab session could not be saved:', err);
-    }
+    } catch (err) { console.warn('App session could not be saved:', err); }
   }, [session]);
 
   useEffect(() => {
     try {
-      if (session && (selectedSystem === 'hr' || selectedSystem === 'business')) {
+      if (selectedSystem === 'hr' || selectedSystem === 'business') {
+        localStorage.setItem('nda_selected_system', selectedSystem);
         sessionStorage.setItem('nda_selected_system', selectedSystem);
-      } else if (session && selectedSystem === null) {
-        sessionStorage.setItem('nda_selected_system', 'none');
-      } else if (!session) {
+      } else if (selectedSystem === null && !session) {
+        localStorage.removeItem('nda_selected_system');
         sessionStorage.removeItem('nda_selected_system');
+      } else if (selectedSystem === null && session) {
+        localStorage.setItem('nda_selected_system', 'none');
+        sessionStorage.setItem('nda_selected_system', 'none');
       }
-    } catch (err) {
-      console.warn('Selected workspace could not be saved:', err);
-    }
+    } catch (err) { console.warn('Selected system could not be saved:', err); }
   }, [selectedSystem, session]);
 
  useEffect(() => {
@@ -3871,8 +3869,9 @@ async function handleToggleHolidayDate() {
       sessionStorage.removeItem('nda_user_session');
       sessionStorage.removeItem('nda_selected_system');
       sessionStorage.removeItem('nda_worker_docs_token');
+      localStorage.removeItem('nda_user_session');
+      localStorage.removeItem('nda_selected_system');
       setWorkerDocToken('');
-      localStorage.removeItem('nda_user_session'); // Clear any old saved session from earlier versions.
     } catch (err) {
       console.warn('Could not clear saved session:', err);
     }
