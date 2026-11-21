@@ -227,6 +227,31 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
     if(error)return alert('Customer credit payment save nahi hui: '+error.message);
     setPayAmount('');setPayRemarks('');await refresh();alert('Customer ka purana credit receive ho gaya.');
   }
+  async function editWaterSale(row) {
+    if(!isAdmin)return alert('Daily entry sirf Admin edit kar sakta hai.');
+    const nextDate=window.prompt('Date (YYYY-MM-DD)',row.sale_date||day); if(nextDate===null)return;
+    const customerOptions=customers.map(c=>`${c.id} = ${c.customer_name}${c.room_no?' ('+c.room_no+')':''}`).join('\n');
+    const nextCustomer=window.prompt('Customer ID enter karein:\n'+customerOptions,String(row.customer_id||'')); if(nextCustomer===null)return;
+    const nextQty=window.prompt('Total bottles',String(row.bottles||'')); if(nextQty===null)return;
+    const nextRate=window.prompt('Rate per bottle',String(row.rate||'')); if(nextRate===null)return;
+    const nextMode=window.prompt('Payment Type (Cash / Credit)',row.payment_mode||'Credit'); if(nextMode===null)return;
+    const nextRemarks=window.prompt('Remarks',row.remarks||''); if(nextRemarks===null)return;
+    const customer=customers.find(c=>String(c.id)===String(nextCustomer));
+    const qty=Number(nextQty), rateValue=Number(nextRate), total=qty*rateValue;
+    if(!customer||!nextDate||!Number.isInteger(qty)||qty<=0||!(rateValue>0)||!['Cash','Credit'].includes(nextMode))return alert('Customer ID, date, bottles, rate ya payment type sahi nahi.');
+    const availableAfterUndo=currentStock+Number(row.bottles||0);
+    if(qty>availableAfterUndo)return alert(`Stock kam hai. Is entry ko adjust karne ke baad available stock ${availableAfterUndo} bottles hai.`);
+    const {error}=await supabase.from('water_sales').update({customer_id:customer.id,sale_date:nextDate,bottles:qty,rate:rateValue,total_amount:total,cash_received:nextMode==='Cash'?total:0,payment_mode:nextMode,remarks:nextRemarks.trim()}).eq('id',row.id).eq('business_id',Number(businessId));
+    if(error)return alert('Daily water entry update nahi hui: '+error.message);
+    await refresh(); alert('Daily water entry update ho gayi.');
+  }
+  async function deleteWaterSale(row) {
+    if(!isAdmin)return alert('Daily entry sirf Admin delete kar sakta hai.');
+    if(!window.confirm('Kya aap ye daily water entry permanently delete karna chahte hain?'))return;
+    const {error}=await supabase.from('water_sales').delete().eq('id',row.id).eq('business_id',Number(businessId));
+    if(error)return alert('Daily water entry delete nahi hui: '+error.message);
+    await refresh();
+  }
   async function addDelivery(e) {
     e.preventDefault(); if(!isAdmin)return alert('Company delivery entry sirf Admin kar sakta hai.');
     const qty=Number(deliveryBottles), r=deliveryType==='opening'?0:Number(companyRate), bill=deliveryType==='opening'?0:qty*r;
@@ -289,7 +314,7 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
       <div style={panelCard}><h3 style={{marginTop:0}}>Daily Water Sale Entry</h3><form onSubmit={addSale}><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={saleCustomer} onChange={e=>{setSaleCustomer(e.target.value);const c=customers.find(x=>String(x.id)===e.target.value);setSaleRate(c?String(c.rate):'')}} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false).map(c=><option key={c.id} value={c.id}>{c.room_no ? c.room_no+' · ' : ''}{c.customer_name}</option>)}</select></label><label>Total Bottles<input type="number" min="1" step="1" style={input} value={bottles} onChange={e=>setBottles(e.target.value)} required/></label><label>Rate / Bottle<input type="number" min="0.01" step="0.01" style={input} value={saleRate} onChange={e=>setSaleRate(e.target.value)} required/></label><label>Payment Type<select style={input} value={salePaymentType} onChange={e=>setSalePaymentType(e.target.value)}><option value="Cash">Cash</option><option value="Credit">Credit</option></select></label><label>Remarks<input style={input} value={saleRemarks} onChange={e=>setSaleRemarks(e.target.value)}/></label></div><div style={{marginTop:10,fontWeight:800}}>Bill: {fmt(Number(bottles||0)*Number(saleRate||0))} · {salePaymentType==='Cash'?'Cash Received':'Credit Added'}: {fmt(Number(bottles||0)*Number(saleRate||0))} · Available Stock: {currentStock}</div><button style={{...btn,marginTop:10}} disabled={!canAdd||busy}>Save Daily Entry</button></form></div>
       {canAdd&&<form onSubmit={addPayment} style={panelCard}><h3 style={{marginTop:0}}>Receive Previous Customer Credit</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={payCustomer} onChange={e=>setPayCustomer(e.target.value)} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false&&customerStats(c).balance>0).map(c=><option key={c.id} value={c.id}>{c.room_no ? c.room_no+' · ' : ''}{c.customer_name} · Due {fmt(customerStats(c).balance)}</option>)}</select></label><label>Cash Received<input type="number" min="0.01" step="0.01" style={input} value={payAmount} onChange={e=>setPayAmount(e.target.value)} required/></label><label>Remarks<input style={input} value={payRemarks} onChange={e=>setPayRemarks(e.target.value)}/></label></div><button style={{...btn,marginTop:10}}>Receive Old Credit</button></form>}
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}>{[['Daily Bill',dailyBilled],['Daily Cash',dailyCash],['Daily Credit Added',dailyCredit]].map(([l,v])=><div key={l} style={{...panelCard,margin:0}}><div style={{fontSize:12,color:'#64748b',fontWeight:700}}>{l}</div><div style={{fontSize:21,fontWeight:900}}>{fmt(v)}</div></div>)}</div>
-      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Activity · {day}</h3><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Customer','Room','Bottles','Bill','Payment Type','Credit','Remarks'].map(x=><th key={x} style={thStyle}>{x}</th>)}</tr></thead><tbody>{dailySales.map(x=>{const c=customers.find(y=>String(y.id)===String(x.customer_id));return <tr key={x.id}><td style={tdStyle}>{c?.customer_name||'Deleted customer'}</td><td style={tdStyle}>{c?.room_no||'—'}</td><td style={tdStyle}>{x.bottles}</td><td style={tdStyle}>{fmt(x.total_amount)}</td><td style={tdStyle}>{x.payment_mode||(Number(x.cash_received)>=Number(x.total_amount)?'Cash':'Credit')}</td><td style={tdStyle}>{fmt(Number(x.total_amount)-Number(x.cash_received))}</td><td style={tdStyle}>{x.remarks||'—'}</td></tr>})}{!dailySales.length&&<tr><td colSpan="7" style={tdStyle}>No daily entries.</td></tr>}</tbody></table></div><h4>Old Credit Received Today</h4>{dailyPayments.map(p=><div key={p.id} style={{padding:8,borderTop:'1px solid #eee'}}>{customers.find(c=>String(c.id)===String(p.customer_id))?.customer_name||'Customer'} · {fmt(p.amount)} · {p.remarks||'—'}</div>)}{!dailyPayments.length&&<small>No previous credit received today.</small>}</div>
+      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Activity · {day}</h3><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Customer','Room','Bottles','Bill','Payment Type','Credit','Remarks',...(isAdmin?['Actions']:[])].map(x=><th key={x} style={thStyle}>{x}</th>)}</tr></thead><tbody>{dailySales.map(x=>{const c=customers.find(y=>String(y.id)===String(x.customer_id));return <tr key={x.id}><td style={tdStyle}>{c?.customer_name||'Deleted customer'}</td><td style={tdStyle}>{c?.room_no||'—'}</td><td style={tdStyle}>{x.bottles}</td><td style={tdStyle}>{fmt(x.total_amount)}</td><td style={tdStyle}>{x.payment_mode||(Number(x.cash_received)>=Number(x.total_amount)?'Cash':'Credit')}</td><td style={tdStyle}>{fmt(Number(x.total_amount)-Number(x.cash_received))}</td><td style={tdStyle}>{x.remarks||'—'}</td>{isAdmin&&<td style={tdStyle}><button type="button" onClick={()=>editWaterSale(x)} style={{marginRight:5}}>Edit</button><button type="button" onClick={()=>deleteWaterSale(x)} style={{color:'#b91c1c'}}>Delete</button></td>}</tr>})}{!dailySales.length&&<tr><td colSpan={isAdmin?8:7} style={tdStyle}>No daily entries.</td></tr>}</tbody></table></div><h4>Old Credit Received Today</h4>{dailyPayments.map(p=><div key={p.id} style={{padding:8,borderTop:'1px solid #eee'}}>{customers.find(c=>String(c.id)===String(p.customer_id))?.customer_name||'Customer'} · {fmt(p.amount)} · {p.remarks||'—'}</div>)}{!dailyPayments.length&&<small>No previous credit received today.</small>}</div>
     </>}
     {tab==='company' && <>
       <div style={{...panelCard,background:'#eff6ff'}}><h3 style={{marginTop:0}}>Company Stock & Account Summary</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}><div><small>Total Stock Received</small><h2>{totalStockIn} Bottles</h2></div><div><small>Total Bottles Sold</small><h2>{totalStockOut} Bottles</h2></div><div><small>Available Stock</small><h2 style={{color:currentStock<0?'#b91c1c':'#047857'}}>{currentStock} Bottles</h2></div><div><small>Total Company Bill</small><h2>{fmt(companyBillTotal)}</h2></div><div><small>Total Paid</small><h2 style={{color:'#047857'}}>{fmt(companyPaidAtDelivery+companyPaidLater)}</h2></div><div><small>Company Outstanding</small><h2 style={{color:'#b91c1c'}}>{fmt(companyOutstanding)}</h2></div></div></div>
@@ -831,7 +856,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   }
 
   async function deleteEntry(row) {
-    if (!can('can_delete')) return alert('You do not have permission to delete entries.');
+    if (!admin) return alert('Daily entry sirf Admin delete kar sakta hai.');
     if (!window.confirm('Delete this entry permanently?')) return;
     const { error } = await supabase.from('business_entries').delete().eq('id', row.id).eq('business_id', Number(businessId));
     if (error) return alert(error.message);
@@ -839,7 +864,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   }
 
   async function editEntry(row) {
-    if (!can('can_edit')) return alert('You do not have permission to edit entries.');
+    if (!admin) return alert('Daily entry sirf Admin edit kar sakta hai.');
     const newDate = window.prompt('Date (YYYY-MM-DD)', row.entry_date || entryDate);
     if (newDate === null) return;
     const newCategory = window.prompt('Category', row.category || 'General');
@@ -1433,7 +1458,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead>
                         <tr style={{ background: '#f8fafc' }}>
-                          {['Type', 'Category', 'Vehicle', 'Driver / Staff', 'Details', 'Mode', 'Amount', 'Bill', 'Actions'].map(h => (
+                          {['Type', 'Category', 'Vehicle', 'Driver / Staff', 'Details', 'Mode', 'Amount', 'Bill', ...(admin ? ['Actions'] : [])].map(h => (
                             <th key={h} style={{ padding: 10, borderBottom: '2px solid #e2e8f0', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
                           ))}
                         </tr>
@@ -1457,16 +1482,16 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                               <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
                                 {r.bill_url ? <a href={r.bill_url} target="_blank" rel="noreferrer" style={{ color: '#1d4ed8', fontWeight: 700 }}>View Bill</a> : '—'}
                               </td>
-                              <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
-                                {can('can_edit') && <button type="button" onClick={() => editEntry(r)} style={{ ...btn, background: '#1d4ed8', padding: '6px 10px', fontSize: 12, marginRight: 5 }}>Edit</button>}
-                                {can('can_delete') && <button type="button" onClick={() => deleteEntry(r)} style={{ ...btn, background: '#b91c1c', padding: '6px 10px', fontSize: 12 }}>Delete</button>}
-                              </td>
+                              {admin && <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
+                                <button type="button" onClick={() => editEntry(r)} style={{ ...btn, background: '#1d4ed8', padding: '6px 10px', fontSize: 12, marginRight: 5 }}>Edit</button>
+                                <button type="button" onClick={() => deleteEntry(r)} style={{ ...btn, background: '#b91c1c', padding: '6px 10px', fontSize: 12 }}>Delete</button>
+                              </td>}
                             </tr>
                           );
                         })}
                         {!selectedEntries.length && (
                           <tr>
-                            <td colSpan="9" style={{ padding: 16, color: '#64748b', textAlign: 'center' }}>
+                            <td colSpan={admin ? 9 : 8} style={{ padding: 16, color: '#64748b', textAlign: 'center' }}>
                               No entries recorded for {entryDate}.
                             </td>
                           </tr>
