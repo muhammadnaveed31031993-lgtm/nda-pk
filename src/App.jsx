@@ -388,7 +388,7 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
 
 function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [businesses, setBusinesses] = useState([]);
-  const [businessId, setBusinessId] = useState('');
+  const [businessId, setBusinessId] = useState(() => { try { return sessionStorage.getItem('nda_business_selected_id') || ''; } catch { return ''; } });
   const [activeVehicleId, setActiveVehicleId] = useState('');
   const [vehicles, setVehicles] = useState([]);
   const [people, setPeople] = useState([]);
@@ -396,8 +396,8 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [accessRows, setAccessRows] = useState([]);
   const [access, setAccess] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [view, setView] = useState('dashboard');
-  const [workspaceSection, setWorkspaceSection] = useState('dashboard');
+  const [view, setView] = useState(() => { try { return sessionStorage.getItem('nda_business_last_view') || 'dashboard'; } catch { return 'dashboard'; } });
+  const [workspaceSection, setWorkspaceSection] = useState(() => { try { return sessionStorage.getItem('nda_business_last_section') || 'dashboard'; } catch { return 'dashboard'; } });
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [cleanupMonth, setCleanupMonth] = useState(() => { const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; });
@@ -455,7 +455,8 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const can = (key) => admin || !!access?.[key];
   const waterOnlyStaff = !admin && !!access?.can_view && !access?.can_view_daily && !access?.can_edit && !access?.can_delete && !access?.can_view_vehicles && !access?.can_manage_vehicles && !access?.can_view_workers && !access?.can_manage_workers && !access?.can_view_monthly && !access?.can_manage_access;
   const currentBusiness = businesses.find(b => String(b.id) === String(businessId));
-  const isTransportBusiness = (currentBusiness?.business_kind || 'transport') === 'transport';
+  // Legacy business rows may have business_kind='other'. Treat every non-water business as Transport.
+  const isTransportBusiness = currentBusiness?.business_kind !== 'water';
   const money = n => `${currency} ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const inputStyle = {
@@ -521,7 +522,8 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
         if (error) throw error;
         const rows = data || [];
         setBusinesses(rows);
-        const next = String(preferredId === '' ? (rows[0]?.id || '') : (preferredId || businessId || rows[0]?.id || ''));
+        const requestedId = preferredId === '' ? '' : (preferredId || businessId || '');
+        const next = String(rows.some(r => String(r.id) === String(requestedId)) ? requestedId : (rows[0]?.id || ''));
         setBusinessId(next);
         if (next) {
           setAccess({
@@ -547,7 +549,8 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
         const rows = waterOnlyRows.length ? waterOnlyRows : allRows;
         setAccessRows(rows);
         setBusinesses(rows.map(r => r.business_profiles).filter(Boolean));
-        const next = String(preferredId || businessId || rows[0]?.business_id || '');
+        const requestedId = preferredId || businessId || '';
+        const next = String(rows.some(r => String(r.business_id) === String(requestedId)) ? requestedId : (rows[0]?.business_id || ''));
         setBusinessId(next);
         const row = rows.find(r => String(r.business_id) === next) || rows[0] || null;
         setAccess(row);
@@ -574,16 +577,17 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
         supabase.from('business_people').select('*').eq('business_id', id).eq('active', true).order('person_name'),
         supabase.from('business_entries').select('*').eq('business_id', id).order('entry_date', { ascending: false }).order('created_at', { ascending: false })
       ]);
-      const loadedVehicles = v.error ? [] : (v.data || []);
-      const loadedPeople = p.error ? [] : (p.data || []);
-      const loadedEntries = e.error ? [] : (e.data || []);
+      const loadError = v.error || p.error || e.error;
+      if (loadError) throw loadError;
+      const loadedVehicles = v.data || [];
+      const loadedPeople = p.data || [];
+      const loadedEntries = e.data || [];
       setVehicles(loadedVehicles);
       setPeople(loadedPeople);
       setEntries(loadedEntries);
       if (loadedVehicles.length === 1) {
         setVehicleId(String(loadedVehicles[0].id));
       }
-      if (v.error && p.error && e.error) throw (e.error || p.error || v.error);
     } catch (e) {
       alert('Failed to load business details: ' + (e?.message || e));
     } finally {
@@ -591,8 +595,16 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     }
   }
 
-  useEffect(() => { loadBusinesses(); }, [session?.user?.email, admin]);
-  useEffect(() => { if (businessId) loadBusinessData(businessId); }, [businessId]);
+  useEffect(() => { loadBusinesses(businessId); }, [session?.user?.email, admin]);
+  useEffect(() => {
+    try {
+      if (businessId) sessionStorage.setItem('nda_business_selected_id', String(businessId));
+      else sessionStorage.removeItem('nda_business_selected_id');
+      sessionStorage.setItem('nda_business_last_view', view || 'dashboard');
+      sessionStorage.setItem('nda_business_last_section', workspaceSection || 'dashboard');
+    } catch (e) { console.warn('Business workspace state could not be saved:', e); }
+  }, [businessId, view, workspaceSection]);
+  useEffect(() => { if (businessId) loadBusinessData(businessId); else { setVehicles([]); setPeople([]); setEntries([]); } }, [businessId]);
 
   async function addBusiness(e) {
     e.preventDefault();
@@ -1176,7 +1188,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
             <h2 style={{marginTop:0,marginBottom:8}}>NDA.PK Business Dashboard</h2>
             <p style={{color:'#64748b',marginTop:0}}>Apna business section select karein.</p>
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:18,marginTop:20}}>
-              <button type="button" onClick={() => { const b=businesses.find(x=>(x.business_kind||'transport')==='transport'); if(!b){alert('Pehle Transport business create karein.');return;} setBusinessId(String(b.id));setWorkspaceSection('transport');setView('daily'); }} style={{minHeight:190,border:0,borderRadius:20,padding:26,textAlign:'left',background:'linear-gradient(135deg,#064e3b,#059669)',color:'#fff',cursor:'pointer',boxShadow:'0 8px 24px #064e3b30'}}>
+              <button type="button" onClick={() => { const b=businesses.find(x=>x.business_kind==='transport') || businesses.find(x=>/transport|vehicle|truck/i.test(x.name||'')) || (businesses.filter(x=>x.business_kind!=='water').length===1 ? businesses.find(x=>x.business_kind!=='water') : null); if(!b){alert(businesses.length ? 'Transport business identify nahi ho raha. Existing business ka naam aur type check karein; naya business banane ki zaroorat nahi jab tak confirm na ho.' : 'Abhi koi active business load nahi hua. Refresh ke baad list dobara check karein.');return;} setBusinessId(String(b.id));setWorkspaceSection('transport');setView('daily'); }} style={{minHeight:190,border:0,borderRadius:20,padding:26,textAlign:'left',background:'linear-gradient(135deg,#064e3b,#059669)',color:'#fff',cursor:'pointer',boxShadow:'0 8px 24px #064e3b30'}}>
                 <div style={{fontSize:46}}>🚚</div><div style={{fontSize:28,fontWeight:900,marginTop:10}}>Transport</div><div style={{fontSize:14,opacity:.9,marginTop:6}}>Daily Entry · Vehicle Files · Monthly Sheet · Drivers & Pay</div>
               </button>
               <button type="button" onClick={() => { const b=businesses.find(x=>x.business_kind==='water'||/water/i.test(x.name||'')); if(!b){alert('Pehle Add New Business mein Drinking Water create karein.');return;} setBusinessId(String(b.id));setWorkspaceSection('water');setView('water'); }} style={{minHeight:190,border:0,borderRadius:20,padding:26,textAlign:'left',background:'linear-gradient(135deg,#075985,#0ea5e9)',color:'#fff',cursor:'pointer',boxShadow:'0 8px 24px #07598530'}}>
