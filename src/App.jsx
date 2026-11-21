@@ -606,11 +606,13 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     }
   }
 
-  async function loadBusinessData(id = businessId) {
+  async function loadBusinessData(id = businessId, options = {}) {
     if (!id) return;
     if (waterOnlyStaff) { setVehicles([]); setPeople([]); setEntries([]); return; }
-    setLoading(true);
+    const silent = !!options.silent;
+    if (!silent) setLoading(true);
     try {
+      // Always fetch current rows from Supabase; staff devices must not rely on an old in-memory list.
       const [v, p, e] = await Promise.all([
         supabase.from('business_vehicles').select('*').eq('business_id', id).eq('active', true).order('plate_number'),
         supabase.from('business_people').select('*').eq('business_id', id).eq('active', true).order('person_name'),
@@ -618,19 +620,15 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
       ]);
       const loadError = v.error || p.error || e.error;
       if (loadError) throw loadError;
-      const loadedVehicles = v.data || [];
-      const loadedPeople = p.data || [];
-      const loadedEntries = e.data || [];
-      setVehicles(loadedVehicles);
-      setPeople(loadedPeople);
-      setEntries(loadedEntries);
-      if (loadedVehicles.length === 1) {
-        setVehicleId(String(loadedVehicles[0].id));
-      }
+      setVehicles(v.data || []);
+      setPeople(p.data || []);
+      setEntries(e.data || []);
+      if ((v.data || []).length === 1) setVehicleId(String(v.data[0].id));
     } catch (e) {
-      alert('Failed to load business details: ' + (e?.message || e));
+      if (silent) console.warn('Background business data refresh failed:', e?.message || e);
+      else alert('Failed to load business details: ' + (e?.message || e));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -651,6 +649,45 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     } catch (e) { console.warn('Business workspace state could not be saved:', e); }
   }, [businessId, view, workspaceSection]);
   useEffect(() => { if (businessId) loadBusinessData(businessId); else { setVehicles([]); setPeople([]); setEntries([]); } }, [businessId]);
+
+  // Staff mobiles automatically re-fetch shared Business records so Admin changes appear without logout.
+  useEffect(() => {
+    if (admin || !businessId || waterOnlyStaff) return;
+    const refreshStaffData = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      try {
+        // Re-check access on staff devices too, so a removed login cannot keep using an old session.
+        const { data: assignments, error: accessCheckError } = await supabase
+          .from('business_access')
+          .select('business_id')
+          .ilike('user_email', session?.user?.email || '')
+          .eq('active', true)
+          .eq('can_view', true);
+        if (!accessCheckError) {
+          if (!assignments?.length) {
+            alert('Aapka Business access Admin ne remove kar diya hai.');
+            onLogout?.();
+            return;
+          }
+          if (!assignments.some(a => String(a.business_id) === String(businessId))) {
+            await loadBusinesses();
+            return;
+          }
+        }
+      } catch (accessRefreshError) {
+        console.warn('Staff access refresh failed:', accessRefreshError?.message || accessRefreshError);
+      }
+      void loadBusinessData(businessId, { silent: true });
+    };
+    const timer = window.setInterval(refreshStaffData, 12000);
+    window.addEventListener('focus', refreshStaffData);
+    document.addEventListener('visibilitychange', refreshStaffData);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshStaffData);
+      document.removeEventListener('visibilitychange', refreshStaffData);
+    };
+  }, [businessId, admin, waterOnlyStaff]);
 
   async function addBusiness(e) {
     e.preventDefault();
@@ -946,13 +983,35 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
 
   async function deleteAccessStaff(row) {
     if (!can('can_manage_access')) return alert('Only Admin can delete staff access.');
-    const ok = window.confirm(`Remove ${row.user_email} from Business System? Their Business login and permissions will be deleted.`);
+    const email = String(row.user_email || '').trim().toLowerCase();
+    if (!email) return alert('Staff email/login ID nahi mila.');
+    const ok = window.confirm(`${email} ko tamam Business staff permissions se permanently remove karna hai? Is ke baad staff Business system access nahi kar sakega.`);
     if (!ok) return;
-    const { data, error } = await supabase.functions.invoke('manage-business-staff', { body: { action: 'delete', email: row.user_email } });
-    if (error || data?.error) return alert('Could not delete staff: ' + (data?.error || error?.message || 'Unknown error'));
-    if (editingAccessRow?.user_email === row.user_email) cancelEditAccess();
+
+    // The Edge Function is responsible for deleting the Supabase Auth user (service-role action).
+    const edge = await supabase.functions.invoke('manage-business-staff', { body: { action: 'delete', email } });
+
+    // Also physically remove every access row, including inactive/duplicate assignments.
+    // This guarantees the staff member cannot regain Business access from a stale assignment.
+    const { data: removedRows, error: accessDeleteError } = await supabase
+      .from('business_access')
+      .delete()
+      .ilike('user_email', email)
+      .select('id');
+
+    if (editingAccessRow?.user_email?.toLowerCase() === email) cancelEditAccess();
     await loadBusinesses(businessId);
-    alert(data?.message || 'Staff login removed.');
+
+    if (accessDeleteError) {
+      const edgeMessage = edge.error?.message || edge.data?.error || 'Edge Function failed';
+      return alert(`Staff access database se remove nahi ho saka.\nEdge Function: ${edgeMessage}\nDatabase: ${accessDeleteError.message}\nSupabase Edge Function/RLS policy ko check karna hoga.`);
+    }
+
+    const edgeFailed = !!(edge.error || edge.data?.error);
+    if (edgeFailed) {
+      return alert(`Business access permanently revoke kar diya gaya (${(removedRows || []).length} assignment(s) removed). Lekin Supabase Auth login account delete nahi ho saka. Edge Function error: ${edge.data?.error || edge.error?.message || 'Unknown error'}. User Business system mein dobara access nahi le sakta jab tak Admin nayi permission na de.`);
+    }
+    alert(edge.data?.message || `Staff login aur Business access permanently remove ho gaya. (${(removedRows || []).length} assignment(s) removed)`);
   }
 
   function selectAccessBusiness(found, kind) {
