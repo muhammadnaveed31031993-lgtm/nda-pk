@@ -4803,9 +4803,13 @@ async function handleBulkExtraOT(e) {
   });
   if (!candidates.length) return alert('Selected Department / Designation ya Worker ID ke mutabiq koi worker nahi mila.');
   const existingByWorker = new Map(attendance.filter(a => String(a.date || '').slice(0, 10) === selectedTimesheetDate).map(a => [String(a.worker_id), a]));
+  const selectedSiteKey = normalize(bulkExtraOTSite);
   const eligible = candidates.filter(w => {
     const row = existingByWorker.get(String(w.id));
-    return row && isPresentAttendanceStatus(row.status) && !getAnnualLeaveForWorker(w.id, selectedTimesheetDate);
+    // Site is a mandatory scope, even when Worker IDs are entered.
+    const workerAttendanceSite = normalize(row?.work_site || row?.site);
+    const sameSite = workerAttendanceSite === selectedSiteKey;
+    return sameSite && row && isPresentAttendanceStatus(row.status) && !getAnnualLeaveForWorker(w.id, selectedTimesheetDate);
   });
   const skipped = candidates.length - eligible.length;
   if (!eligible.length) return alert('Selected date par in workers ki Present attendance nahi mili. Pehle attendance save karein; Extra OT sirf Present / Holiday Present workers ko diya jayega.');
@@ -4831,6 +4835,58 @@ async function handleBulkExtraOT(e) {
     alert(`Extra OT save ho gaya: ${eligible.length} workers × ${hours} hours. Extra OT Site: ${bulkExtraOTSite}. ${skipped} worker(s) skip huay kyun ke unki selected date par Present attendance nahi thi.`);
   } catch (err) {
     alert('Bulk Extra OT save nahi hua: ' + (err?.message || String(err)));
+  } finally { setBulkExtraOTSaving(false); }
+}
+
+// Correct accidental cross-site Extra OT assignments without touching the selected site's valid workers.
+async function handleRemoveExtraOTFromOtherSites() {
+  if (!userRole.is_admin) return alert('Extra OT remove sirf Admin kar sakta hai.');
+  if (!requireHrEditMode('Remove Extra OT from other sites')) return;
+  if (!selectedTimesheetDate || !bulkExtraOTSite) return alert('Date aur Extra OT site select karein.');
+  if (isPayrollDateClosed(selectedTimesheetDate)) return alert('Yeh salary period close hai. Admin pehle period reopen kare.');
+  const normalize = value => String(value || '').normalize('NFKC').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  const enteredIds = [...new Set(bulkExtraOTWorkerIds.split(/[\s,;]+/).map(x => x.trim()).filter(Boolean))];
+  const idSet = new Set(enteredIds.map(normalize));
+  const chosenDepartment = normalize(bulkExtraOTDepartment);
+  const chosenDesignation = normalize(bulkExtraOTDesignation);
+  const selectedSiteKey = normalize(bulkExtraOTSite);
+  const candidates = workers.filter(w => {
+    if (enteredIds.length) return idSet.has(normalize(w.worker_id)) || idSet.has(normalize(w.id));
+    const deptMatch = chosenDepartment === 'all' || normalize(w.department) === chosenDepartment;
+    const designationMatch = chosenDesignation === 'all' || normalize(w.designation) === chosenDesignation;
+    return deptMatch && designationMatch;
+  });
+  const rowsByWorker = new Map(attendance.filter(a => String(a.date || '').slice(0, 10) === selectedTimesheetDate).map(a => [String(a.worker_id), a]));
+  const toRemove = candidates.map(w => ({ worker: w, row: rowsByWorker.get(String(w.id)) })).filter(({ row }) => {
+    if (!row || !(Number(row.extra_ot_hours) > 0)) return false;
+    const awardedSite = normalize(row.extra_ot_site || row.work_site || row.site);
+    const actualAttendanceSite = normalize(row.work_site || row.site);
+    return awardedSite === selectedSiteKey && actualAttendanceSite !== selectedSiteKey;
+  });
+  if (!toRemove.length) return alert('Is date par selected OT site ke naam se doosri sites ke workers ko koi Extra OT nahi mila.');
+  if (!window.confirm(`${toRemove.length} worker(s) ke doosri sites wale Extra OT ko remove karna hai? Selected ${bulkExtraOTSite} site ke workers ka OT safe rahega.`)) return;
+  setBulkExtraOTSaving(true);
+  try {
+    const records = toRemove.map(({ worker, row }) => ({
+      worker_id: worker.id,
+      date: selectedTimesheetDate,
+      status: row.status,
+      overtime_hours: Number(row.overtime_hours) || 0,
+      contract_overtime_hours: Number(row.contract_overtime_hours) || 0,
+      extra_ot_hours: 0,
+      extra_ot_site: '',
+      department: row.department || worker.department || '',
+      work_site: row.work_site || row.site || ''
+    }));
+    for (let i = 0; i < records.length; i += 500) {
+      const { error } = await supabase.from('attendance').upsert(records.slice(i, i + 500), { onConflict: 'worker_id,date' });
+      if (error) throw error;
+    }
+    void logActivity('Remove cross-site Extra OT', `${selectedTimesheetDate}: removed ${records.length} worker(s); Extra OT site ${bulkExtraOTSite}; department ${bulkExtraOTDepartment}; designation ${bulkExtraOTDesignation}; IDs ${enteredIds.join(', ')}`);
+    await fetchAttendance();
+    alert(`Doosri sites ke ${records.length} worker(s) ka Extra OT remove ho gaya. ${bulkExtraOTSite} site ke workers ka Extra OT change nahi kiya.`);
+  } catch (err) {
+    alert('Extra OT remove nahi hua: ' + (err?.message || String(err)));
   } finally { setBulkExtraOTSaving(false); }
 }
 
@@ -6124,7 +6180,7 @@ style={{
   {bulkOpenSection === 'extraOT' && <div style={{ padding: 14, borderTop: '1px solid #e2e8f0' }}>
     <form onSubmit={handleBulkExtraOT} style={{ padding: 16, border: '2px solid #c4b5fd', borderRadius: 10, background: '#f5f3ff' }}>
       <h3 style={{ margin: '0 0 7px', color: '#5b21b6' }}>🎁 Management Extra OT — Department / Designation / Worker IDs</h3>
-      <p style={{ margin: '0 0 12px', fontSize: 12, color: '#475569' }}>Department aur Designation select karke poore group ko Extra OT dein, ya Worker IDs box mein ek ya multiple IDs (comma / new line separated) likhein. IDs dene par ID list ko priority milegi. Sirf selected date par Present / Holiday Present workers update honge; Normal OT aur Contract OT alag mehfooz rahenge. Extra OT ka Site alag save hoga.</p>
+      <p style={{ margin: '0 0 12px', fontSize: 12, color: '#475569' }}>Department aur Designation select karke poore group ko Extra OT dein, ya Worker IDs box mein IDs likhein. Site lazmi match hogi: sirf selected date ki attendance mein isi site par Present / Holiday Present workers update honge; doosri sites ke workers skip honge. Worker IDs dene par bhi site restriction apply rahegi. Normal OT aur Contract OT alag mehfooz rahenge.</p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(175px,1fr))', gap: 12 }}>
         <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Extra OT Date</label><input type="date" value={selectedTimesheetDate} onChange={e => setSelectedTimesheetDate(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }} /></div>
         <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Extra OT Site</label><select value={bulkExtraOTSite} onChange={e => setBulkExtraOTSite(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }}>{sitesList.map(site => <option key={site} value={site}>{site}</option>)}</select></div>
@@ -6133,7 +6189,10 @@ style={{
         <div><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Extra OT Hours (per worker)</label><input type="number" min="0.25" step="0.25" value={bulkExtraOTHours} onChange={e => setBulkExtraOTHours(e.target.value)} required style={{ ...fieldStyle, marginTop: 5 }} /></div>
         <div style={{ gridColumn: '1 / -1' }}><label style={{ display: 'block', fontSize: 12, fontWeight: 800 }}>Worker ID(s) — optional, multiple IDs allowed</label><textarea value={bulkExtraOTWorkerIds} onChange={e => setBulkExtraOTWorkerIds(e.target.value)} placeholder="Example: 101, 105, 118 (ya har ID alag line mein)" rows={2} style={{ ...fieldStyle, width: '100%', boxSizing: 'border-box', marginTop: 5, resize: 'vertical' }} /></div>
       </div>
-      <button type="submit" disabled={bulkExtraOTSaving || !userRole.is_admin} style={{ marginTop: 12, padding: '10px 16px', border: 0, borderRadius: 7, background: '#6d28d9', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: bulkExtraOTSaving || !userRole.is_admin ? .55 : 1 }}>{bulkExtraOTSaving ? 'Saving Extra OT…' : 'Apply Extra OT to Selected Workers'}</button>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
+        <button type="submit" disabled={bulkExtraOTSaving || !userRole.is_admin} style={{ padding: '10px 16px', border: 0, borderRadius: 7, background: '#6d28d9', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: bulkExtraOTSaving || !userRole.is_admin ? .55 : 1 }}>{bulkExtraOTSaving ? 'Saving Extra OT…' : 'Apply Extra OT — Selected Site Only'}</button>
+        <button type="button" onClick={handleRemoveExtraOTFromOtherSites} disabled={bulkExtraOTSaving || !userRole.is_admin} style={{ padding: '10px 16px', border: '1px solid #b91c1c', borderRadius: 7, background: '#fff', color: '#b91c1c', fontWeight: 800, cursor: 'pointer', opacity: bulkExtraOTSaving || !userRole.is_admin ? .55 : 1 }}>{bulkExtraOTSaving ? 'Please wait…' : 'Remove Extra OT from Other Sites'}</button>
+      </div>
     </form>
   </div>}
 </div>
