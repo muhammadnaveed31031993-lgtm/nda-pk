@@ -1,18 +1,64 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
+function addPrintSerialNumbers(root) {
+  if (!root) return;
+  root.querySelectorAll('table').forEach(table => {
+    let headerRows = Array.from(table.querySelectorAll('thead tr'));
+    let firstHeader = headerRows[0];
+    let insertedSerialColumn = false;
+    if (!firstHeader) {
+      const firstBodyRow = table.tBodies[0]?.rows[0];
+      if (!firstBodyRow || firstBodyRow.cells.length < 2) return;
+      const thead = document.createElement('thead');
+      firstHeader = document.createElement('tr');
+      ['S.No', 'Details', 'Value'].slice(0, firstBodyRow.cells.length + 1).forEach(label => {
+        const th = document.createElement('th'); th.textContent = label; firstHeader.appendChild(th);
+      });
+      thead.appendChild(firstHeader); table.insertBefore(thead, table.firstChild);
+      headerRows = [firstHeader]; insertedSerialColumn = true;
+    }
+    const headerCells = Array.from(firstHeader.children).filter(cell => /^(TH|TD)$/.test(cell.tagName));
+    let serialIndex = headerCells.findIndex(cell => /^(s\.?\s*no\.?|serial(?:\s*no\.?)?)$/i.test((cell.textContent || '').trim()));
+    if (serialIndex < 0) {
+      const serialHeader = document.createElement('th');
+      serialHeader.textContent = 'S.No';
+      serialHeader.style.whiteSpace = 'nowrap';
+      firstHeader.insertBefore(serialHeader, firstHeader.firstChild);
+      serialIndex = 0; insertedSerialColumn = true;
+    }
+    let serial = 0;
+    Array.from(table.tBodies).forEach(tbody => {
+      Array.from(tbody.rows).forEach(row => {
+        const cells = Array.from(row.cells);
+        if (!cells.length) return;
+        // Empty-state and subtotal rows span the full table; keep their layout intact.
+        if (cells.length === 1 && Number(cells[0].colSpan || 1) > 1) {
+          cells[0].colSpan = Number(cells[0].colSpan || 1) + (insertedSerialColumn ? 1 : 0);
+          return;
+        }
+        serial += 1;
+        if (insertedSerialColumn) {
+          const cell = document.createElement('td');
+          cell.textContent = String(serial);
+          cell.style.whiteSpace = 'nowrap';
+          row.insertBefore(cell, row.cells[serialIndex] || row.firstChild);
+        } else if (serialIndex < row.cells.length) {
+          row.cells[serialIndex].textContent = String(serial);
+        }
+      });
+    });
+  });
+}
+
 function printNdaPage(targetId, isAdmin = false) {
   if (!isAdmin) { alert('Print / PDF ki permission sirf Admin ko hai.'); return; }
-  const target = document.getElementById(targetId);
-  if (!target) { alert('Print page nahi mil saka. Page refresh karke dobara try karein.'); return; }
-  document.querySelectorAll('.nda-print-target').forEach(node => node.classList.remove('nda-print-target'));
-  const originalParent = target.parentNode;
-  const originalNextSibling = target.nextSibling;
-  const placeholder = document.createComment('nda-print-placeholder');
-  originalParent.insertBefore(placeholder, target);
+  const source = document.getElementById(targetId);
+  if (!source) { alert('Print page nahi mil saka. Page refresh karke dobara try karein.'); return; }
+  // Print a temporary copy so numbering and print-only changes never mutate React's live DOM.
+  const target = source.cloneNode(true);
   target.classList.add('nda-print-target');
-  // Print only the selected report: detach it from the long app layout so
-  // hidden dashboards/tabs cannot create trailing blank pages.
+  addPrintSerialNumbers(target);
   document.body.classList.add('nda-printing');
   document.body.appendChild(target);
   const images = Array.from(target.querySelectorAll('img'));
@@ -21,14 +67,8 @@ function printNdaPage(targetId, isAdmin = false) {
     const cleanup = () => {
       if (cleaned) return;
       cleaned = true;
-      target.classList.remove('nda-print-target');
+      if (target.parentNode) target.parentNode.removeChild(target);
       document.body.classList.remove('nda-printing');
-      if (placeholder.parentNode) {
-        placeholder.parentNode.insertBefore(target, placeholder);
-        placeholder.parentNode.removeChild(placeholder);
-      } else if (originalParent) {
-        originalParent.insertBefore(target, originalNextSibling && originalNextSibling.parentNode === originalParent ? originalNextSibling : null);
-      }
       window.removeEventListener('afterprint', cleanup);
     };
     window.addEventListener('afterprint', cleanup);
@@ -37,7 +77,7 @@ function printNdaPage(targetId, isAdmin = false) {
   });
 }
 
-const dailyTimesheetPrintStyle = "@media print {.app-footer {\n  display: block !important;\n  visibility: visible !important;\n  position: static !important;\n  width: 100% !important;\n  text-align: center !important;\n  color: #000 !important;\n  background: #fff !important;\n  font-size: 12px !important;\n  margin-top: 20px !important;\n  padding: 10px !important;\n}\n  body * {\n    visibility: hidden !important;\n  }\n\n  .daily-timesheet-print,\n  .daily-timesheet-print * {\n    visibility: visible !important;\n  }\n\n  .daily-timesheet-print {\n    position: absolute !important;\n    left: 0 !important;\n    top: 0 !important;\n    width: 100% !important;\n    margin: 0 !important;\n    padding: 10px !important;\n    background: white !important;\n    color: black !important;\n  }\n\n  .daily-timesheet-print button {\n    display: none !important;\n  }\n\n  @page {\n    size: A4 landscape;\n    margin: 8mm;\n  }\n}";
+const dailyTimesheetPrintStyle = "@media print {.app-footer {\n  display: none !important;\n  visibility: hidden !important;\n  position: static !important;\n  width: 100% !important;\n  text-align: center !important;\n  color: #000 !important;\n  background: #fff !important;\n  font-size: 12px !important;\n  margin-top: 20px !important;\n  padding: 10px !important;\n}\n  body * {\n    visibility: hidden !important;\n  }\n\n  .daily-timesheet-print,\n  .daily-timesheet-print * {\n    visibility: visible !important;\n  }\n\n  .daily-timesheet-print {\n    position: absolute !important;\n    left: 0 !important;\n    top: 0 !important;\n    width: 100% !important;\n    margin: 0 !important;\n    padding: 10px !important;\n    background: white !important;\n    color: black !important;\n  }\n\n  .daily-timesheet-print button {\n    display: none !important;\n  }\n\n  @page {\n    size: A4 landscape;\n    margin: 8mm;\n  }\n}";
 
 const fieldStyle = { width:'100%', boxSizing:'border-box', padding:'11px 12px', border:'1px solid #cbd5e1', borderRadius:8, background:'#fff', color:'#0f172a' };
 const primaryStyle = { width:'100%', padding:'12px 14px', border:0, borderRadius:9, background:'#1d4ed8', color:'#fff', fontWeight:800, cursor:'pointer' };
@@ -112,7 +152,7 @@ function shiftPayrollDateOneMonth(dateText) {
   return `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
 }
 
-function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
+function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDelete, canViewDaily, canViewMonthly }) {
   const today = new Date().toISOString().slice(0, 10);
   const [customers, setCustomers] = useState([]);
   const [sales, setSales] = useState([]);
@@ -123,7 +163,7 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
   const [floor, setFloor] = useState('Ground Floor');
   const [month, setMonth] = useState(today.slice(0, 7));
   const [day, setDay] = useState(today);
-  const [tab, setTab] = useState('daily');
+  const [tab, setTab] = useState(canViewDaily ? 'daily' : 'monthly');
   const [name, setName] = useState('');
   const [room, setRoom] = useState('');
   const [editingCustomer, setEditingCustomer] = useState(null);
@@ -176,6 +216,10 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
     finally { setBusy(false); }
   }
   useEffect(() => { if (businessId) void refresh(); }, [businessId]);
+  useEffect(() => {
+    if (!canViewDaily && canViewMonthly) setTab('monthly');
+    else if (canViewDaily && !canViewMonthly && tab === 'monthly') setTab('daily');
+  }, [canViewDaily, canViewMonthly]);
 
   const customerStats = customer => {
     const cs = sales.filter(x => String(x.customer_id) === String(customer.id));
@@ -213,7 +257,7 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
 
   async function addCustomer(e) {
     e.preventDefault();
-    if (!canAdd) return alert('Aapko customer add/edit karne ki permission nahi hai.');
+    if (editingCustomer ? !canEdit : !canAdd) return alert(editingCustomer ? 'Aapko customer edit karne ki permission nahi hai.' : 'Aapko customer add karne ki permission nahi hai.');
     if (!name.trim() || !(Number(rate)>0)) return alert('Customer name aur valid rate enter karein. Room number optional hai.');
     const payload={customer_name:name.trim(),room_no:room.trim(),floor:customerFloor,rate:Number(rate),currency,remarks:customerRemarks.trim()};
     const result = editingCustomer
@@ -223,7 +267,7 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
     setName('');setRoom('');setRate('6');setCustomerRemarks('');setCustomerFloor('Ground Floor');setEditingCustomer(null);await refresh();
   }
   function startEditCustomer(c) {
-    if(!canAdd)return alert('Aapko customer edit karne ki permission nahi hai.');
+    if(!canEdit)return alert('Aapko customer edit karne ki permission nahi hai.');
     setEditingCustomer(c);setName(c.customer_name||'');setRoom(c.room_no||'');setCustomerFloor(c.floor||'Ground Floor');setRate(String(c.rate||6));setCustomerRemarks(c.remarks||'');setTab('customers');
     window.scrollTo({top:0,behavior:'smooth'});
   }
@@ -250,11 +294,11 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
     setPayAmount('');setPayRemarks('');await refresh();alert('Customer ka purana credit receive ho gaya.');
   }
   function editWaterSale(row) {
-    if (!isAdmin) return alert('Daily entry sirf Admin edit kar sakta hai.');
+    if (!canEdit) return alert('Aapko daily water entry edit karne ki permission nahi hai.');
     setEditingWaterSale({ ...row, sale_date: row.sale_date || day, customer_id: String(row.customer_id || ''), bottles: String(row.bottles || ''), rate: String(row.rate || ''), payment_mode: row.payment_mode || (Number(row.cash_received) >= Number(row.total_amount) ? 'Cash' : 'Credit'), remarks: row.remarks || '' });
   }
   async function saveWaterSaleEdit() {
-    if (!isAdmin || !editingWaterSale) return;
+    if (!canEdit || !editingWaterSale) return;
     const row = editingWaterSale;
     const customer = customers.find(c => String(c.id) === String(row.customer_id));
     const qty = Number(row.bottles), rateValue = Number(row.rate), total = qty * rateValue;
@@ -266,7 +310,7 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
     setDay(row.sale_date); setEditingWaterSale(null); await refresh();
   }
   async function deleteWaterSale(row) {
-    if(!isAdmin)return alert('Daily entry sirf Admin delete kar sakta hai.');
+    if(!canDelete)return alert('Daily water entry delete karne ki permission nahi hai.');
     if(!window.confirm('Kya aap ye daily water entry permanently delete karna chahte hain?'))return;
     const {error}=await supabase.from('water_sales').delete().eq('id',row.id).eq('business_id',Number(businessId));
     if(error)return alert('Daily water entry delete nahi hui: '+error.message);
@@ -319,22 +363,22 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
   const btn={padding:'10px 13px',border:0,borderRadius:8,background:'#047857',color:'#fff',fontWeight:800,cursor:'pointer'};
   const printRegister = () => { if(!isAdmin)return alert('Print permission sirf Admin ko hai.'); printNdaPage('water-month-register',true); };
   return <section>
-    <div style={{...panelCard,background:'#ecfdf5',borderColor:'#a7f3d0'}}><h2 style={{margin:'0 0 5px',color:'#065f46'}}>💧 Water Supply Management</h2><div style={{fontSize:13,color:'#475569'}}>Stock in / out · Customer cash & credit · Company account</div></div>
+    <div className="water-brand-banner" style={{...panelCard,background:'#ecfdf5',borderColor:'#a7f3d0'}}><h2 style={{margin:'0 0 5px',color:'#065f46'}}>💧 Water Supply Management</h2><div style={{fontSize:13,color:'#475569'}}>Stock in / out · Customer cash & credit · Company account</div></div>
     {errorText && <div style={{...panelCard,color:'#991b1b',background:'#fef2f2'}}>Database error: {errorText}<p style={{marginBottom:0}}>Water Supply ka updated SQL setup Supabase mein run karein.</p></div>}
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:12}}>
       {[['Available Stock',`${currentStock} Bottles`],['Total Received',`${totalStockIn} Bottles`],['Total Sold',`${totalStockOut} Bottles`],...(isAdmin?[['Company Outstanding',fmt(companyOutstanding)]]:[])].map(([l,v])=><div key={l} style={{...panelCard,margin:0}}><small style={{color:'#64748b',fontWeight:700}}>{l}</small><div style={{fontSize:20,fontWeight:900,marginTop:5}}>{v}</div></div>)}
     </div>
-    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>{[['daily','🧾 Daily Entry'],['customers','👥 Customers'],...(isAdmin?[['company','🏭 Company Account']]:[]),['monthly','📄 Monthly Print']].map(([id,label])=><button key={id} style={{...btn,background:tab===id?'#065f46':'#64748b'}} onClick={()=>setTab(id)}>{label}</button>)}</div>
-    {tab==='customers' && <>
-      {canAdd && <form onSubmit={addCustomer} style={panelCard}><h3 style={{marginTop:0}}>{editingCustomer?'✏️ Edit Water Customer':'➕ Add Water Customer'}</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}>
+    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>{[...(canViewDaily?[['daily','🧾 Daily Entry'],['customers','👥 Customers']]:[]),...(isAdmin?[['company','🏭 Company Account']]:[]),...((isAdmin||canViewMonthly)?[['monthly','📄 Monthly Print']]:[])].map(([id,label])=><button key={id} style={{...btn,background:tab===id?'#065f46':'#64748b'}} onClick={()=>setTab(id)}>{label}</button>)}</div>
+    {tab==='customers' && canViewDaily && <>
+      {(canAdd || (canEdit && editingCustomer)) && <form onSubmit={addCustomer} style={panelCard}><h3 style={{marginTop:0}}>{editingCustomer?'✏️ Edit Water Customer':'➕ Add Water Customer'}</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}>
         <label>Customer Name<input style={input} value={name} onChange={e=>setName(e.target.value)} required/></label><label>Room Number<input style={input} value={room} onChange={e=>setRoom(e.target.value)} placeholder="Optional — G-01 / 101"/></label><label>Floor<select style={input} value={customerFloor} onChange={e=>setCustomerFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></label><label>Rate per Bottle (AED)<input style={input} type="number" min="0.01" step="0.01" value={rate} onChange={e=>setRate(e.target.value)} required/></label><label>Remarks<input style={input} value={customerRemarks} onChange={e=>setCustomerRemarks(e.target.value)}/></label></div><button style={{...btn,marginTop:10}}>{editingCustomer?'Update Customer':'Save Customer'}</button>{editingCustomer&&<button type="button" onClick={cancelEditCustomer} style={{...btn,marginTop:10,marginLeft:8,background:'#64748b'}}>Cancel</button>}</form>}
-      <div style={panelCard}><div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}><h3 style={{marginTop:0}}>Customer List</h3><label><input type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)}/> Show inactive</label></div><div style={{display:'flex',gap:8,marginBottom:10}}><select style={input} value={floor} onChange={e=>setFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></div><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Room','Customer','Rate','Total Bill','Received','Outstanding','Status','Action'].map(x=><th style={thStyle} key={x}>{x}</th>)}</tr></thead><tbody>{floorCustomers.map(c=>{const st=customerStats(c);return <tr key={c.id}><td style={tdStyle}>{c.room_no||'—'}</td><td style={tdStyle}>{c.customer_name}</td><td style={tdStyle}>{fmt(c.rate)}</td><td style={tdStyle}>{fmt(st.total)}</td><td style={tdStyle}>{fmt(st.paid)}</td><td style={{...tdStyle,color:st.balance?'#b91c1c':'#047857',fontWeight:800}}>{fmt(st.balance)}</td><td style={tdStyle}>{c.active===false?'Inactive':'Active'}</td><td style={tdStyle}>{canAdd&&<button type="button" onClick={()=>startEditCustomer(c)} style={{marginRight:5}}>Edit</button>}{canDelete&&<button type="button" onClick={()=>toggleCustomer(c)} style={{marginRight:5}}>{c.active===false?'Activate':'Inactive'}</button>}{canDelete&&<button type="button" onClick={()=>deleteCustomer(c)} style={{color:'#b91c1c'}}>Delete</button>}</td></tr>})}{!floorCustomers.length&&<tr><td colSpan="8" style={tdStyle}>Is floor par koi customer nahi.</td></tr>}</tbody></table></div></div>
+      <div style={panelCard}><div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}><h3 style={{marginTop:0}}>Customer List</h3><label><input type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)}/> Show inactive</label></div><div style={{display:'flex',gap:8,marginBottom:10}}><select style={input} value={floor} onChange={e=>setFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></div><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Room','Customer','Rate','Total Bill','Received','Outstanding','Status','Action'].map(x=><th style={thStyle} key={x}>{x}</th>)}</tr></thead><tbody>{floorCustomers.map(c=>{const st=customerStats(c);return <tr key={c.id}><td style={tdStyle}>{c.room_no||'—'}</td><td style={tdStyle}>{c.customer_name}</td><td style={tdStyle}>{fmt(c.rate)}</td><td style={tdStyle}>{fmt(st.total)}</td><td style={tdStyle}>{fmt(st.paid)}</td><td style={{...tdStyle,color:st.balance?'#b91c1c':'#047857',fontWeight:800}}>{fmt(st.balance)}</td><td style={tdStyle}>{c.active===false?'Inactive':'Active'}</td><td style={tdStyle}>{canEdit&&<button type="button" onClick={()=>startEditCustomer(c)} style={{marginRight:5}}>Edit</button>}{canDelete&&<button type="button" onClick={()=>toggleCustomer(c)} style={{marginRight:5}}>{c.active===false?'Activate':'Inactive'}</button>}{canDelete&&<button type="button" onClick={()=>deleteCustomer(c)} style={{color:'#b91c1c'}}>Delete</button>}</td></tr>})}{!floorCustomers.length&&<tr><td colSpan="8" style={tdStyle}>Is floor par koi customer nahi.</td></tr>}</tbody></table></div></div>
     </>}
-    {tab==='daily' && <>
-      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Water Sale Entry</h3><form onSubmit={addSale}><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={saleCustomer} onChange={e=>{setSaleCustomer(e.target.value);const c=customers.find(x=>String(x.id)===e.target.value);setSaleRate(c?String(c.rate):'')}} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false).map(c=><option key={c.id} value={c.id}>{c.room_no ? c.room_no+' · ' : ''}{c.customer_name}</option>)}</select></label><label>Total Bottles<input type="number" min="1" step="1" style={input} value={bottles} onChange={e=>setBottles(e.target.value)} required/></label><label>Rate / Bottle<input type="number" min="0.01" step="0.01" style={input} value={saleRate} onChange={e=>setSaleRate(e.target.value)} required/></label><label>Payment Type<select style={input} value={salePaymentType} onChange={e=>setSalePaymentType(e.target.value)}><option value="Cash">Cash</option><option value="Credit">Credit</option></select></label><label>Remarks<input style={input} value={saleRemarks} onChange={e=>setSaleRemarks(e.target.value)}/></label></div><div style={{marginTop:10,fontWeight:800}}>Bill: {fmt(Number(bottles||0)*Number(saleRate||0))} · {salePaymentType==='Cash'?'Cash Received':'Credit Added'}: {fmt(Number(bottles||0)*Number(saleRate||0))} · Available Stock: {currentStock}</div><button style={{...btn,marginTop:10}} disabled={!canAdd||busy}>Save Daily Entry</button></form></div>
+    {tab==='daily' && canViewDaily && <>
+      {canAdd&&<div style={panelCard}><h3 style={{marginTop:0}}>Daily Water Sale Entry</h3><form onSubmit={addSale}><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={saleCustomer} onChange={e=>{setSaleCustomer(e.target.value);const c=customers.find(x=>String(x.id)===e.target.value);setSaleRate(c?String(c.rate):'')}} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false).map(c=><option key={c.id} value={c.id}>{c.room_no ? c.room_no+' · ' : ''}{c.customer_name}</option>)}</select></label><label>Total Bottles<input type="number" min="1" step="1" style={input} value={bottles} onChange={e=>setBottles(e.target.value)} required/></label><label>Rate / Bottle<input type="number" min="0.01" step="0.01" style={input} value={saleRate} onChange={e=>setSaleRate(e.target.value)} required/></label><label>Payment Type<select style={input} value={salePaymentType} onChange={e=>setSalePaymentType(e.target.value)}><option value="Cash">Cash</option><option value="Credit">Credit</option></select></label><label>Remarks<input style={input} value={saleRemarks} onChange={e=>setSaleRemarks(e.target.value)}/></label></div><div style={{marginTop:10,fontWeight:800}}>Bill: {fmt(Number(bottles||0)*Number(saleRate||0))} · {salePaymentType==='Cash'?'Cash Received':'Credit Added'}: {fmt(Number(bottles||0)*Number(saleRate||0))} · Available Stock: {currentStock}</div><button style={{...btn,marginTop:10}} disabled={busy}>Save Daily Entry</button></form></div>}
       {canAdd&&<form onSubmit={addPayment} style={panelCard}><h3 style={{marginTop:0}}>Receive Previous Customer Credit</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={day} onChange={e=>setDay(e.target.value)}/></label><label>Customer<select style={input} value={payCustomer} onChange={e=>setPayCustomer(e.target.value)} required><option value="">Select customer</option>{customers.filter(c=>c.active!==false&&customerStats(c).balance>0).map(c=><option key={c.id} value={c.id}>{c.room_no ? c.room_no+' · ' : ''}{c.customer_name} · Due {fmt(customerStats(c).balance)}</option>)}</select></label><label>Cash Received<input type="number" min="0.01" step="0.01" style={input} value={payAmount} onChange={e=>setPayAmount(e.target.value)} required/></label><label>Remarks<input style={input} value={payRemarks} onChange={e=>setPayRemarks(e.target.value)}/></label></div><button style={{...btn,marginTop:10}}>Receive Old Credit</button></form>}
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:10}}>{[['Daily Bill',dailyBilled],['Daily Cash',dailyCash],['Daily Credit Added',dailyCredit]].map(([l,v])=><div key={l} style={{...panelCard,margin:0}}><div style={{fontSize:12,color:'#64748b',fontWeight:700}}>{l}</div><div style={{fontSize:21,fontWeight:900}}>{fmt(v)}</div></div>)}</div>
-      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Activity · {day}</h3><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Date','Customer','Room','Bottles','Bill','Payment Type','Credit','Remarks',...(isAdmin?['Actions']:[])].map(x=><th key={x} style={thStyle}>{x}</th>)}</tr></thead><tbody>{dailySales.map(x=>{const c=customers.find(y=>String(y.id)===String(x.customer_id));const editing=String(editingWaterSale?.id)===String(x.id);const editBill=Number(editingWaterSale?.bottles||0)*Number(editingWaterSale?.rate||0);return <tr key={x.id} style={editing?{background:'#eff6ff'}:{}}><td style={tdStyle}>{editing?<input type="date" style={input} value={editingWaterSale.sale_date} onChange={e=>setEditingWaterSale(v=>({...v,sale_date:e.target.value}))}/>:x.sale_date}</td><td style={tdStyle}>{editing?<select style={input} value={editingWaterSale.customer_id} onChange={e=>setEditingWaterSale(v=>({...v,customer_id:e.target.value}))}><option value="">Select customer</option>{customers.map(y=><option key={y.id} value={y.id}>{y.room_no?y.room_no+' · ':''}{y.customer_name}</option>)}</select>:(c?.customer_name||'Deleted customer')}</td><td style={tdStyle}>{c?.room_no||'—'}</td><td style={tdStyle}>{editing?<input type="number" min="1" step="1" style={{...input,width:75}} value={editingWaterSale.bottles} onChange={e=>setEditingWaterSale(v=>({...v,bottles:e.target.value}))}/>:x.bottles}</td><td style={tdStyle}>{editing?fmt(editBill):fmt(x.total_amount)}</td><td style={tdStyle}>{editing?<><select style={input} value={editingWaterSale.payment_mode} onChange={e=>setEditingWaterSale(v=>({...v,payment_mode:e.target.value}))}><option value="Cash">Cash</option><option value="Credit">Credit</option></select><input aria-label="Rate per bottle" title="Rate per bottle" type="number" min="0.01" step="0.01" style={{...input,width:85,marginTop:4}} value={editingWaterSale.rate} onChange={e=>setEditingWaterSale(v=>({...v,rate:e.target.value}))}/></>:(x.payment_mode||(Number(x.cash_received)>=Number(x.total_amount)?'Cash':'Credit'))}</td><td style={tdStyle}>{editing?fmt(editingWaterSale.payment_mode==='Cash'?0:editBill):fmt(Number(x.total_amount)-Number(x.cash_received))}</td><td style={tdStyle}>{editing?<input style={input} value={editingWaterSale.remarks} onChange={e=>setEditingWaterSale(v=>({...v,remarks:e.target.value}))}/> : (x.remarks||'—')}</td>{isAdmin&&<td style={tdStyle}>{editing?<><button type="button" onClick={saveWaterSaleEdit} style={{marginRight:5}}>Save</button><button type="button" onClick={()=>setEditingWaterSale(null)}>Cancel</button></>:<><button type="button" onClick={()=>editWaterSale(x)} style={{marginRight:5}}>Edit</button><button type="button" onClick={()=>deleteWaterSale(x)} style={{color:'#b91c1c'}}>Delete</button></>}</td>}</tr>})}{!dailySales.length&&<tr><td colSpan={isAdmin?9:8} style={tdStyle}>No daily entries.</td></tr>}</tbody></table></div><h4>Old Credit Received Today</h4>{dailyPayments.map(p=><div key={p.id} style={{padding:8,borderTop:'1px solid #eee'}}>{customers.find(c=>String(c.id)===String(p.customer_id))?.customer_name||'Customer'} · {fmt(p.amount)} · {p.remarks||'—'}</div>)}{!dailyPayments.length&&<small>No previous credit received today.</small>}</div>
+      <div style={panelCard}><h3 style={{marginTop:0}}>Daily Activity · {day}</h3><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Date','Customer','Room','Bottles','Bill','Payment Type','Credit','Remarks',...(canEdit||canDelete?['Actions']:[])].map(x=><th key={x} style={thStyle}>{x}</th>)}</tr></thead><tbody>{dailySales.map(x=>{const c=customers.find(y=>String(y.id)===String(x.customer_id));const editing=String(editingWaterSale?.id)===String(x.id);const editBill=Number(editingWaterSale?.bottles||0)*Number(editingWaterSale?.rate||0);return <tr key={x.id} style={editing?{background:'#eff6ff'}:{}}><td style={tdStyle}>{editing?<input type="date" style={input} value={editingWaterSale.sale_date} onChange={e=>setEditingWaterSale(v=>({...v,sale_date:e.target.value}))}/>:x.sale_date}</td><td style={tdStyle}>{editing?<select style={input} value={editingWaterSale.customer_id} onChange={e=>setEditingWaterSale(v=>({...v,customer_id:e.target.value}))}><option value="">Select customer</option>{customers.map(y=><option key={y.id} value={y.id}>{y.room_no?y.room_no+' · ':''}{y.customer_name}</option>)}</select>:(c?.customer_name||'Deleted customer')}</td><td style={tdStyle}>{c?.room_no||'—'}</td><td style={tdStyle}>{editing?<input type="number" min="1" step="1" style={{...input,width:75}} value={editingWaterSale.bottles} onChange={e=>setEditingWaterSale(v=>({...v,bottles:e.target.value}))}/>:x.bottles}</td><td style={tdStyle}>{editing?fmt(editBill):fmt(x.total_amount)}</td><td style={tdStyle}>{editing?<><select style={input} value={editingWaterSale.payment_mode} onChange={e=>setEditingWaterSale(v=>({...v,payment_mode:e.target.value}))}><option value="Cash">Cash</option><option value="Credit">Credit</option></select><input aria-label="Rate per bottle" title="Rate per bottle" type="number" min="0.01" step="0.01" style={{...input,width:85,marginTop:4}} value={editingWaterSale.rate} onChange={e=>setEditingWaterSale(v=>({...v,rate:e.target.value}))}/></>:(x.payment_mode||(Number(x.cash_received)>=Number(x.total_amount)?'Cash':'Credit'))}</td><td style={tdStyle}>{editing?fmt(editingWaterSale.payment_mode==='Cash'?0:editBill):fmt(Number(x.total_amount)-Number(x.cash_received))}</td><td style={tdStyle}>{editing?<input style={input} value={editingWaterSale.remarks} onChange={e=>setEditingWaterSale(v=>({...v,remarks:e.target.value}))}/> : (x.remarks||'—')}</td>{(canEdit||canDelete)&&<td style={tdStyle}>{editing?<><button type="button" onClick={saveWaterSaleEdit} style={{marginRight:5}}>Save</button><button type="button" onClick={()=>setEditingWaterSale(null)}>Cancel</button></>:<>{canEdit&&<button type="button" onClick={()=>editWaterSale(x)} style={{marginRight:5}}>Edit</button>}{canDelete&&<button type="button" onClick={()=>deleteWaterSale(x)} style={{color:'#b91c1c'}}>Delete</button>}</>}</td>}</tr>})}{!dailySales.length&&<tr><td colSpan={canEdit||canDelete?9:8} style={tdStyle}>No daily entries.</td></tr>}</tbody></table></div><h4>Old Credit Received Today</h4>{dailyPayments.map(p=><div key={p.id} style={{padding:8,borderTop:'1px solid #eee'}}>{customers.find(c=>String(c.id)===String(p.customer_id))?.customer_name||'Customer'} · {fmt(p.amount)} · {p.remarks||'—'}</div>)}{!dailyPayments.length&&<small>No previous credit received today.</small>}</div>
     </>}
     {tab==='company' && <>
       <div style={{...panelCard,background:'#eff6ff'}}><h3 style={{marginTop:0}}>Company Stock & Account Summary</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}><div><small>Total Stock Received</small><h2>{totalStockIn} Bottles</h2></div><div><small>Total Bottles Sold</small><h2>{totalStockOut} Bottles</h2></div><div><small>Available Stock</small><h2 style={{color:currentStock<0?'#b91c1c':'#047857'}}>{currentStock} Bottles</h2></div><div><small>Total Company Bill</small><h2>{fmt(companyBillTotal)}</h2></div><div><small>Total Paid</small><h2 style={{color:'#047857'}}>{fmt(companyPaidAtDelivery+companyPaidLater)}</h2></div><div><small>Company Outstanding</small><h2 style={{color:'#b91c1c'}}>{fmt(companyOutstanding)}</h2></div></div></div>
@@ -343,9 +387,9 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canDelete }) {
       <div style={panelCard}><h3 style={{marginTop:0}}>Company Delivery History</h3><div style={{overflowX:'auto'}}><table style={tableStyle}><thead><tr>{['Date','Entry Type','Bottles In','Rate','Bill','Paid at Delivery','Payment Type','Bill No.','Unpaid'].map(x=><th key={x} style={thStyle}>{x}</th>)}</tr></thead><tbody>{deliveries.map(d=><tr key={d.id}><td style={tdStyle}>{d.delivery_date}</td><td style={tdStyle}>{d.delivery_type==='opening'?'Opening Stock':'Weekly Delivery'}</td><td style={tdStyle}>{d.bottles_received}</td><td style={tdStyle}>{fmt(d.company_rate)}</td><td style={tdStyle}>{fmt(d.bill_amount)}</td><td style={tdStyle}>{fmt(d.paid_amount)}</td><td style={tdStyle}>{d.payment_mode}</td><td style={tdStyle}>{d.bill_no||'—'}</td><td style={tdStyle}>{fmt(Number(d.bill_amount)-Number(d.paid_amount))}</td></tr>)}{!deliveries.length&&<tr><td colSpan="9" style={tdStyle}>Abhi company delivery record nahi.</td></tr>}</tbody></table></div></div>
       <div style={panelCard}><h3 style={{marginTop:0}}>Company Payments History</h3>{companyPayments.map(p=><div key={p.id} style={{padding:8,borderTop:'1px solid #eee'}}>{p.payment_date} · {fmt(p.amount)} · {p.remarks||'Company bill payment'}</div>)}{!companyPayments.length&&<small>Abhi company ko payment record nahi hui.</small>}</div>
     </>}
-    {tab==='monthly' && <>
-      <div style={{...panelCard,display:'flex',gap:12,alignItems:'end',flexWrap:'wrap'}}><label>Month<input type="month" style={input} value={month} onChange={e=>setMonth(e.target.value)}/></label><label>Floor<select style={input} value={floor} onChange={e=>setFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></label><button style={btn} onClick={printRegister}>🖨️ Print Monthly Page</button><button style={{...btn,background:'#64748b'}} onClick={refresh}>Refresh</button></div>
-      <div id="water-month-register" style={panelCard}><div className="business-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK" style={{width:95,height:58,objectFit:"contain"}}/><div><strong>NDA.PK BUSINESS SYSTEM</strong><div>Water Supply Monthly Collection · {month}</div></div></div><h2 style={{textAlign:'center',margin:'4px 0'}}>WATER SUPPLY · MONTHLY COLLECTION</h2><h3 style={{textAlign:'center',margin:'4px 0'}}>{floor} · {month}</h3><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><thead><tr>{['Room No.','Customer Name','Rate','Total Bottles','Previous Balance','Current Bill','Cash Received','Total Due / Credit','Remarks','Signature'].map(x=><th style={{border:'1px solid #94a3b8',padding:7,textAlign:'left'}} key={x}>{x}</th>)}</tr></thead><tbody>{customers.filter(c=>c.floor===floor&&c.active!==false).map(c=>{const ss=floorMonthSales.filter(x=>String(x.customer_id)===String(c.id));const pp=floorMonthPayments.filter(x=>String(x.customer_id)===String(c.id));const qty=ss.reduce((a,x)=>a+Number(x.bottles||0),0);const bill=ss.reduce((a,x)=>a+Number(x.total_amount||0),0);const openingSales=sales.filter(x=>String(x.customer_id)===String(c.id)&&String(x.sale_date)<month+'-01').reduce((a,x)=>a+Number(x.total_amount||0)-Number(x.cash_received||0),0);const openingPayments=payments.filter(x=>String(x.customer_id)===String(c.id)&&String(x.payment_date)<month+'-01').reduce((a,x)=>a+Number(x.amount||0),0);const opening=Math.max(0,openingSales-openingPayments);const paid=ss.reduce((a,x)=>a+Number(x.cash_received||0),0)+pp.reduce((a,x)=>a+Number(x.amount||0),0);const due=Math.max(0,opening+bill-paid);return <tr key={c.id}><td style={{border:'1px solid #94a3b8',padding:7}}>{c.room_no}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{c.customer_name}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{Number(c.rate).toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{qty}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{opening.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{bill.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{paid.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{due.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{c.remarks||''}</td><td style={{border:'1px solid #94a3b8',padding:7,minWidth:65}}></td></tr>})}</tbody></table><div style={{display:'flex',justifyContent:'space-between',marginTop:28,fontSize:12}}><span>Cash Collected By: __________________</span><span>Checked By: __________________</span></div></div>
+    {tab==='monthly' && (isAdmin||canViewMonthly) && <>
+      <div style={{...panelCard,display:'flex',gap:12,alignItems:'end',flexWrap:'wrap'}}><label>Month<input type="month" style={input} value={month} onChange={e=>setMonth(e.target.value)}/></label><label>Floor<select style={input} value={floor} onChange={e=>setFloor(e.target.value)}><option>Ground Floor</option><option>1st Floor</option></select></label>{isAdmin&&<button style={btn} onClick={printRegister}>🖨️ Print Monthly Page</button>}<button style={{...btn,background:'#64748b'}} onClick={refresh}>Refresh</button></div>
+      <div id="water-month-register" style={panelCard}><div className="business-print-brand"><img src="/nda-naveed-logo.png" alt="Logo" style={{width:95,height:58,objectFit:"contain"}}/></div><h2 style={{textAlign:'center',margin:'4px 0'}}>WATER SUPPLY · MONTHLY COLLECTION</h2><h3 style={{textAlign:'center',margin:'4px 0'}}>{floor} · {month}</h3><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><thead><tr>{['Room No.','Customer Name','Rate','Total Bottles','Previous Balance','Current Bill','Cash Received','Total Due / Credit','Remarks','Signature'].map(x=><th style={{border:'1px solid #94a3b8',padding:7,textAlign:'left'}} key={x}>{x}</th>)}</tr></thead><tbody>{customers.filter(c=>c.floor===floor&&c.active!==false).map(c=>{const ss=floorMonthSales.filter(x=>String(x.customer_id)===String(c.id));const pp=floorMonthPayments.filter(x=>String(x.customer_id)===String(c.id));const qty=ss.reduce((a,x)=>a+Number(x.bottles||0),0);const bill=ss.reduce((a,x)=>a+Number(x.total_amount||0),0);const openingSales=sales.filter(x=>String(x.customer_id)===String(c.id)&&String(x.sale_date)<month+'-01').reduce((a,x)=>a+Number(x.total_amount||0)-Number(x.cash_received||0),0);const openingPayments=payments.filter(x=>String(x.customer_id)===String(c.id)&&String(x.payment_date)<month+'-01').reduce((a,x)=>a+Number(x.amount||0),0);const opening=Math.max(0,openingSales-openingPayments);const paid=ss.reduce((a,x)=>a+Number(x.cash_received||0),0)+pp.reduce((a,x)=>a+Number(x.amount||0),0);const due=Math.max(0,opening+bill-paid);return <tr key={c.id}><td style={{border:'1px solid #94a3b8',padding:7}}>{c.room_no}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{c.customer_name}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{Number(c.rate).toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{qty}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{opening.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{bill.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{paid.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{due.toFixed(2)}</td><td style={{border:'1px solid #94a3b8',padding:7}}>{c.remarks||''}</td><td style={{border:'1px solid #94a3b8',padding:7,minWidth:65}}></td></tr>})}</tbody></table><div style={{display:'flex',justifyContent:'space-between',marginTop:28,fontSize:12}}><span>Cash Collected By: __________________</span><span>Checked By: __________________</span></div></div>
       <div style={{...panelCard,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:12}}><div><small>Total Bill (month)</small><h3>{fmt(floorMonthSales.reduce((a,x)=>a+Number(x.total_amount||0),0))}</h3></div><div><small>Cash Received (month)</small><h3 style={{color:'#047857'}}>{fmt(floorMonthSales.reduce((a,x)=>a+Number(x.cash_received||0),0)+floorMonthPayments.reduce((a,x)=>a+Number(x.amount||0),0))}</h3></div><div><small>Credit / Balance</small><h3 style={{color:'#b91c1c'}}>{fmt(Math.max(0,floorMonthSales.reduce((a,x)=>a+Number(x.total_amount||0)-Number(x.cash_received||0),0)-floorMonthPayments.reduce((a,x)=>a+Number(x.amount||0),0)))}</h3></div></div>
       <div style={panelCard}><h3>Company Account · {month}</h3><p>Deliveries: {fmt(deliveryMonth.reduce((a,x)=>a+Number(x.bill_amount||0),0))} · Payments: {fmt(companyPaymentMonth.reduce((a,x)=>a+Number(x.amount||0),0))} · Current Outstanding: <b>{fmt(companyOutstanding)}</b></p></div>
     </>}
@@ -395,6 +439,29 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
     if(error) return alert('Notebook file save nahi hui: '+error.message);
     setNewFileName(''); await loadFiles(data.id); setActiveFileId(String(data.id));
   }
+  async function editPerson(person) {
+    if (!can('can_manage_workers') || !person) return alert('Drivers/staff edit karne ki permission nahi hai.');
+    const name = window.prompt('Driver / staff name', person.person_name || '');
+    if (name === null) return;
+    if (!name.trim()) return alert('Name khali nahi ho sakta.');
+    const role = window.prompt('Role / designation', person.job_title || 'Driver');
+    if (role === null) return;
+    const phone = window.prompt('Mobile number', person.phone || '');
+    if (phone === null) return;
+    const payTypeValue = window.prompt('Pay system: fixed or profit_percent', person.pay_type || 'fixed');
+    if (payTypeValue === null) return;
+    if (!['fixed','profit_percent'].includes(payTypeValue)) return alert('Pay system fixed ya profit_percent hona chahiye.');
+    const amountText = window.prompt(payTypeValue === 'fixed' ? 'Monthly salary' : 'Profit share percentage (0–100)', String(payTypeValue === 'fixed' ? (person.monthly_salary || 0) : (person.profit_percent || 0)));
+    if (amountText === null) return;
+    const amountValue = Number(amountText);
+    if (!Number.isFinite(amountValue) || amountValue < 0 || (payTypeValue === 'profit_percent' && amountValue > 100)) return alert('Salary ya profit percentage sahi enter karein.');
+    const otherShare = people.filter(p => String(p.id) !== String(person.id) && p.pay_type === 'profit_percent').reduce((total, p) => total + Number(p.profit_percent || 0), 0);
+    if (payTypeValue === 'profit_percent' && otherShare + amountValue > 100) return alert('Tamam drivers ka combined profit share 100% se zyada nahi ho sakta.');
+    const { error } = await supabase.from('business_people').update({ person_name: name.trim(), job_title: role.trim() || 'Driver', phone: phone.trim(), pay_type: payTypeValue, monthly_salary: payTypeValue === 'fixed' ? amountValue : 0, profit_percent: payTypeValue === 'profit_percent' ? amountValue : 0 }).eq('id', person.id).eq('business_id', Number(businessId));
+    if (error) return alert('Driver/staff update nahi hua: ' + error.message);
+    await loadBusinessData();
+  }
+
   async function addEntry(e) {
     e.preventDefault(); if(!isAdmin) return;
     const value=Number(entryAmount); if(!activeFileId||!entryDate||!Number.isFinite(value)||value<=0||!entryDetails.trim()) return alert('Date, details aur valid amount enter karein.');
@@ -428,7 +495,7 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
   const panel={background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:14,marginBottom:12};
   const input={width:'100%',boxSizing:'border-box',padding:10,border:'1px solid #cbd5e1',borderRadius:8};
   return <section style={{background:'#f8fafc',borderRadius:14,padding:14}}>
-    <div style={{...panel,background:'#eff6ff'}}><h2 style={{margin:'0 0 4px'}}>📒 Naveed Docs / Hisab Kitab</h2><div style={{fontSize:13,color:'#475569'}}>Engineer Account, Udhaar, Ghar ke Akhrajat aur apni zaroorat ke mutabiq unlimited files.</div></div>
+    <div className="business-brand-banner" style={{...panel,background:'#eff6ff'}}><h2 style={{margin:'0 0 4px'}}>📒 Naveed Docs / Hisab Kitab</h2><div style={{fontSize:13,color:'#475569'}}>Engineer Account, Udhaar, Ghar ke Akhrajat aur apni zaroorat ke mutabiq unlimited files.</div></div>
     {errorText&&<div style={{...panel,color:'#991b1b'}}>Database error: {errorText}. Notebook SQL setup run karein.</div>}
     {isAdmin&&<form onSubmit={createFile} style={{...panel,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:10}}><input style={input} value={newFileName} onChange={e=>setNewFileName(e.target.value)} placeholder="New file name (e.g. Engineer Account)" required/><select style={input} value={newFileCurrency} onChange={e=>setNewFileCurrency(e.target.value)}><option value="AED">AED</option><option value="PKR">PKR</option></select><button style={{...primaryStyle,background:'#1d4ed8'}}>＋ Create Notebook File</button></form>}
     <div style={{...panel,display:'flex',gap:10,alignItems:'end',flexWrap:'wrap'}}><label style={{flex:'1 1 220px'}}>Open Notebook File<select style={{...input,marginTop:5}} value={activeFileId} onChange={e=>setActiveFileId(e.target.value)}><option value="">Select file</option>{files.map(f=><option key={f.id} value={f.id}>{f.file_name} ({f.currency})</option>)}</select></label>{activeFile&&isAdmin&&<button onClick={deleteFile} style={{...primaryStyle,width:'auto',background:'#b91c1c'}}>Delete File</button>}</div>
@@ -511,7 +578,9 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [currency, setCurrency] = useState('AED');
 
   const admin = !!userRole?.is_admin;
-  const can = (key) => admin || !!access?.[key];
+  const permissionEnabled = value => value === true || value === 'true' || value === 1 || value === '1';
+  const can = (key) => admin || permissionEnabled(access?.[key]);
+  const hasAnyBusinessPermission = row => ['can_view','can_view_daily','can_add','can_edit','can_delete','can_view_vehicles','can_manage_vehicles','can_view_workers','can_manage_workers','can_view_monthly','can_manage_access'].some(key => permissionEnabled(row?.[key]));
   const isWaterBusinessRecord = (b) => !!b && (String(b.business_kind || '').toLowerCase() === 'water' || /water|drinking|pani/i.test(String(b.name || '')));
   const isTransportBusinessRecord = (b) => !!b && (String(b.business_kind || '').toLowerCase() === 'transport' || /transport|vehicle|truck/i.test(String(b.name || '')));
   const currentBusiness = businesses.find(b => String(b.id) === String(businessId));
@@ -602,10 +671,9 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
           .from('business_access')
           .select('*,business_profiles(*)')
           .ilike('user_email', session?.user?.email || '')
-          .eq('active', true)
-          .eq('can_view', true);
+          .eq('active', true);
         if (ae) throw ae;
-        const allRows = ar || [];
+        const allRows = (ar || []).filter(hasAnyBusinessPermission);
         const waterBusinessRows = allRows.filter(r => isWaterBusinessRecord(r.business_profiles));
         const transportBusinessRows = allRows.filter(r => isTransportBusinessRecord(r.business_profiles));
         const isLegacyWaterPermissionRow = r => r.can_view && !r.can_view_daily && !r.can_edit && !r.can_delete && !r.can_view_vehicles && !r.can_manage_vehicles && !r.can_view_workers && !r.can_manage_workers && !r.can_view_monthly && !r.can_manage_access;
@@ -685,17 +753,17 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
         // Re-check access on staff devices too, so a removed login cannot keep using an old session.
         const { data: assignments, error: accessCheckError } = await supabase
           .from('business_access')
-          .select('business_id')
+          .select('business_id,can_view,can_view_daily,can_add,can_edit,can_delete,can_view_vehicles,can_manage_vehicles,can_view_workers,can_manage_workers,can_view_monthly,can_manage_access')
           .ilike('user_email', session?.user?.email || '')
-          .eq('active', true)
-          .eq('can_view', true);
+          .eq('active', true);
         if (!accessCheckError) {
-          if (!assignments?.length) {
+          const validAssignments = (assignments || []).filter(hasAnyBusinessPermission);
+          if (!validAssignments.length) {
             alert('Aapka Business access Admin ne remove kar diya hai.');
             onLogout?.();
             return;
           }
-          if (!assignments.some(a => String(a.business_id) === String(businessId))) {
+          if (!validAssignments.some(a => String(a.business_id) === String(businessId))) {
             await loadBusinesses();
             return;
           }
@@ -762,8 +830,22 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     }
   }
 
+  async function editVehicleFile(v) {
+    if (!can('can_manage_vehicles') || !v) return;
+    const plate = window.prompt('Vehicle plate number', v.plate_number || '');
+    if (plate === null) return;
+    if (!plate.trim()) return alert('Vehicle plate number khali nahi ho sakta.');
+    const name = window.prompt('Vehicle model / type', v.vehicle_name || '');
+    if (name === null) return;
+    const notes = window.prompt('Vehicle notes', v.notes || '');
+    if (notes === null) return;
+    const { error } = await supabase.from('business_vehicles').update({ plate_number: plate.trim().toUpperCase(), vehicle_name: name.trim(), notes: notes.trim() }).eq('id', v.id).eq('business_id', Number(businessId));
+    if (error) return alert('Vehicle update nahi hui: ' + error.message);
+    await loadBusinessData();
+  }
+
   async function deleteVehicleFile(v) {
-    if(!admin||!v)return;
+    if(!can('can_manage_vehicles')||!v)return;
     const {count,error:countError}=await supabase.from('business_entries').select('id',{count:'exact',head:true}).eq('business_id',Number(businessId)).eq('vehicle_id',v.id);
     if(countError)return alert('Vehicle records check nahi ho sake. Delete nahi kiya gaya: '+countError.message);
     if(Number(count||0)>0){
@@ -919,7 +1001,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   }
 
   async function deleteEntry(row) {
-    if (!admin) return alert('Daily entry sirf Admin delete kar sakta hai.');
+    if (!can('can_delete')) return alert('Daily entry delete karne ki permission nahi hai.');
     if (!window.confirm('Delete this entry permanently?')) return;
     const { error } = await supabase.from('business_entries').delete().eq('id', row.id).eq('business_id', Number(businessId));
     if (error) return alert(error.message);
@@ -927,11 +1009,11 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   }
 
   function editEntry(row) {
-    if (!admin) return alert('Daily entry sirf Admin edit kar sakta hai.');
+    if (!can('can_edit')) return alert('Daily entry edit karne ki permission nahi hai.');
     setEditingDailyEntry({ ...row, entry_date: row.entry_date || entryDate, amount: String(row.amount || ''), vehicle_id: String(row.vehicle_id || ''), driver_id: String(row.driver_id || ''), category: row.category || 'General', payment_mode: row.payment_mode || 'Cash', description: row.description || '', remarks: row.remarks || '' });
   }
   async function saveDailyEntryEdit() {
-    if (!admin || !editingDailyEntry) return;
+    if (!can('can_edit') || !editingDailyEntry) return;
     const r = editingDailyEntry, value = Number(r.amount);
     if (!r.entry_date || !String(r.category || '').trim() || !Number.isFinite(value) || value <= 0) return alert('Date, category aur amount sahi enter karein.');
     if (isTransportBusiness && !r.vehicle_id) return alert('Please select a vehicle.');
@@ -1153,7 +1235,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     : workspaceSection === 'transport'
       ? [...(admin ? [{ id: 'dashboard', icon: '🏠', label: 'Dashboard' }] : []), ...(admin || access?.can_view_daily || (!waterOnlyStaff && (can('can_add') || can('can_edit') || can('can_delete'))) ? [{ id: 'daily', icon: '📝', label: 'Daily Entry' }] : []), ...(admin || access?.can_view_vehicles || can('can_manage_vehicles') ? [{ id: 'vehicles', icon: '🚚', label: 'Vehicle Files' }] : []), ...(admin || access?.can_view_monthly ? [{ id: 'monthly', icon: '📊', label: 'Monthly Sheet' }] : []), ...(admin || access?.can_view_workers || can('can_manage_workers') ? [{ id: 'workers', icon: '👷', label: 'Drivers & Pay' }] : []), ...(admin ? [{ id: 'cleanup', icon: '🧹', label: 'Month Data Delete' }] : [])]
       : workspaceSection === 'water'
-        ? [...(admin ? [{ id: 'dashboard', icon: '🏠', label: 'Dashboard' }] : []), ...(admin || access?.can_view || can('can_add') ? [{ id: 'water', icon: '💧', label: 'Drinking Water' }] : [])]
+        ? [...(admin ? [{ id: 'dashboard', icon: '🏠', label: 'Dashboard' }] : []), ...(admin || access?.can_view || access?.can_view_daily || can('can_add') || can('can_edit') || can('can_delete') || can('can_view_monthly') ? [{ id: 'water', icon: '💧', label: 'Drinking Water' }] : [])]
         : workspaceSection === 'notebook' ? [{ id: 'dashboard', icon: '🏠', label: 'Dashboard' }, { id: 'notebook', icon: '📒', label: 'Naveed Docs' }]
         : [{ id: 'dashboard', icon: '🏠', label: 'Dashboard' }, ...(can('can_manage_access') ? [{ id: 'access', icon: '🔐', label: 'Staff Access' }] : [])];
 
@@ -1188,11 +1270,12 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
         @page { size:A4 landscape; margin:8mm; }
         body * { visibility:hidden !important; }
         .nda-print-target, .nda-print-target * { visibility:visible !important; }
+        body.nda-printing > *:not(.nda-print-target) { display:none !important; }
         .nda-print-target { position:relative !important; left:auto !important; top:auto !important; width:100% !important; padding:25mm 0 0 !important; margin:0 !important; overflow:visible !important; background:#fff !important; color:#000 !important; box-shadow:none !important; }
         .nda-print-target table{page-break-inside:auto!important;break-inside:auto!important}
         .nda-print-target thead{display:table-header-group!important}
         .nda-print-target tr{page-break-inside:avoid!important;break-inside:avoid!important}
-        .nda-print-target .business-no-print, .nda-print-target button, .nda-print-target input, .nda-print-target select, .nda-print-target textarea, .nda-print-target form { display:none !important; }
+        .nda-print-target .business-no-print, .nda-print-target .business-brand-banner, .nda-print-target .water-brand-banner, .nda-print-target button, .nda-print-target input, .nda-print-target select, .nda-print-target textarea, .nda-print-target form { display:none !important; }
         .business-print-brand { display:flex !important; position:fixed !important; top:0 !important; left:0 !important; right:0 !important; z-index:9999 !important; align-items:center !important; gap:14px !important; height:21mm !important; box-sizing:border-box !important; background:#fff !important; border-bottom:2px solid #c69227 !important; padding-bottom:8px !important; margin:0 !important; color:#064e3b !important; }
         .business-print-brand img { width:95px !important; height:58px !important; object-fit:contain !important; }
       } .business-print-brand{display:none;}`}</style>
@@ -1375,11 +1458,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
 
             <div id="business-current-print">
               <div className="business-print-brand">
-                <img src="/nda-naveed-logo.png" alt="NDA-PK" />
-                <div>
-                  <strong>NDA-PK BUSINESS SYSTEM</strong>
-                  <div>{panelTitle} · {view.toUpperCase()}</div>
-                </div>
+                <img src="/nda-naveed-logo.png" alt="Logo" />
               </div>
 
               {/* 1. DAILY ENTRY & LEDGER */}
@@ -1549,7 +1628,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead>
                         <tr style={{ background: '#f8fafc' }}>
-                          {['Type', 'Category', 'Vehicle', 'Driver / Staff', 'Details', 'Mode', 'Amount', 'Date / Bill / Remarks', ...(admin ? ['Actions'] : [])].map(h => (
+                          {['Type', 'Category', 'Vehicle', 'Driver / Staff', 'Details', 'Mode', 'Amount', 'Date / Bill / Remarks', ...((can('can_edit') || can('can_delete')) ? ['Actions'] : [])].map(h => (
                             <th key={h} style={{ padding: 10, borderBottom: '2px solid #e2e8f0', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
                           ))}
                         </tr>
@@ -1569,13 +1648,13 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                               <td style={cell}>{editing ? <select style={{...inputStyle,minWidth:105}} value={editingDailyEntry.payment_mode} onChange={e=>setEditingDailyEntry(v=>({...v,payment_mode:e.target.value}))}><option value="Cash">Cash</option><option value="Credit">Credit / Udhaar</option><option value="Bank">Bank / Transfer</option></select> : r.payment_mode}</td>
                               <td style={{...cell,fontWeight:900,color:isInc?'#15803d':'#b91c1c'}}>{editing ? <input type="number" min="0.01" step="0.01" style={{...inputStyle,width:105}} value={editingDailyEntry.amount} onChange={e=>setEditingDailyEntry(v=>({...v,amount:e.target.value}))}/> : `${isInc?'+':'-'}${money(r.amount)}`}</td>
                               <td style={cell}>{editing ? <><input type="date" style={{...inputStyle,minWidth:130}} value={editingDailyEntry.entry_date} onChange={e=>setEditingDailyEntry(v=>({...v,entry_date:e.target.value}))}/><input placeholder="Remarks" style={{...inputStyle,minWidth:130,marginTop:4}} value={editingDailyEntry.remarks} onChange={e=>setEditingDailyEntry(v=>({...v,remarks:e.target.value}))}/></> : (r.bill_url ? <a href={r.bill_url} target="_blank" rel="noreferrer" style={{color:'#1d4ed8',fontWeight:700}}>View Bill</a> : '—')}</td>
-                              {admin && <td style={cell}>{editing ? <><button type="button" onClick={saveDailyEntryEdit} style={{...btn,background:'#15803d',padding:'6px 10px',fontSize:12,marginRight:5}}>Save</button><button type="button" onClick={()=>setEditingDailyEntry(null)} style={{...btn,background:'#64748b',padding:'6px 10px',fontSize:12}}>Cancel</button></> : <><button type="button" onClick={()=>editEntry(r)} style={{...btn,background:'#1d4ed8',padding:'6px 10px',fontSize:12,marginRight:5}}>Edit</button><button type="button" onClick={()=>deleteEntry(r)} style={{...btn,background:'#b91c1c',padding:'6px 10px',fontSize:12}}>Delete</button></>}</td>}
+                              {(can('can_edit') || can('can_delete')) && <td style={cell}>{editing ? <><button type="button" onClick={saveDailyEntryEdit} style={{...btn,background:'#15803d',padding:'6px 10px',fontSize:12,marginRight:5}}>Save</button><button type="button" onClick={()=>setEditingDailyEntry(null)} style={{...btn,background:'#64748b',padding:'6px 10px',fontSize:12}}>Cancel</button></> : <>{can('can_edit') && <button type="button" onClick={()=>editEntry(r)} style={{...btn,background:'#1d4ed8',padding:'6px 10px',fontSize:12,marginRight:5}}>Edit</button>}{can('can_delete') && <button type="button" onClick={()=>deleteEntry(r)} style={{...btn,background:'#b91c1c',padding:'6px 10px',fontSize:12}}>Delete</button>}</>}</td>}
                             </tr>
                           );
                         })}
                         {!selectedEntries.length && (
                           <tr>
-                            <td colSpan={admin ? 9 : 8} style={{ padding: 16, color: '#64748b', textAlign: 'center' }}>
+                            <td colSpan={(can('can_edit') || can('can_delete')) ? 9 : 8} style={{ padding: 16, color: '#64748b', textAlign: 'center' }}>
                               No entries recorded for {entryDate}.
                             </td>
                           </tr>
@@ -1619,7 +1698,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                             <div><span style={{ color: '#b91c1c', fontWeight: 700 }}>Total Expense:</span><br /><strong>{money(vExp)}</strong></div>
                           </div>
                           <div style={{ display: 'flex', gap: 8, flexWrap:'wrap' }}>
-                            {admin && <button type="button" style={{...btn,background:'#b91c1c'}} onClick={()=>void deleteVehicleFile(v)}>🗑️ Delete Vehicle</button>}
+                            {can('can_manage_vehicles') && <><button type="button" style={{...btn,background:'#1d4ed8'}} onClick={()=>void editVehicleFile(v)}>✏️ Edit Vehicle</button><button type="button" style={{...btn,background:'#b91c1c'}} onClick={()=>void deleteVehicleFile(v)}>🗑️ Delete Vehicle</button></>}
                             <button
                               type="button"
                               style={{ ...btn, flex: 1 }}
@@ -1676,7 +1755,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead>
                         <tr style={{ background: '#f8fafc' }}>
-                          {['Name', 'Role', 'Phone', 'Pay System', 'Fixed Salary', 'Profit %', 'Earned This Month'].map(h => (
+                          {['Name', 'Role', 'Phone', 'Pay System', 'Fixed Salary', 'Profit %', 'Earned This Month', ...(can('can_manage_workers') ? ['Actions'] : [])].map(h => (
                             <th key={h} style={{ padding: 10, textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>{h}</th>
                           ))}
                         </tr>
@@ -1691,10 +1770,11 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                             <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9' }}>{money(p.monthly_salary)}</td>
                             <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9' }}>{p.pay_type === 'profit_percent' ? `${p.profit_percent || 0}%` : '—'}</td>
                             <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9', fontWeight: 900, color: '#047857' }}>{money(p.share)}</td>
+                            {can('can_manage_workers') && <td style={{ padding: 10, borderBottom: '1px solid #f1f5f9' }}><button type="button" style={{...btn,padding:'6px 10px',fontSize:12}} onClick={()=>void editPerson(p)}>✏️ Edit</button></td>}
                           </tr>
                         ))}
                         {!people.length && (
-                          <tr><td colSpan="7" style={{ padding: 14, color: '#64748b' }}>No drivers or staff added yet.</td></tr>
+                          <tr><td colSpan={can('can_manage_workers') ? 8 : 7} style={{ padding: 14, color: '#64748b' }}>No drivers or staff added yet.</td></tr>
                         )}
                       </tbody>
                     </table>
@@ -1743,8 +1823,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                   {/* Driver Monthly Sheet */}
                   <section id="business-driver-monthly-print" style={{ ...card, overflowX: 'auto', marginBottom: 14 }}>
                     <div className="business-print-brand">
-                      <img src="/nda-naveed-logo.png" alt="NDA-PK" />
-                      <div><strong>NDA.PK BUSINESS SYSTEM</strong><div>Driver Monthly Sheet · {month}</div></div>
+                      <img src="/nda-naveed-logo.png" alt="Logo" />
                     </div>
                     <h3 style={{ marginTop: 0 }}>👷 Driver Monthly Sheet — {month}</h3>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 14 }}>
@@ -1833,8 +1912,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                   {/* Owner Monthly Sheet */}
                   <section id="business-owner-monthly-print" style={{ ...card, overflowX: 'auto' }}>
                     <div className="business-print-brand">
-                      <img src="/nda-naveed-logo.png" alt="NDA-PK" />
-                      <div><strong>NDA.PK BUSINESS SYSTEM</strong><div>Owner Monthly Sheet · {month}</div></div>
+                      <img src="/nda-naveed-logo.png" alt="Logo" />
                     </div>
                     <h3 style={{ marginTop: 0 }}>🏢 Owner Monthly Ledger — {month}</h3>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -1871,8 +1949,8 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
               )}
 
               {/* WATER SUPPLY CUSTOMER KHATA — BUSINESS SYSTEM ONLY */}
-              {view === 'water' && (admin || access?.can_view || can('can_add')) && (
-                <WaterSupplyPanel session={session} businessId={businessId} isAdmin={admin} canAdd={admin || can('can_add')} canDelete={admin || can('can_delete')} />
+              {view === 'water' && (admin || access?.can_view || access?.can_view_daily || can('can_add') || can('can_edit') || can('can_delete') || can('can_view_monthly')) && (
+                <WaterSupplyPanel session={session} businessId={businessId} isAdmin={admin} canAdd={admin || can('can_add')} canEdit={admin || can('can_edit')} canDelete={admin || can('can_delete')} canViewDaily={admin || can('can_view') || can('can_view_daily') || can('can_add') || can('can_edit') || can('can_delete')} canViewMonthly={admin || can('can_view_monthly')} />
               )}
 
               {view === 'notebook' && admin && (
@@ -3816,10 +3894,10 @@ async function handleToggleHolidayDate() {
             .from('business_access')
             .select('*')
             .ilike('user_email', cleanEmail)
-            .eq('active', true)
-            .eq('can_view', true);
+            .eq('active', true);
+          const validAccessRows = (accessRows || []).filter(row => ['can_view','can_view_daily','can_add','can_edit','can_delete','can_view_vehicles','can_manage_vehicles','can_view_workers','can_manage_workers','can_view_monthly','can_manage_access'].some(key => row?.[key] === true || row?.[key] === 'true'));
 
-          if (accessError || !accessRows?.length) {
+          if (accessError || !validAccessRows.length) {
             await supabase.auth.signOut();
             alert(accessError
               ? ('Business permission check nahi ho saka: ' + accessError.message)
@@ -3962,11 +4040,11 @@ async function handleToggleHolidayDate() {
         assigned_department: String(resolvedAccount.assigned_department || '').trim() || 'Unassigned',
         assigned_site: resolvedAccount.assigned_site || 'All',
         can_view_dashboard: resolvedAccount.can_view_dashboard ?? true,
-        can_use_bulk: false,
+        can_use_bulk: resolvedAccount.can_use_bulk ?? false,
         can_view_workers: resolvedAccount.can_view_workers ?? true,
-        can_add_workers: false,
-        can_edit_workers: false,
-        can_delete_workers: false,
+        can_add_workers: resolvedAccount.can_add_workers ?? false,
+        can_edit_workers: resolvedAccount.can_edit_workers ?? false,
+        can_delete_workers: resolvedAccount.can_delete_workers ?? false,
         can_view_timesheet: resolvedAccount.can_view_timesheet ?? true,
         can_view_daily_timesheet: resolvedAccount.can_view_daily_timesheet ?? resolvedAccount.can_view_timesheet ?? false,
         can_edit_timesheet: resolvedAccount.can_edit_timesheet ?? false,
@@ -3990,9 +4068,11 @@ async function handleToggleHolidayDate() {
         setQuickSite(staffRole.assigned_site);
       }
       if (staffRole.can_view_dashboard) setActiveTab('dashboard');
-      else if (staffRole.can_view_timesheet) setActiveTab('attendance');
-      else if (staffRole.can_view_daily_timesheet) setActiveTab('daily-timesheet');
-      else if (staffRole.can_view_workers) setActiveTab('workers');
+      else if (staffRole.can_view_timesheet || staffRole.can_edit_timesheet) setActiveTab('attendance');
+      else if (staffRole.can_view_daily_timesheet || staffRole.can_edit_timesheet) setActiveTab('daily-timesheet');
+      else if (staffRole.can_view_workers || staffRole.can_add_workers || staffRole.can_edit_workers || staffRole.can_delete_workers) setActiveTab('workers');
+      else if (staffRole.can_use_bulk) setActiveTab('bulk');
+      else if (staffRole.can_view_payroll) setActiveTab('payroll');
       else setActiveTab('dashboard');
     } catch (err) {
       alert('Login error: ' + (err?.message || String(err)));
@@ -4258,6 +4338,8 @@ async function handleToggleHolidayDate() {
               border-collapse: collapse;
               margin-top: 15px;
             }
+            thead { display: table-header-group; }
+            tr { break-inside: avoid; page-break-inside: avoid; }
 
             th, td {
               border: 1px solid #cbd5e1;
@@ -4311,15 +4393,14 @@ async function handleToggleHolidayDate() {
 
             @media print {
               .report-footer {
-                display: block !important;
-                visibility: visible !important;
-                color: #111 !important;
+                display: none !important;
+                visibility: hidden !important;
               }
             }
           </style>
         </head>
         <body>
-          <div class="report-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"><div><strong>NDA-PK SYSTEM</strong><span>Individual Worker Monthly Report</span></div></div>
+          <div class="report-brand"><img src="/nda-naveed-logo.png" alt="Logo"></div>
 
           <div class="box">
             <p><strong>Worker ID:</strong> #${worker.id}</p>
@@ -4334,6 +4415,7 @@ async function handleToggleHolidayDate() {
           <table>
             <thead>
               <tr>
+                <th>S.No</th>
                 <th>Date</th>
                 <th>Status</th>
                 <th>Normal OT</th>
@@ -4347,9 +4429,10 @@ async function handleToggleHolidayDate() {
             <tbody>
               ${
                 workerAttendance.length === 0
-                  ? '<tr><td colspan="4">No attendance records found.</td></tr>'
-                  : workerAttendance.map(att => `
+                  ? '<tr><td colspan="9">No attendance records found.</td></tr>'
+                  : workerAttendance.map((att, index) => `
                       <tr style="${['annual leave','sick leave','leave','other leave'].includes(String(att.status || '').trim().toLowerCase()) ? 'background:#ffedd5;color:#9a3412;font-weight:bold;' : String(att.status || '').trim().toLowerCase() === 'absent' ? 'background:#fee2e2;color:#991b1b;font-weight:bold;' : ['holiday','holiday present'].includes(String(att.status || '').trim().toLowerCase()) ? 'background:#fef08a;font-weight:bold;' : String(att.status || '').trim().toLowerCase() === 'present' ? 'background:#dcfce7;' : ''}">
+                        <td>${index + 1}</td>
                         <td>${att.date || ''}</td>
                         <td>${att.status || ''}</td>                       
 <td>${Number(att.overtime_hours) || 0} Hours</td>
@@ -4572,9 +4655,6 @@ async function handleSingleAttendanceChange(
   }
   const previousRecord = attendanceData[dateStr]?.[workerId] || {};
   const existingDbRecord = attendance.find(a => String(a.worker_id) === String(workerId) && String(a.date).slice(0,10) === String(dateStr).slice(0,10));
-  if (!userRole.is_admin && existingDbRecord) {
-    throw new Error('Staff sirf nayi entry kar sakta hai. Is worker ki is date ki entry pehle se mojood hai; edit permission admin ke paas hai.');
-  }
   const worker = workers.find(w => String(w.id) === String(workerId));
 
   const assignedSite =
@@ -4955,8 +5035,6 @@ async function handleQuickAttendance(e) {
     if (isPayrollDateClosed(selectedTimesheetDate)) return alert('Yeh salary period close hai. Admin pehle period reopen kare.');
     if (!userRole.is_admin && !userRole.can_edit_timesheet) return alert('Aapko timesheet edit karne ki permission nahi hai.');
     if (!userRole.is_admin && !filteredWorkers.some(w => String(w.id) === String(workerId))) return alert('Yeh worker aapke assigned scope mein nahi hai.');
-    const existingAttendanceRow = attendance.find(a => String(a.worker_id) === String(workerId) && String(a.date).slice(0,10) === String(selectedTimesheetDate).slice(0,10));
-    if (!userRole.is_admin && existingAttendanceRow) return alert('Staff sirf nayi entry kar sakta hai. Is date ki attendance pehle se mojood hai; edit admin karega.');
     const worker = workers.find(w => String(w.id) === String(workerId));
   const oldRecord = attendanceData[selectedTimesheetDate]?.[workerId] || {};
 
@@ -5003,11 +5081,11 @@ const otHours = Number(
       assigned_department: targetDept,
       assigned_site: targetSite,
       can_view_dashboard: permDashboard,
-      can_use_bulk: false,
+      can_use_bulk: permBulk,
       can_view_workers: permViewWorkers,
-      can_add_workers: false,
-      can_edit_workers: false,
-      can_delete_workers: false,
+      can_add_workers: permAddWorkers,
+      can_edit_workers: permEditWorkers,
+      can_delete_workers: permDeleteWorkers,
       can_view_timesheet: permTimesheetView,
       can_view_daily_timesheet: permDailyTimesheetView,
       can_edit_timesheet: permTimesheetEdit,
@@ -5271,15 +5349,15 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       <style>
         @page{size:A4 portrait;margin:14mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#172033;margin:0;background:#fff}
         .brand{display:flex;align-items:center;gap:16px;border-bottom:3px solid #c69227;padding:0 0 13px;margin-bottom:18px}
-        .brand img{width:105px;height:66px;object-fit:contain}.brand h1{font-size:21px;color:#0b2853;margin:0 0 5px}.brand p{font-size:12px;color:#475569;margin:0}
+        .brand img{width:105px;height:66px;object-fit:contain}.brand h1,.brand p{display:none}
         .heading{display:flex;justify-content:space-between;align-items:center;margin:16px 0}.heading h2{margin:0;font-size:20px;color:#0f172a}.period{font-size:11px;color:#475569;text-align:right;line-height:1.6}
         .employee{display:grid;grid-template-columns:1fr 1fr;gap:9px 18px;padding:14px 16px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;margin-bottom:18px;font-size:13px}.employee b{color:#334155}
-        table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #cbd5e1;padding:11px 12px;font-size:13px}th{background:#eaf0f7;text-align:left;color:#24364b}.amount{text-align:right;font-weight:700;white-space:nowrap}
+        table{width:100%;border-collapse:collapse;margin-top:8px}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}th,td{border:1px solid #cbd5e1;padding:11px 12px;font-size:13px}th{background:#eaf0f7;text-align:left;color:#24364b}.amount{text-align:right;font-weight:700;white-space:nowrap}
         .total td{background:#eaf7ef;font-weight:800;font-size:15px}.section-title{font-size:14px;color:#0b2853;margin:18px 0 7px}.note{font-size:11px;color:#64748b;margin-top:12px}
         .signatures{display:grid;grid-template-columns:1fr 1fr;gap:55px;margin-top:58px}.sign{border-top:1px solid #64748b;text-align:center;padding-top:8px;font-size:12px;color:#475569}
         .footer{border-top:1px solid #cbd5e1;margin-top:28px;padding-top:9px;text-align:center;font-size:10px;color:#64748b}
       </style></head><body>
-        <div class="brand"><img src="/nda-naveed-logo.png" alt="Company Logo"><div><h1>NDA-PK</h1><p>Payroll & Human Resources Department</p><p>Individual Employee Salary Statement</p></div></div>
+        <div class="brand"><img src="/nda-naveed-logo.png" alt="Company Logo"></div>
         <div class="heading"><h2>SALARY SLIP</h2><div class="period"><b>Salary Month:</b> ${esc(salaryMonthLabel)}<br><b>OT Closing Period:</b> ${esc(payrollPeriodStartDate)} to ${esc(payrollPeriodEndDate)}</div></div>
         <div class="employee">
           <div><b>Employee Name:</b> ${esc(worker.name || '—')}</div><div><b>Employee ID:</b> #${esc(worker.id)}</div>
@@ -5288,14 +5366,14 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
           <div><b>Monthly Basic Salary:</b> ${moneyText(monthlySalary)}</div><div><b>Payable Days:</b> ${payableDays} / ${salaryMonthDays}</div>
         </div>
         <div class="section-title">Salary & Overtime Breakdown</div>
-        <table><thead><tr><th>Description</th><th>Hours / Days</th><th class="amount">Amount (${esc(currency)})</th></tr></thead><tbody>
-          <tr><td>Basic Salary (${payableDays} payable days)</td><td>${payableDays} days</td><td class="amount">${moneyText(basicPay)}</td></tr>
-          <tr><td>Normal Overtime</td><td>${normalOT.toFixed(2)} hrs</td><td class="amount">—</td></tr>
-          <tr><td>Contract Overtime</td><td>${contractOT.toFixed(2)} hrs</td><td class="amount">—</td></tr>
-          <tr><td>Extra Overtime</td><td>${extraOT.toFixed(2)} hrs</td><td class="amount">—</td></tr>
-          <tr><td><b>Total Overtime</b></td><td><b>${totalOT.toFixed(2)} hrs</b></td><td class="amount">—</td></tr>
-          <tr><td>Overtime Pay (1.25 × hourly rate)</td><td>${hourlyRate.toFixed(2)} ${esc(currency)}/hr × 1.25</td><td class="amount">${moneyText(overtimePay)}</td></tr>
-          <tr class="total"><td colspan="2">NET TOTAL PAYABLE</td><td class="amount">${moneyText(totalPay)}</td></tr>
+        <table><thead><tr><th>S.No</th><th>Description</th><th>Hours / Days</th><th class="amount">Amount (${esc(currency)})</th></tr></thead><tbody>
+          <tr><td>1</td><td>Basic Salary (${payableDays} payable days)</td><td>${payableDays} days</td><td class="amount">${moneyText(basicPay)}</td></tr>
+          <tr><td>2</td><td>Normal Overtime</td><td>${normalOT.toFixed(2)} hrs</td><td class="amount">—</td></tr>
+          <tr><td>3</td><td>Contract Overtime</td><td>${contractOT.toFixed(2)} hrs</td><td class="amount">—</td></tr>
+          <tr><td>4</td><td>Extra Overtime</td><td>${extraOT.toFixed(2)} hrs</td><td class="amount">—</td></tr>
+          <tr><td>5</td><td><b>Total Overtime</b></td><td><b>${totalOT.toFixed(2)} hrs</b></td><td class="amount">—</td></tr>
+          <tr><td>6</td><td>Overtime Pay (1.25 × hourly rate)</td><td>${hourlyRate.toFixed(2)} ${esc(currency)}/hr × 1.25</td><td class="amount">${moneyText(overtimePay)}</td></tr>
+          <tr class="total"><td>7</td><td colspan="2">NET TOTAL PAYABLE</td><td class="amount">${moneyText(totalPay)}</td></tr>
         </tbody></table>
         <p class="note">Overtime includes Normal OT, Contract OT and Extra OT recorded within the stated OT closing period. Basic salary is calculated using the salary month's calendar days and payable days.</p>
         <div class="signatures"><div class="sign">Prepared By</div><div class="sign">Employee Signature</div></div>
@@ -5431,7 +5509,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
       {/* NDA-PK CORPORATE SIDEBAR — existing tabs and handlers are retained */}
       <aside className="nda-sidebar" style={{background:'linear-gradient(180deg,#071d3d 0%,#0b2b55 100%)',color:'#fff',padding:'18px 14px',display:'flex',flexDirection:'column',gap:7,position:'fixed',left:0,top:86,bottom:0,width:278,overflowY:'auto',zIndex:30,boxSizing:'border-box',boxShadow:'5px 0 20px #071d3d18'}}>
         <div style={{display:'flex',alignItems:'center',gap:10,padding:'4px 7px 18px',borderBottom:'1px solid #ffffff35',marginBottom:8}}><img src="/nda-naveed-logo.png" alt="NDA-PK" style={{width:62,height:52,objectFit:'contain',background:'#fff',borderRadius:8}}/><div><b style={{fontSize:20,letterSpacing:1}}>NDA-PK</b><div style={{fontSize:11,color:'#dbeafe'}}>HR Management System</div></div></div>
-        {[["dashboard","⌂","Dashboard",true],["bulk","⚡","Bulk & OCR",userRole.is_admin||userRole.can_use_bulk],["workers","♙","Workers Directory",userRole.is_admin||userRole.can_view_workers],["attendance","▣","Timesheet Entry",userRole.is_admin||userRole.can_view_timesheet],["daily-timesheet","▤","Daily Timesheet",userRole.is_admin||userRole.can_view_daily_timesheet],["monthly-timesheet","▦","Monthly Timesheet",userRole.is_admin||userRole.can_view_timesheet||userRole.can_view_payroll],["changepass","⚿","Change Password",userRole.is_admin],["sites","⌖","Working Sites",userRole.is_admin],["departments","▥","Departments",userRole.is_admin],["designations","⚒","Designations",userRole.is_admin],["payroll","＄","Payroll",userRole.is_admin||userRole.can_view_payroll],["permissions","♙","Permissions",userRole.is_admin],["annualLeave","🌴","Annual Leave",userRole.is_admin],["data-cleanup","▧","Data Cleanup",userRole.is_admin]].filter(x=>x[3]).map(([id,ico,label])=><button key={id} onClick={()=>{setActiveTab(id);if(!userRole.is_admin) void logActivity('Viewed module', `Staff opened ${label}`);if(id==='monthly-timesheet')setShowMonthlyTimesheetModal(true);}} style={{display:'flex',alignItems:'center',gap:13,textAlign:'left',padding:'12px 14px',border:0,borderRadius:10,background:activeTab===id?'linear-gradient(90deg,#0878f9,#1762d6)':'transparent',color:'#fff',fontWeight:activeTab===id?800:600,fontSize:14,cursor:'pointer',boxShadow:activeTab===id?'0 5px 14px #001b4b55':'none'}}><span style={{fontSize:21,width:25,textAlign:'center'}}>{ico}</span>{label}</button>)}
+        {[["dashboard","⌂","Dashboard",userRole.is_admin||userRole.can_view_dashboard],["bulk","⚡","Bulk & OCR",userRole.is_admin||userRole.can_use_bulk],["workers","♙","Workers Directory",userRole.is_admin||userRole.can_view_workers||userRole.can_add_workers||userRole.can_edit_workers||userRole.can_delete_workers],["attendance","▣","Timesheet Entry",userRole.is_admin||userRole.can_view_timesheet||userRole.can_edit_timesheet],["daily-timesheet","▤","Daily Timesheet",userRole.is_admin||userRole.can_view_daily_timesheet||userRole.can_edit_timesheet],["monthly-timesheet","▦","Monthly Timesheet",userRole.is_admin||userRole.can_view_timesheet||userRole.can_view_payroll],["changepass","⚿","Change Password",userRole.is_admin],["sites","⌖","Working Sites",userRole.is_admin],["departments","▥","Departments",userRole.is_admin],["designations","⚒","Designations",userRole.is_admin],["payroll","＄","Payroll",userRole.is_admin||userRole.can_view_payroll],["permissions","♙","Permissions",userRole.is_admin],["annualLeave","🌴","Annual Leave",userRole.is_admin],["data-cleanup","▧","Data Cleanup",userRole.is_admin]].filter(x=>x[3]).map(([id,ico,label])=><button key={id} onClick={()=>{setActiveTab(id);if(!userRole.is_admin) void logActivity('Viewed module', `Staff opened ${label}`);if(id==='monthly-timesheet')setShowMonthlyTimesheetModal(true);}} style={{display:'flex',alignItems:'center',gap:13,textAlign:'left',padding:'12px 14px',border:0,borderRadius:10,background:activeTab===id?'linear-gradient(90deg,#0878f9,#1762d6)':'transparent',color:'#fff',fontWeight:activeTab===id?800:600,fontSize:14,cursor:'pointer',boxShadow:activeTab===id?'0 5px 14px #001b4b55':'none'}}><span style={{fontSize:21,width:25,textAlign:'center'}}>{ico}</span>{label}</button>)}
         <div style={{flex:1,minHeight:12}}/>
         <button onClick={handleLogout} style={{padding:'13px',background:'#dc2626',color:'#fff',border:0,borderRadius:10,fontWeight:800,fontSize:14,cursor:'pointer'}}>⇥ Logout</button>
       </aside>
@@ -5446,6 +5524,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
             @page { size:A4 landscape; margin:8mm; }
             body * { visibility:hidden !important; }
             .nda-print-target, .nda-print-target * { visibility:visible !important; }
+            body.nda-printing > *:not(.nda-print-target) { display:none !important; }
             .nda-print-target { position:relative !important; left:auto !important; top:auto !important; width:100% !important; max-width:100% !important; margin:0 !important; padding:25mm 0 0 !important; background:#fff !important; color:#000 !important; box-shadow:none !important; border:0 !important; overflow:visible !important; }
             html, body, #root { height:auto !important; min-height:0 !important; overflow:visible !important; }
             .nda-print-target table { page-break-inside:auto !important; break-inside:auto !important; }
@@ -5453,7 +5532,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
             .nda-print-target tfoot { display:table-footer-group !important; }
             .nda-print-target tr { page-break-inside:avoid !important; break-inside:avoid !important; }
             .nda-print-target h1, .nda-print-target h2, .nda-print-target h3 { page-break-after:avoid !important; break-after:avoid-page !important; }
-            .nda-print-target .no-print, .nda-print-target button, .nda-print-target input, .nda-print-target select, .nda-print-target textarea { display:none !important; }
+            .nda-print-target .no-print, .nda-print-target .business-brand-banner, .nda-print-target .water-brand-banner, .nda-print-target button, .nda-print-target input, .nda-print-target select, .nda-print-target textarea { display:none !important; }
             .nda-page-print-brand { display:flex !important; position:fixed !important; top:0 !important; left:0 !important; right:0 !important; z-index:9999 !important; align-items:center !important; justify-content:center !important; gap:14px !important; text-align:left !important; border-bottom:2px solid #c69227 !important; padding:0 0 8px !important; margin:0 !important; height:21mm !important; box-sizing:border-box !important; background:#fff !important; color:#0b2853 !important; }
             .nda-page-print-brand img { display:block !important; width:95px !important; height:58px !important; object-fit:contain !important; }
             .nda-page-print-brand .brand-title { font-size:18px !important; font-weight:800 !important; }
@@ -5492,7 +5571,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
           }
           @media print{.nda-sidebar,header,.no-print{display:none!important}.nda-main{margin:0!important;padding:0!important;background:#fff!important}.nda-print-brand{display:block!important;text-align:center!important;border-bottom:3px solid #c69227!important;padding:8px!important;margin-bottom:12px!important}.nda-print-brand img{height:48px!important;object-fit:contain!important}.nda-main *{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
         `}</style>
-        <div className="nda-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div style={{fontWeight:800,color:'#0b2853'}}>NDA-PK HR &amp; BUSINESS SYSTEM</div><div style={{fontSize:11}}>Together for a Better Workplace</div></div>
+        <div className="nda-print-brand"><img src="/nda-naveed-logo.png" alt="Logo"/></div>
         
         {/* Filters Bar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#fff', padding: '12px 18px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', flexWrap: 'wrap', gap: '10px' }}>
@@ -6337,6 +6416,7 @@ style={{
                     <td style={{ padding: '8px' }}>
                       <select
                         value={currentSite}
+                        disabled={!userRole.is_admin && !userRole.can_edit_timesheet}
                         onChange={(e) => {
                           const selectedSite = e.target.value;
                           setAttendanceData(prev => ({
@@ -6361,6 +6441,7 @@ style={{
                     <td style={{ padding: '8px' }}>
                       <select
                         value={record.status}
+                        disabled={!userRole.is_admin && !userRole.can_edit_timesheet}
                         onChange={(e) => {
                           const selectedStatus = e.target.value;
                           setAttendanceData(prev => ({
@@ -6385,6 +6466,7 @@ style={{
                     <td style={{ padding: '8px' }}>
                       <input
                         type="number"
+                        disabled={!userRole.is_admin && !userRole.can_edit_timesheet}
                         value={record.ot || 0}
                         onChange={(e) => {
                           const selectedOT = e.target.value;
@@ -6408,6 +6490,7 @@ style={{
                         type="number"
                         min="0"
                         step="0.5"
+                        disabled={!userRole.is_admin && !userRole.can_edit_timesheet}
                         value={record.contract_ot ?? record.contract_overtime_hours ?? 0}
                         onChange={(e) => {
                           const selectedContractOT = e.target.value;
@@ -6427,7 +6510,7 @@ style={{
                     </td>
 
                     <td style={{ padding: '8px' }}>
-                      <button
+                      {(userRole.is_admin || userRole.can_edit_timesheet) && <button
                         onClick={async () => {
                           const latestRecord = attendanceData[selectedTimesheetDate]?.[worker.id] || record;
                           const siteToSave = latestRecord.site || latestRecord.work_site || sitesList[0] || 'Sharjah Mamzar';
@@ -6455,7 +6538,7 @@ await handleSingleAttendanceChange(
                         }}
                       >
                         Update
-                      </button>
+                      </button>}
                     </td>
                   </tr>
                 );
@@ -6469,7 +6552,7 @@ await handleSingleAttendanceChange(
 )}
 
        {/* TAB 3: WORKERS DIRECTORY */}
-{activeTab === 'workers' && (userRole.is_admin || userRole.can_view_workers) && (
+{activeTab === 'workers' && (userRole.is_admin || userRole.can_view_workers || userRole.can_add_workers || userRole.can_edit_workers || userRole.can_delete_workers) && (
   <div>
     {(userRole.is_admin || userRole.can_add_workers || userRole.can_edit_workers) && (
       <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '25px' }}>
@@ -6536,7 +6619,7 @@ await handleSingleAttendanceChange(
 
     {/* WORKERS DIRECTORY TABLE */}
     <div id="hr-workers-print" style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
-      <div className="nda-page-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><div className="brand-title">NDA-PK — Workers Directory</div><div className="brand-subtitle">Workforce Management System</div></div></div>
+      <div className="nda-page-print-brand"><img src="/nda-naveed-logo.png" alt="Logo"/></div>
       <h3 style={{ margin: '0 0 15px 0' }}>👷 Workers Dictionary</h3>
       <div className="no-print" style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
         {[['all','All Workers'],['steel','All Steel Fixers'],['carpenter','All Carpenters'],['departments','All Departments']].map(([key,label])=><button key={key} type="button" onClick={()=>setWorkerDirectoryFilter(key)} style={{padding:'9px 13px',border:0,borderRadius:8,background:workerDirectoryFilter===key?'#0b2d5c':'#e8eef8',color:workerDirectoryFilter===key?'#fff':'#17345f',fontWeight:800,cursor:'pointer'}}>{label}</button>)}
@@ -6601,7 +6684,7 @@ await handleSingleAttendanceChange(
        
 {/* TAB 4: TIMESHEET */}
 {activeTab === 'attendance' &&
- (userRole.is_admin || userRole.can_view_timesheet) &&
+ (userRole.is_admin || userRole.can_view_timesheet || userRole.can_edit_timesheet) &&
  (() => {
    const getRecord = worker =>
      attendanceData[selectedTimesheetDate]?.[worker.id] ||
@@ -6834,7 +6917,7 @@ await handleSingleAttendanceChange(
                    </td>
 
                    <td style={{ padding: '10px' }}>
-                     <button
+                     {(userRole.is_admin || userRole.can_edit_timesheet) && <button
                        onClick={() => {
                          const dropdown = document.getElementById(`status-${worker.id}`);
                          handleMarkAttendance(
@@ -6853,7 +6936,7 @@ await handleSingleAttendanceChange(
                        }}
                      >
                        Update
-                     </button>
+                     </button>}
                    </td>
                  </tr>
                );
@@ -6866,14 +6949,14 @@ await handleSingleAttendanceChange(
  })()}
               
         {/* TAB 5A: DAILY TIMESHEET */}
-        {activeTab === 'daily-timesheet' && (userRole.is_admin || userRole.can_view_daily_timesheet) && (
+        {activeTab === 'daily-timesheet' && (userRole.is_admin || userRole.can_view_daily_timesheet || userRole.can_edit_timesheet) && (
          <div
   className="daily-timesheet-print"
   id="hr-daily-timesheet-print"
   style={{ padding: '20px', background: '#fff', borderRadius: '8px' }}
 >
   
-  <div className="nda-page-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><div className="brand-title">NDA-PK — Daily Timesheet</div><div className="brand-subtitle">Date: {selectedTimesheetDate} · Department: {selectedDeptFilter}</div></div></div>
+  <div className="nda-page-print-brand"><img src="/nda-naveed-logo.png" alt="Logo"/></div>
   <style>{dailyTimesheetPrintStyle}</style>
 
             <h2 className="no-print">📄 Daily Timesheet</h2>
@@ -7070,7 +7153,7 @@ const workerSite = record.site || record.work_site || '';
       boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
     }}
   >
-<div className="nda-page-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><div className="brand-title">NDA-PK — Payroll Sheet</div><div className="brand-subtitle">Salary Month: {salaryMonthLabel} ({salaryMonthStartDate} to {salaryMonthEndDate}) · OT Period: {payrollPeriodStartDate} to {payrollPeriodEndDate}</div></div></div>
+<div className="nda-page-print-brand"><img src="/nda-naveed-logo.png" alt="Logo"/></div>
  <style>{`
   @page {
     size: A4 landscape;
@@ -7959,7 +8042,7 @@ accruedDays = balance.toFixed(1);
         {/* 📊 MONTHLY TIMESHEET MODAL WITH SEARCH, DEPT FILTER & VIEW/PRINT OPTIONS */}
 {activeTab === 'monthly-timesheet' && (userRole.is_admin || userRole.can_view_timesheet || userRole.can_view_payroll) && (
   <section id="hr-monthly-timesheet-print" className="monthly-timesheet-page" style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', width: '100%', maxWidth: 'none', minHeight: '70vh', boxSizing: 'border-box', boxShadow: '0 2px 8px rgba(15,23,42,.06)' }}>
-      <div className="nda-page-print-brand"><img src="/nda-naveed-logo.png" alt="NDA-PK"/><div><div className="brand-title">NDA-PK — Monthly Timesheet</div><div className="brand-subtitle">Monthly Worker Attendance Report</div></div></div>
+      <div className="nda-page-print-brand"><img src="/nda-naveed-logo.png" alt="Logo"/></div>
       
       {/* Modal Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
