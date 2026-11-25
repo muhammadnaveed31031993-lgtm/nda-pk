@@ -4120,7 +4120,7 @@ async function handleToggleHolidayDate() {
     }
     setEditingWorkerId(worker.id);
     void logActivity('Viewed worker record', `Worker #${worker.worker_id || worker.id} — ${worker.name || 'Unnamed'}, ${worker.department || ''} / ${worker.designation || ''}`);
-    setWorkerIdInput(worker.id);
+    setWorkerIdInput(String(worker.worker_id ?? worker.id));
     setJoiningDate(worker.joining_date || '');
     setName(worker.name);
     setDepartment(worker.department || departmentsList[0]);
@@ -4172,11 +4172,17 @@ async function handleToggleHolidayDate() {
       }
     }
     if (!name.trim() || !monthlySalary) return alert('Name and Salary required!');
+    if (workerIdInput.trim() !== '') {
+      const enteredWorkerId = String(Number(workerIdInput));
+      const duplicateWorker = workers.find(w => String(w.worker_id ?? w.id) === enteredWorkerId && String(w.id) !== String(editingWorkerId || ''));
+      if (duplicateWorker) return alert('Ye Worker ID pehle se mojood hai. Har worker ka ID alag hona chahiye.');
+    }
 
     const monthlyNum = Number(monthlySalary);
     const dailyRateCalc = monthlyNum / totalDaysInCurrentMonth;
 
     const workerData = {
+      worker_id: workerIdInput.trim() === '' ? null : Number(workerIdInput),
       name: name.trim(),
       department: department.trim(),
       designation: designation.trim(),
@@ -4201,7 +4207,7 @@ async function handleToggleHolidayDate() {
         .from('workers')
         .update(workerData)
         .eq('id', targetWorkerId)
-        .select('id, name, designation');
+        .select('id, worker_id, name, designation');
 
       if (error) {
         alert('Worker update nahi hua: ' + error.message);
@@ -4210,26 +4216,25 @@ async function handleToggleHolidayDate() {
         await fetchWorkers();
       } else {
         const savedWorker = updatedRows[0];
-        if (String(savedWorker.designation || '').trim().toLowerCase() !== String(workerData.designation || '').trim().toLowerCase()) {
-          alert('Designation database mein expected value se different save hui. Selected: ' + workerData.designation + ', Database: ' + (savedWorker.designation || 'blank'));
+        if (String(savedWorker.designation || '').trim().toLowerCase() !== String(workerData.designation || '').trim().toLowerCase() || String(savedWorker.worker_id ?? '') !== String(workerData.worker_id ?? '')) {
+          alert('Worker update database se verify nahi hua. Selected Worker ID: ' + (workerData.worker_id ?? 'blank') + ', Database Worker ID: ' + (savedWorker.worker_id ?? 'blank') + '. Supabase column / RLS check karein.');
           await fetchWorkers();
         } else {
           setWorkers(prev => prev.map(w => String(w.id) === String(targetWorkerId) ? { ...w, ...workerData } : w));
-          alert('Worker #' + targetWorkerId + ' updated successfully. Designation: ' + savedWorker.designation);
+          alert('Worker details aur Worker ID successfully update ho gaye. New Worker ID: ' + (savedWorker.worker_id ?? savedWorker.id));
           void logActivity('Worker updated', `Worker #${targetWorkerId}: ${workerData.name}, ${workerData.department}, designation ${workerData.designation}`);
           resetWorkerForm();
           await fetchWorkers();
         }
       }
     } else {
-      const nextAutoId = workers.length > 0 ? Math.max(...workers.map(w => Number(w.id) || 0)) + 1 : 1;
-      const finalWorkerId = workerIdInput ? Number(workerIdInput) : nextAutoId;
-
-      const { error } = await supabase.from('workers').insert([{ id: finalWorkerId, ...workerData }]);
+      // Internal primary key remains independent from the editable display Worker ID.
+      const nextInternalId = workers.length > 0 ? Math.max(...workers.map(w => Number(w.id) || 0)) + 1 : 1;
+      const { error } = await supabase.from('workers').insert([{ id: nextInternalId, ...workerData }]);
       if (error) alert('Error: ' + error.message);
       else {
         alert('New Worker added successfully!');
-        void logActivity('Worker added', `Worker #${finalWorkerId}: ${workerData.name}, ${workerData.department}, designation ${workerData.designation}`);
+        void logActivity('Worker added', `Worker #${workerData.worker_id ?? nextInternalId}: ${workerData.name}, ${workerData.department}, designation ${workerData.designation}`);
         resetWorkerForm();
         fetchWorkers();
       }
@@ -5936,8 +5941,8 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
                <button onClick={() => setAttendanceListModal(null)} style={{ padding: '8px 12px', border: 0, borderRadius: 7, background: '#e2e8f0', cursor: 'pointer' }}>Close</button>
              </div>
              {attendanceListModal.workers.length === 0 ? <p>{isHolidayDate(selectedTimesheetDate) ? 'Holiday hai; is date par Present/Absent/Leave count nahi hota.' : 'Is status mein koi worker nahi.'}</p> : (
-               <div style={{ overflowX: 'auto', marginTop: 14 }}><table style={tableStyle}><thead><tr><th style={thStyle}>ID</th><th style={thStyle}>Worker Name</th><th style={thStyle}>Designation</th><th style={thStyle}>Department</th><th style={thStyle}>Site</th></tr></thead><tbody>
-                 {attendanceListModal.workers.map(w => <tr key={w.id}><td style={tdStyle}>{w.worker_id || w.employee_id || w.id_no || w.id}</td><td style={tdStyle}>{w.name || w.worker_name || '—'}</td><td style={tdStyle}>{w.designation || '—'}</td><td style={tdStyle}>{w.department || '—'}</td><td style={tdStyle}>{attendanceData[selectedTimesheetDate]?.[w.id]?.site || attendanceData[selectedTimesheetDate]?.[w.id]?.work_site || '—'}</td></tr>)}
+               <div style={{ overflowX: 'auto', marginTop: 14 }}><table style={tableStyle}><thead><tr><th style={thStyle}>S.No</th><th style={thStyle}>ID</th><th style={thStyle}>Worker Name</th><th style={thStyle}>Designation</th><th style={thStyle}>Department</th><th style={thStyle}>Site</th></tr></thead><tbody>
+                 {attendanceListModal.workers.map((w, index) => <tr key={w.id}><td style={tdStyle}>{index + 1}</td><td style={tdStyle}>{w.worker_id || w.employee_id || w.id_no || w.id}</td><td style={tdStyle}>{w.name || w.worker_name || '—'}</td><td style={tdStyle}>{w.designation || '—'}</td><td style={tdStyle}>{w.department || '—'}</td><td style={tdStyle}>{attendanceData[selectedTimesheetDate]?.[w.id]?.site || attendanceData[selectedTimesheetDate]?.[w.id]?.work_site || '—'}</td></tr>)}
                </tbody></table></div>
              )}
            </div>
@@ -6386,6 +6391,7 @@ style={{
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
           <thead>
             <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #cbd5e1', textAlign: 'left' }}>
+              <th style={{ padding: '8px' }}>S.No</th>
               <th style={{ padding: '8px' }}>ID</th>
               <th style={{ padding: '8px' }}>Worker Name</th>
               <th style={{ padding: '8px' }}>Designation</th>
@@ -6403,12 +6409,13 @@ style={{
                 const deptMatch = bulkDepartment === 'All' || String(w.department || '').toLowerCase() === String(bulkDepartment).toLowerCase();
                 return deptMatch;
               })
-              .map((worker) => {
+              .map((worker, index) => {
                 const record = attendanceData[selectedTimesheetDate]?.[worker.id] || { status: 'Present', ot: 0 };
                 const currentSite = record.site || record.work_site || sitesList[0] || 'Sharjah Mamzar';
 
                 return (
                   <tr key={worker.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '8px', fontWeight: 700, color: '#475569' }}>{index + 1}</td>
                     <td style={{ padding: '8px', fontWeight: 'bold' }}>{worker.worker_id || worker.id}</td>
                     <td style={{ padding: '8px' }}>{worker.name}</td>
                     <td style={{ padding: '8px', color: '#64748b' }}>{worker.designation || '-'}</td>
@@ -6556,11 +6563,11 @@ await handleSingleAttendanceChange(
   <div>
     {(userRole.is_admin || userRole.can_add_workers || userRole.can_edit_workers) && (
       <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '25px' }}>
-        <h3 style={{ margin: '0 0 15px 0' }}>{editingWorkerId ? `✏️ Edit Worker #${editingWorkerId}` : '➕ Add New Worker'}</h3>
+        <h3 style={{ margin: '0 0 15px 0' }}>{editingWorkerId ? `✏️ Edit Worker #${workerIdInput || editingWorkerId}` : '➕ Add New Worker'}</h3>
         <form onSubmit={handleSaveWorker}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Worker ID</label>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Worker ID / Number</label>
               <input type="number" value={workerIdInput} onChange={e => setWorkerIdInput(e.target.value)} placeholder="e.g. 101" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
             </div>
             <div>
@@ -6629,7 +6636,8 @@ await handleSingleAttendanceChange(
       <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
         <thead>
           <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
-            <th style={{ padding: '10px' }}>ID & Name</th>
+            <th style={{ padding: '10px' }}>S.No</th>
+            <th style={{ padding: '10px' }}>Worker ID & Name</th>
             <th style={{ padding: '10px' }}>Dept / Designation</th>
             <th style={{ padding: '10px' }}>Salary</th>
             <th style={{ padding: '10px' }}>Documents View</th>
@@ -6637,9 +6645,10 @@ await handleSingleAttendanceChange(
           </tr>
         </thead>
         <tbody>
-          {(userRole.is_admin&&workerDirectoryFilter==='departments'?workers:filteredWorkers).filter(w=>{const d=(String(w.department||'')+' '+String(w.designation||'')).toLowerCase();return workerDirectoryFilter==='all'||workerDirectoryFilter==='departments'||(workerDirectoryFilter==='steel'&&d.includes('steel'))||(workerDirectoryFilter==='carpenter'&&d.includes('carpenter'));}).map(w => (
+          {(userRole.is_admin&&workerDirectoryFilter==='departments'?workers:filteredWorkers).filter(w=>{const d=(String(w.department||'')+' '+String(w.designation||'')).toLowerCase();return workerDirectoryFilter==='all'||workerDirectoryFilter==='departments'||(workerDirectoryFilter==='steel'&&d.includes('steel'))||(workerDirectoryFilter==='carpenter'&&d.includes('carpenter'));}).map((w, index) => (
             <tr key={w.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-              <td style={{ padding: '10px', fontWeight: 'bold' }}>#{w.id} - {w.name}</td>
+              <td style={{ padding: '10px', fontWeight: 700, color: '#475569' }}>{index + 1}</td>
+              <td style={{ padding: '10px', fontWeight: 'bold' }}>#{w.worker_id || w.id} - {w.name}</td>
               <td style={{ padding: '10px' }}>{w.department} <br/><span style={{fontSize: '11px', color: '#64748b'}}>{w.designation || 'Worker'}</span></td>
               <td style={{ padding: '10px' }}>{w.monthly_salary} {w.currency || selectedCurrency}</td>
               <td style={{ padding: '10px', minWidth: 220 }}>
@@ -6832,6 +6841,7 @@ await handleSingleAttendanceChange(
                color: '#fff',
                textAlign: 'left'
              }}>
+               <th style={{ padding: '10px' }}>S.No</th>
                <th style={{ padding: '10px' }}>Worker</th>
                <th style={{ padding: '10px' }}>Department</th>
                <th style={{ padding: '10px' }}>Site</th>
@@ -6842,7 +6852,7 @@ await handleSingleAttendanceChange(
            </thead>
 
            <tbody>
-             {reportWorkers.map(worker => {
+             {reportWorkers.map((worker, index) => {
                const record = getRecord(worker);
                const savedStatus = record.status || (reportIsHoliday ? 'Holiday' : 'Absent');
                const savedSite = getSite(worker);
@@ -6854,8 +6864,9 @@ await handleSingleAttendanceChange(
                    backgroundColor: ['annual leave','sick leave','leave','other leave'].includes(savedStatus.toLowerCase()) ? '#ffedd5' : savedStatus.toLowerCase() === 'absent' ? '#fee2e2' : ['holiday','holiday present'].includes(savedStatus.toLowerCase()) ? '#fef08a' : 'transparent',
                    color: ['annual leave','sick leave','leave','other leave'].includes(savedStatus.toLowerCase()) ? '#9a3412' : savedStatus.toLowerCase() === 'absent' ? '#991b1b' : 'inherit'
                  }}>
+                   <td style={{ padding: '10px', fontWeight: 700, color: '#475569' }}>{index + 1}</td>
                    <td style={{ padding: '10px', fontWeight: 'bold' }}>
-                     #{worker.id} - {worker.name}
+                     #{worker.worker_id || worker.id} - {worker.name}
                      <div style={{
                        fontSize: '11px',
                        color: '#64748b',
@@ -7672,7 +7683,7 @@ const workerSite = record.site || record.work_site || '';
                       <select value={leaveWorkerId} onChange={e => setLeaveWorkerId(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required>
                         <option value="">Choose Worker...</option>
                         {filteredWorkers.map(w => (
-                          <option key={w.id} value={w.id}>#{w.id} - {w.name} ({w.department})</option>
+                          <option key={w.id} value={w.id}>#{w.worker_id || w.id} - {w.name} ({w.department})</option>
                         ))}
                       </select>
                     </div>
@@ -7955,8 +7966,8 @@ accruedDays = balance.toFixed(1);
               <section style={{ background: '#fff', padding: 18, border: '1px solid #cbd5e1', borderRadius: 10, overflowX: 'auto' }}>
                 <h3 style={{ marginTop: 0 }}>Leave Count — All Workers</h3>
                 <p style={{ color: '#475569', fontSize: 13 }}>Annual leave count last vacation se wapsi ki date se dobara shuru hota hai. Leave salary paid-up date agar is se baad ho to woh date use hogi. UAE rule: 6 mahine se zyada aur 1 saal se kam service par 2 din per month; 1 saal complete hone ke baad 30 din per year. Har worker ki last return date yahan save karein.</p>
-                <table style={tableStyle}><thead><tr><th style={thStyle}>Worker</th><th style={thStyle}>Joining Date</th><th style={thStyle}>Last Leave Salary Date</th><th style={thStyle}>Last Vacation Return Date</th><th style={thStyle}>Earned Days</th><th style={thStyle}>Leave Used</th><th style={thStyle}>Available Balance</th></tr></thead><tbody>
-                  {filteredWorkers.map(w => {
+                <table style={tableStyle}><thead><tr><th style={thStyle}>S.No</th><th style={thStyle}>Worker</th><th style={thStyle}>Joining Date</th><th style={thStyle}>Last Leave Salary Date</th><th style={thStyle}>Last Vacation Return Date</th><th style={thStyle}>Earned Days</th><th style={thStyle}>Leave Used</th><th style={thStyle}>Available Balance</th></tr></thead><tbody>
+                  {filteredWorkers.map((w, index) => {
                     const emp = employmentRecords.find(r => String(r.worker_id) === String(w.id)) || {};
                     const salaryRecords = leaveSalaryRecords.filter(r => String(r.worker_id) === String(w.id)).sort((a,b) => String(b.leave_salary_last_date || '').localeCompare(String(a.leave_salary_last_date || '')));
                     const latestSalaryRecord = salaryRecords[0];
@@ -7985,7 +7996,7 @@ accruedDays = balance.toFixed(1);
                     const used = workerLeaveRows.filter(l => l.start_date && l.start_date >= (accrualStart || '9999-12-31') && l.start_date <= todayString).reduce((sum,l) => { const end = l.actual_return && l.actual_return !== 'On Leave' ? l.actual_return : todayString; return sum + Math.max(0, Math.floor((new Date(end + 'T00:00:00') - new Date(l.start_date + 'T00:00:00')) / 86400000) + 1); }, 0);
                     const balance = Math.max(0, accrued - used);
                     const edit = employmentEdit[String(w.id)] || { joining_date: joinDate, cancellation_date: emp.cancellation_date || '', basic_salary: emp.basic_salary || w.basic_salary || '', unpaid_absence_days: emp.unpaid_absence_days || w.unpaid_absence_days || 0 };
-                    return <tr key={w.id}><td style={tdStyle}><b>#{w.worker_id || w.id} — {w.name}</b><div style={{ color: '#64748b', fontSize: 12 }}>{w.department} / {w.designation}</div></td><td style={tdStyle}><input type="date" value={edit.joining_date || ''} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, joining_date: e.target.value } }))} style={{ ...fieldStyle, minWidth: 145, padding: 7 }} /><button onClick={() => saveEmploymentRecord(w.id)} style={{ marginTop: 5, padding: '5px 8px', background: '#2563eb', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer' }}>Save Joining Date</button></td><td style={tdStyle}>{latestSalaryRecord?.leave_salary_last_date || 'Never recorded'}</td><td style={tdStyle}><input type="date" value={savedLastReturn || ''} onChange={e => setLastReturnDateEdit(prev => ({ ...prev, [String(w.id)]: e.target.value }))} style={{ ...fieldStyle, minWidth: 145, padding: 7 }} /><button onClick={() => saveLastVacationReturnDate(w.id)} style={{ marginTop: 5, padding: '5px 8px', background: '#047857', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer' }}>Save Return Date</button></td><td style={tdStyle}>{accrued.toFixed(1)} days</td><td style={tdStyle}>{used.toFixed(1)} days</td><td style={tdStyle}><b style={{ color: '#15803d', background: '#dcfce7', padding: '5px 8px', borderRadius: 6 }}>{balance.toFixed(1)} days</b></td></tr>;
+                    return <tr key={w.id}><td style={tdStyle}>{index + 1}</td><td style={tdStyle}><b>#{w.worker_id || w.id} — {w.name}</b><div style={{ color: '#64748b', fontSize: 12 }}>{w.department} / {w.designation}</div></td><td style={tdStyle}><input type="date" value={edit.joining_date || ''} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, joining_date: e.target.value } }))} style={{ ...fieldStyle, minWidth: 145, padding: 7 }} /><button onClick={() => saveEmploymentRecord(w.id)} style={{ marginTop: 5, padding: '5px 8px', background: '#2563eb', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer' }}>Save Joining Date</button></td><td style={tdStyle}>{latestSalaryRecord?.leave_salary_last_date || 'Never recorded'}</td><td style={tdStyle}><input type="date" value={savedLastReturn || ''} onChange={e => setLastReturnDateEdit(prev => ({ ...prev, [String(w.id)]: e.target.value }))} style={{ ...fieldStyle, minWidth: 145, padding: 7 }} /><button onClick={() => saveLastVacationReturnDate(w.id)} style={{ marginTop: 5, padding: '5px 8px', background: '#047857', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer' }}>Save Return Date</button></td><td style={tdStyle}>{accrued.toFixed(1)} days</td><td style={tdStyle}>{used.toFixed(1)} days</td><td style={tdStyle}><b style={{ color: '#15803d', background: '#dcfce7', padding: '5px 8px', borderRadius: 6 }}>{balance.toFixed(1)} days</b></td></tr>;
                   })}
                 </tbody></table>
               </section>
@@ -7998,21 +8009,21 @@ accruedDays = balance.toFixed(1);
                   <label style={{ fontSize: 12, fontWeight: 700 }}>Amount (AED, optional)<input type="number" min="0" step="0.01" value={leaveSalaryAmount} onChange={e => setLeaveSalaryAmount(e.target.value)} style={fieldStyle} /></label>
                   <button type="submit" style={{ ...primaryStyle, background: '#047857' }}>Leave Salary Received</button>
                 </form>
-                <div style={{ marginTop: 14, overflowX: 'auto' }}><table style={tableStyle}><thead><tr><th style={thStyle}>Worker</th><th style={thStyle}>Paid Up To</th><th style={thStyle}>Amount</th><th style={thStyle}>Recorded</th></tr></thead><tbody>{leaveSalaryRecords.filter(r => annualLeaveScopedWorkerIds.has(String(r.worker_id))).map(r => <tr key={r.id}><td style={tdStyle}>{workers.find(w => String(w.id) === String(r.worker_id))?.name || `Worker #${r.worker_id}`}</td><td style={tdStyle}>{r.leave_salary_last_date}</td><td style={tdStyle}>{Number(r.amount || 0).toFixed(2)} AED</td><td style={tdStyle}>{r.received_at ? String(r.received_at).slice(0,10) : ''}</td></tr>)}{!leaveSalaryRecords.length && <tr><td colSpan="4" style={tdStyle}>No leave salary records yet.</td></tr>}</tbody></table></div>
+                <div style={{ marginTop: 14, overflowX: 'auto' }}><table style={tableStyle}><thead><tr><th style={thStyle}>S.No</th><th style={thStyle}>Worker</th><th style={thStyle}>Paid Up To</th><th style={thStyle}>Amount</th><th style={thStyle}>Recorded</th></tr></thead><tbody>{leaveSalaryRecords.filter(r => annualLeaveScopedWorkerIds.has(String(r.worker_id))).map((r, index) => <tr key={r.id}><td style={tdStyle}>{index + 1}</td><td style={tdStyle}>{workers.find(w => String(w.id) === String(r.worker_id))?.name || `Worker #${r.worker_id}`}</td><td style={tdStyle}>{r.leave_salary_last_date}</td><td style={tdStyle}>{Number(r.amount || 0).toFixed(2)} AED</td><td style={tdStyle}>{r.received_at ? String(r.received_at).slice(0,10) : ''}</td></tr>)}{!leaveSalaryRecords.length && <tr><td colSpan="5" style={tdStyle}>No leave salary records yet.</td></tr>}</tbody></table></div>
               </section>
             </div>}
 
             {annualManagementView === 'final' && <div style={{ background: '#fff', padding: 18, border: '1px solid #cbd5e1', borderRadius: 10, overflowX: 'auto' }}>
               <h3 style={{ marginTop: 0 }}>Final Calculation — UAE Private-Sector Gratuity Estimate</h3>
               <p style={{ color: '#475569', fontSize: 13 }}>Estimate basic salary par hota hai, total salary par zaroori nahi. App mein joining date, cancellation/last working date aur basic salary save karein. General full-time formula: 1 saal se kam service par gratuity nahi; pehle 5 saal ke liye har saal 21 din basic wage, 5 saal ke baad har additional saal 30 din, aur total cap 2 saal ki basic wage. Final payment se pehle HR/UAE labour guidance se verify karein.</p>
-              <table style={tableStyle}><thead><tr><th style={thStyle}>Worker</th><th style={thStyle}>Joining Date</th><th style={thStyle}>Cancellation / Last Date</th><th style={thStyle}>Basic Salary AED</th><th style={thStyle}>Unpaid Absence Days</th><th style={thStyle}>Service</th><th style={thStyle}>Gratuity Days</th><th style={thStyle}>Estimated Gratuity AED</th><th style={thStyle}>Actions</th></tr></thead><tbody>
-                {filteredWorkers.map(w => {
+              <table style={tableStyle}><thead><tr><th style={thStyle}>S.No</th><th style={thStyle}>Worker</th><th style={thStyle}>Joining Date</th><th style={thStyle}>Cancellation / Last Date</th><th style={thStyle}>Basic Salary AED</th><th style={thStyle}>Unpaid Absence Days</th><th style={thStyle}>Service</th><th style={thStyle}>Gratuity Days</th><th style={thStyle}>Estimated Gratuity AED</th><th style={thStyle}>Actions</th></tr></thead><tbody>
+                {filteredWorkers.map((w, index) => {
                   const emp = employmentRecords.find(r => String(r.worker_id) === String(w.id)) || {};
                   const edit = employmentEdit[String(w.id)] || { joining_date: emp.joining_date || w.joining_date || w.start_date || (w.created_at ? String(w.created_at).slice(0,10) : ''), cancellation_date: emp.cancellation_date || '', basic_salary: emp.basic_salary || w.basic_salary || '', unpaid_absence_days: emp.unpaid_absence_days ?? w.unpaid_absence_days ?? 0 };
                   const endDate = edit.cancellation_date || finalCalcDate;
                   const basic = Math.max(0, Number(edit.basic_salary || 0));
                   const calc = calculateUAEGratuity(edit.joining_date, endDate, basic, edit.unpaid_absence_days || 0);
-                  return <tr key={w.id}><td style={tdStyle}><b>#{w.worker_id || w.id} — {w.name}</b></td><td style={tdStyle}><input type="date" value={edit.joining_date || ''} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, joining_date: e.target.value } }))} style={{ ...fieldStyle, minWidth: 140, padding: 7 }} /></td><td style={tdStyle}><input type="date" value={edit.cancellation_date || ''} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, cancellation_date: e.target.value } }))} style={{ ...fieldStyle, minWidth: 140, padding: 7 }} /><div style={{ fontSize: 11, color: '#64748b' }}>Blank = current date</div></td><td style={tdStyle}><input type="number" min="0" step="0.01" value={edit.basic_salary || ''} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, basic_salary: e.target.value } }))} style={{ ...fieldStyle, minWidth: 110, padding: 7 }} /></td><td style={tdStyle}><input type="number" min="0" step="1" value={edit.unpaid_absence_days || 0} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, unpaid_absence_days: e.target.value } }))} style={{ ...fieldStyle, minWidth: 90, padding: 7 }} /></td><td style={tdStyle}>{calc.serviceYears.toFixed(2)} years</td><td style={tdStyle}>{calc.gratuityDays.toFixed(1)}</td><td style={tdStyle}><b>{calc.amount.toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} AED</b></td><td style={tdStyle}><div style={{ display: 'flex', gap: 6 }}><button onClick={() => setGratuityViewWorkerId(String(w.id))} style={{ padding: '7px 10px', background: '#0f766e', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer' }}>View</button><button onClick={() => saveEmploymentRecord(w.id)} style={{ padding: '7px 10px', background: '#2563eb', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer' }}>Save</button></div></td></tr>;
+                  return <tr key={w.id}><td style={tdStyle}>{index + 1}</td><td style={tdStyle}><b>#{w.worker_id || w.id} — {w.name}</b></td><td style={tdStyle}><input type="date" value={edit.joining_date || ''} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, joining_date: e.target.value } }))} style={{ ...fieldStyle, minWidth: 140, padding: 7 }} /></td><td style={tdStyle}><input type="date" value={edit.cancellation_date || ''} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, cancellation_date: e.target.value } }))} style={{ ...fieldStyle, minWidth: 140, padding: 7 }} /><div style={{ fontSize: 11, color: '#64748b' }}>Blank = current date</div></td><td style={tdStyle}><input type="number" min="0" step="0.01" value={edit.basic_salary || ''} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, basic_salary: e.target.value } }))} style={{ ...fieldStyle, minWidth: 110, padding: 7 }} /></td><td style={tdStyle}><input type="number" min="0" step="1" value={edit.unpaid_absence_days || 0} onChange={e => setEmploymentEdit(prev => ({ ...prev, [String(w.id)]: { ...edit, unpaid_absence_days: e.target.value } }))} style={{ ...fieldStyle, minWidth: 90, padding: 7 }} /></td><td style={tdStyle}>{calc.serviceYears.toFixed(2)} years</td><td style={tdStyle}>{calc.gratuityDays.toFixed(1)}</td><td style={tdStyle}><b>{calc.amount.toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} AED</b></td><td style={tdStyle}><div style={{ display: 'flex', gap: 6 }}><button onClick={() => setGratuityViewWorkerId(String(w.id))} style={{ padding: '7px 10px', background: '#0f766e', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer' }}>View</button><button onClick={() => saveEmploymentRecord(w.id)} style={{ padding: '7px 10px', background: '#2563eb', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer' }}>Save</button></div></td></tr>;
                 })}
               </tbody></table>
               <p style={{ color: '#64748b', fontSize: 12, marginTop: 12 }}>Current calculation date: {finalCalcDate}. <label>Calculation date <input type="date" value={finalCalcDate} onChange={e => setFinalCalcDate(e.target.value)} style={{ ...fieldStyle, width: 180, display: 'inline-block' }} /></label></p>
@@ -8105,6 +8116,7 @@ accruedDays = balance.toFixed(1);
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
           <thead>
             <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+              <th style={{ padding: '10px' }}>S.No</th>
               <th style={{ padding: '10px' }}>Worker ID & Name</th>
               <th style={{ padding: '10px' }}>Department</th>
               <th style={{ padding: '10px' }}>Attendance Sites</th>
@@ -8125,9 +8137,10 @@ accruedDays = balance.toFixed(1);
                   w.name.toLowerCase().includes(timesheetSearchQuery.toLowerCase());
                 return matchesDept && matchesSite && matchesSearch;
               })
-              .map(w => (
+              .map((w, index) => (
               <tr key={w.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                <td style={{ padding: '10px', fontWeight: 'bold' }}>#{w.id} - {w.name}</td>
+                <td style={{ padding: '10px', fontWeight: 700, color: '#475569' }}>{index + 1}</td>
+                <td style={{ padding: '10px', fontWeight: 'bold' }}>#{w.worker_id || w.id} - {w.name}</td>
                 <td style={{ padding: '10px' }}>{w.department}</td>
                 <td style={{ padding: '10px' }}>{[...new Set(attendance.filter(a => String(a.worker_id) === String(w.id) && String(a.date || '').slice(0,10) >= payrollStartDate && String(a.date || '').slice(0,10) <= payrollEndDate).map(a => a.work_site || a.site).filter(Boolean))].join(', ') || '—'}</td>
                 <td style={{ padding: '10px', minWidth: 180 }}>
@@ -8228,7 +8241,7 @@ accruedDays = balance.toFixed(1);
         <div>
           <h2 style={{ margin: '0 0 5px 0', fontSize: '20px', fontWeight: 'bold' }}>📄 Monthly Timesheet Details</h2>
           <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
-            Worker: <b>#{viewingWorkerTimesheet.id} - {viewingWorkerTimesheet.name}</b> | Dept: {viewingWorkerTimesheet.department} | Salary Period: {payrollPeriodStartDate} to {payrollPeriodEndDate}
+            Worker: <b>#{viewingWorkerTimesheet.worker_id || viewingWorkerTimesheet.id} - {viewingWorkerTimesheet.name}</b> | Dept: {viewingWorkerTimesheet.department} | Salary Period: {payrollPeriodStartDate} to {payrollPeriodEndDate}
           </p>
         </div>
         <button 
