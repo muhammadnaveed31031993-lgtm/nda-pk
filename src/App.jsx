@@ -668,19 +668,41 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem, onStaf
   async function fetchBusinessNotifications() {
     if (!admin || !session?.user?.email) return;
     const { data, error } = await supabase.from('activity_notifications')
-      .select('id,actor_email,actor_name,action,details,created_at,is_read')
+      .select('id,actor_email,actor_name,action,details,created_at,is_read,is_test')
       .eq('system_scope', 'business').eq('actor_is_admin', false)
       .order('created_at', { ascending: false }).limit(50);
-    if (error) { setBusinessNotificationError(error.message); return; }
+    if (error) { setBusinessNotificationError(`READ FAILED: ${[error.code, error.message, error.details, error.hint].filter(Boolean).join(' | ')}`); return; }
     setBusinessNotificationError('');
     setBusinessNotifications(data || []);
+  }
+
+  async function sendBusinessTestNotification() {
+    if (!admin || !session?.user?.email) return;
+    setBusinessNotificationError('Sending test notification...');
+    const { error } = await supabase.from('activity_notifications').insert([{
+      actor_email: String(session.user.email).toLowerCase(),
+      actor_name: 'SYSTEM TEST',
+      system_scope: 'business',
+      actor_is_admin: false,
+      is_test: true,
+      action: 'TEST NOTIFICATION',
+      details: 'Business notification write/read test. Yeh actual staff activity nahi hai.',
+      is_read: false
+    }]);
+    if (error) {
+      setBusinessNotificationError(`TEST INSERT FAILED: ${[error.code, error.message, error.details, error.hint].filter(Boolean).join(' | ')}`);
+      return;
+    }
+    await fetchBusinessNotifications();
+    setBusinessNotificationError('');
+    alert('Business test notification database mein save ho gayi. List mein SYSTEM TEST ke naam se nazar aani chahiye.');
   }
 
   async function markBusinessNotificationsRead() {
     const unread = businessNotifications.filter(n => !n.is_read).map(n => n.id);
     if (!unread.length) return;
     const { error } = await supabase.from('activity_notifications').update({ is_read: true }).in('id', unread);
-    if (error) { setBusinessNotificationError(error.message); return; }
+    if (error) { setBusinessNotificationError(`READ FAILED: ${[error.code, error.message, error.details, error.hint].filter(Boolean).join(' | ')}`); return; }
     setBusinessNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
   }
 
@@ -1425,10 +1447,10 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem, onStaf
               🔔 Staff Notifications {businessNotifications.filter(n => !n.is_read).length ? `(${businessNotifications.filter(n => !n.is_read).length})` : ''}
             </button>
             {businessNotificationOpen && <div style={{ position: 'absolute', right: 0, top: '48px', width: 'min(390px,88vw)', maxHeight: 420, overflowY: 'auto', background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 12px 30px rgba(0,0,0,.25)', zIndex: 10001, padding: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}><b>Business Staff Activity</b><button type="button" onClick={() => void fetchBusinessNotifications()} style={{ border: 0, background: '#e2e8f0', borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}>Refresh</button></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}><b>Business Staff Activity</b><div style={{display:'flex',gap:6}}><button type="button" onClick={() => void sendBusinessTestNotification()} style={{ border: 0, background: '#047857', color:'#fff', borderRadius: 6, padding: '5px 8px', cursor: 'pointer', fontWeight:700 }}>Test Notification</button><button type="button" onClick={() => void fetchBusinessNotifications()} style={{ border: 0, background: '#e2e8f0', borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}>Refresh</button></div></div>
               {businessNotificationError && <div style={{ padding: 9, color: '#991b1b', background: '#fee2e2', borderRadius: 6, fontSize: 12 }}>{businessNotificationError}</div>}
               {!businessNotifications.length && !businessNotificationError && <p style={{ fontSize: 13, color: '#64748b' }}>Abhi kisi staff ki activity notification nahi hai.</p>}
-              {businessNotifications.map(n => <div key={n.id} style={{ padding: '9px 4px', borderBottom: '1px solid #e2e8f0', background: n.is_read ? '#fff' : '#ecfdf5' }}><div style={{ fontWeight: 800, fontSize: 12 }}>{n.actor_name || n.actor_email} — {n.action}</div><div style={{ fontSize: 12, marginTop: 3 }}>{n.details || ''}</div><div style={{ fontSize: 10, color: '#64748b', marginTop: 4 }}>{n.actor_email} · {n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div></div>)}
+              {businessNotifications.map(n => <div key={n.id} style={{ padding: '9px 4px', borderBottom: '1px solid #e2e8f0', background: n.is_read ? '#fff' : '#ecfdf5' }}><div style={{ fontWeight: 800, fontSize: 12 }}>{n.is_test ? '🧪 TEST · ' : ''}{n.actor_name || n.actor_email} — {n.action}</div><div style={{ fontSize: 12, marginTop: 3 }}>{n.details || ''}</div><div style={{ fontSize: 10, color: '#64748b', marginTop: 4 }}>{n.actor_email} · {n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div></div>)}
             </div>}
           </div>}
           {!waterOnlyStaff && <button onClick={onSwitchSystem} style={{ ...btn, background: '#fff', color: '#065f46' }}>← Switch System</button>}
@@ -3597,16 +3619,38 @@ async function logActivity(action, details = '', actorEmailOverride = '', system
 async function fetchActivityNotifications() {
   if (!userRole.is_admin || !session) return;
   const { data, error } = await supabase.from('activity_notifications')
-    .select('id,actor_email,actor_name,action,details,created_at,is_read')
+    .select('id,actor_email,actor_name,action,details,created_at,is_read,is_test')
     .eq('system_scope', 'hr').eq('actor_is_admin', false)
     .order('created_at', { ascending: false }).limit(50);
   if (error) {
-    setNotificationLoadError(error.message);
+    setNotificationLoadError([error.code, error.message, error.details, error.hint].filter(Boolean).join(' | '));
     console.warn('Activity notifications are not configured:', error.message);
     return;
   }
   setNotificationLoadError('');
   setActivityNotifications(data || []);
+}
+
+async function sendHrTestNotification() {
+  if (!userRole?.is_admin || !session?.user?.email) return;
+  setNotificationSaveError('Sending test notification...');
+  const { error } = await supabase.from('activity_notifications').insert([{
+    actor_email: String(session.user.email).toLowerCase(),
+    actor_name: 'SYSTEM TEST',
+    system_scope: 'hr',
+    actor_is_admin: false,
+    is_test: true,
+    action: 'TEST NOTIFICATION',
+    details: 'HR notification write/read test. Yeh actual staff activity nahi hai.',
+    is_read: false
+  }]);
+  if (error) {
+    setNotificationSaveError(`TEST INSERT FAILED: ${[error.code, error.message, error.details, error.hint].filter(Boolean).join(' | ')}`);
+    return;
+  }
+  await fetchActivityNotifications();
+  setNotificationSaveError('');
+  alert('HR test notification database mein save ho gayi. List mein SYSTEM TEST ke naam se nazar aani chahiye.');
 }
 
 async function markActivityNotificationsRead() {
@@ -5712,12 +5756,12 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
           {userRole.is_admin && selectedSystem === 'hr' && <div style={{ position: 'relative' }}>
             <button type="button" onClick={() => { setNotificationPanelOpen(v => !v); if (!notificationPanelOpen) void markActivityNotificationsRead(); }} style={{ position: 'relative', padding: '8px 11px', background: notificationPanelOpen ? '#f8fafc' : 'rgba(255,255,255,.14)', color: notificationPanelOpen ? '#0f172a' : '#fff', border: '1px solid rgba(255,255,255,.35)', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 800 }} title="Staff activity notifications">🔔 Notifications {activityNotifications.filter(n => !n.is_read).length > 0 ? `(${activityNotifications.filter(n => !n.is_read).length})` : ''}</button>
             {notificationPanelOpen && <div style={{ position: 'absolute', right: 0, top: '44px', width: 'min(390px, 88vw)', maxHeight: 420, overflowY: 'auto', background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 12px 30px rgba(0,0,0,.25)', zIndex: 10001, padding: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}><b>Staff Activity</b><div style={{display:'flex',gap:6}}><button type="button" onClick={() => fetchActivityNotifications()} style={{ border: 0, background: '#e2e8f0', borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}>Refresh</button></div></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}><b>Staff Activity</b><div style={{display:'flex',gap:6}}><button type="button" onClick={() => void sendHrTestNotification()} style={{ border: 0, background: '#047857', color:'#fff', borderRadius: 6, padding: '5px 8px', cursor: 'pointer', fontWeight:700 }}>Test Notification</button><button type="button" onClick={() => fetchActivityNotifications()} style={{ border: 0, background: '#e2e8f0', borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}>Refresh</button></div></div>
               {notificationLoadError && <div style={{ padding: 9, color: '#991b1b', background: '#fee2e2', borderRadius: 6, fontSize: 12 }}>Notifications database setup required: {notificationLoadError}</div>}
               {notificationSaveError && <div style={{ padding: 9, color: '#991b1b', background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 6, fontSize: 12, marginTop: 6 }}><b>Notification INSERT error:</b><br/>{notificationSaveError}</div>}
               {!!activityNotifications.length && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '7px 0', borderBottom: '1px solid #e2e8f0', marginBottom: 4 }}><label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700 }}><input type="checkbox" checked={activityNotifications.length > 0 && activityNotifications.every(n => selectedNotificationIds.includes(n.id))} onChange={e => setSelectedNotificationIds(e.target.checked ? activityNotifications.map(n => n.id) : [])} /> Select All</label><button type="button" disabled={!selectedNotificationIds.length} onClick={deleteSelectedActivityNotifications} style={{ border: 0, background: selectedNotificationIds.length ? '#dc2626' : '#e2e8f0', color: selectedNotificationIds.length ? '#fff' : '#64748b', borderRadius: 6, padding: '6px 9px', cursor: selectedNotificationIds.length ? 'pointer' : 'not-allowed', fontWeight: 700 }}>Delete Selected ({selectedNotificationIds.length})</button></div>}
               {!activityNotifications.length && !notificationLoadError && <p style={{ fontSize: 13, color: '#64748b' }}>Abhi koi activity notification nahi.</p>}
-              {activityNotifications.map(n => <div key={n.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '9px 4px', borderBottom: '1px solid #e2e8f0', background: selectedNotificationIds.includes(n.id) ? '#fee2e2' : (n.is_read ? '#fff' : '#eff6ff') }}><input type="checkbox" checked={selectedNotificationIds.includes(n.id)} onChange={e => toggleActivityNotification(n.id, e.target.checked)} style={{ marginTop: 2 }} /><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontWeight: 800, fontSize: 12 }}>{n.actor_name || n.actor_email} — {n.action}</div><div style={{ fontSize: 12, marginTop: 3 }}>{n.details || ''}</div><div style={{ fontSize: 10, color: '#64748b', marginTop: 4 }}>{n.actor_email} · {n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div></div></div>)}
+              {activityNotifications.map(n => <div key={n.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '9px 4px', borderBottom: '1px solid #e2e8f0', background: selectedNotificationIds.includes(n.id) ? '#fee2e2' : (n.is_read ? '#fff' : '#eff6ff') }}><input type="checkbox" checked={selectedNotificationIds.includes(n.id)} onChange={e => toggleActivityNotification(n.id, e.target.checked)} style={{ marginTop: 2 }} /><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontWeight: 800, fontSize: 12 }}>{n.is_test ? '🧪 TEST · ' : ''}{n.actor_name || n.actor_email} — {n.action}</div><div style={{ fontSize: 12, marginTop: 3 }}>{n.details || ''}</div><div style={{ fontSize: 10, color: '#64748b', marginTop: 4 }}>{n.actor_email} · {n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div></div></div>)}
             </div>}
           </div>}
           <button onClick={() => setSelectedSystem(null)} style={{ padding: '8px 11px', backgroundColor: 'rgba(255,255,255,.14)', color: '#ffffff', border: '1px solid rgba(255,255,255,.35)', borderRadius: '7px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Switch System</button>
