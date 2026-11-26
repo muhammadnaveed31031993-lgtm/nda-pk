@@ -410,6 +410,10 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
   const [entryNotes, setEntryNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
+  const [attachments, setAttachments] = useState([]);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [attachmentLoading, setAttachmentLoading] = useState(false);
+  const [selectedAttachment, setSelectedAttachment] = useState(null);
   const activeFile = files.find(f => String(f.id) === String(activeFileId));
   const currency = activeFile?.currency || 'AED';
   const fmt = n => `${currency} ${Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
@@ -429,8 +433,16 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
     const {data,error}=await supabase.from('business_notebook_entries').select('*').eq('file_id',fileId).order('entry_date',{ascending:false}).order('created_at',{ascending:false});
     if(error){setErrorText(error.message);return;} setEntries(data||[]);
   }
+  async function loadAttachments(fileId=activeFileId) {
+    if (!fileId) { setAttachments([]); return; }
+    setAttachmentLoading(true);
+    const {data,error}=await supabase.from('business_notebook_attachments').select('*').eq('notebook_file_id',Number(fileId)).order('created_at',{ascending:false});
+    if(error){setAttachments([]);setErrorText('Documents list load nahi hui: '+error.message);setAttachmentLoading(false);return;}
+    setAttachments(data||[]);
+    setAttachmentLoading(false);
+  }
   useEffect(()=>{ if(isAdmin || businessId) void loadFiles(); },[businessId,isAdmin]);
-  useEffect(()=>{ if(activeFileId) void loadEntries(activeFileId); else setEntries([]); },[activeFileId]);
+  useEffect(()=>{ if(activeFileId) { void loadEntries(activeFileId); void loadAttachments(activeFileId); } else { setEntries([]); setAttachments([]); } },[activeFileId]);
 
   async function createFile(e) {
     e.preventDefault(); if(!isAdmin) return;
@@ -438,6 +450,53 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
     const {data,error}=await supabase.from('business_notebook_files').insert([{business_id:Number(businessId),file_name:newFileName.trim(),currency:newFileCurrency,owner_email:session?.user?.email||'',created_by:session?.user?.email||''}]).select('*').single();
     if(error) return alert('Notebook file save nahi hui: '+error.message);
     setNewFileName(''); await loadFiles(data.id); setActiveFileId(String(data.id));
+  }
+  async function uploadNotebookAttachment(e) {
+    e.preventDefault();
+    if(!isAdmin || !activeFile) return;
+    if(!selectedAttachment) return alert('Pehle upload karne ke liye file select karein.');
+    const file = selectedAttachment;
+    const maxBytes = 50 * 1024 * 1024;
+    if(file.size > maxBytes) return alert('File 50 MB se bari hai. Filhal maximum 50 MB per file allowed hai.');
+    setUploadingAttachment(true);
+    const safeName = String(file.name || 'document').replace(/[^a-zA-Z0-9._-]/g, '_').slice(-150) || 'document';
+    const uniquePart = `${Date.now()}-${Math.random().toString(36).slice(2,10)}`;
+    const storagePath = `notebook-docs/${activeFile.business_id}/${activeFile.id}/${uniquePart}-${safeName}`;
+    const {error: uploadError} = await supabase.storage.from('business-bills').upload(storagePath,file,{upsert:false,contentType:file.type || 'application/octet-stream'});
+    if(uploadError) { setUploadingAttachment(false); return alert('Document upload nahi hua: '+uploadError.message); }
+    const {error: rowError} = await supabase.from('business_notebook_attachments').insert([{
+      notebook_file_id:Number(activeFile.id),
+      business_id:Number(activeFile.business_id),
+      file_name:file.name,
+      storage_path:storagePath,
+      mime_type:file.type || 'application/octet-stream',
+      file_size:Number(file.size || 0),
+      uploaded_by:session?.user?.email || ''
+    }]);
+    if(rowError) {
+      const {error: cleanupError} = await supabase.storage.from('business-bills').remove([storagePath]);
+      setUploadingAttachment(false);
+      return alert('File storage mein upload hui lekin record save nahi hua: '+rowError.message+(cleanupError?'. Storage cleanup bhi fail hua: '+cleanupError.message:''));
+    }
+    setSelectedAttachment(null);
+    const inputEl = document.getElementById('naveed-doc-attachment-input');
+    if(inputEl) inputEl.value = '';
+    await loadAttachments(activeFile.id);
+    setUploadingAttachment(false);
+  }
+  async function openNotebookAttachment(row) {
+    if(!row?.storage_path) return;
+    const {data,error} = await supabase.storage.from('business-bills').createSignedUrl(row.storage_path,3600,{download:row.file_name});
+    if(error || !data?.signedUrl) return alert('File open nahi hui: '+(error?.message || 'Signed link nahi bana.'));
+    window.open(data.signedUrl,'_blank','noopener,noreferrer');
+  }
+  async function deleteNotebookAttachment(row) {
+    if(!isAdmin || !row || !window.confirm(`"${row.file_name}" ko permanently delete karna hai?`)) return;
+    const {error: storageError} = await supabase.storage.from('business-bills').remove([row.storage_path]);
+    if(storageError) return alert('Storage se file delete nahi hui: '+storageError.message);
+    const {error: rowError} = await supabase.from('business_notebook_attachments').delete().eq('id',row.id).eq('notebook_file_id',Number(activeFileId));
+    if(rowError) return alert('File storage se delete ho gayi lekin list record delete nahi hua: '+rowError.message);
+    await loadAttachments(activeFileId);
   }
   async function editPerson(person) {
     if (!can('can_manage_workers') || !person) return alert('Drivers/staff edit karne ki permission nahi hai.');
@@ -485,9 +544,16 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
   }
   async function deleteFile() {
     if(!isAdmin||!activeFile)return;
-    if(!window.confirm(`"${activeFile.file_name}" aur iski tamam entries permanently delete karni hain?`))return;
+    if(!window.confirm(`"${activeFile.file_name}", iski tamam entries aur attached documents permanently delete karne hain?`))return;
+    const {data: attachedRows,error: attachmentReadError}=await supabase.from('business_notebook_attachments').select('id,storage_path').eq('notebook_file_id',Number(activeFileId));
+    if(attachmentReadError)return alert('Attached documents ki list read nahi hui: '+attachmentReadError.message);
+    const paths=(attachedRows||[]).map(x=>x.storage_path).filter(Boolean);
+    if(paths.length){
+      const {error: storageDeleteError}=await supabase.storage.from('business-bills').remove(paths);
+      if(storageDeleteError)return alert('Attached documents storage se delete nahi hue: '+storageDeleteError.message);
+    }
     const {error}=await supabase.from('business_notebook_files').delete().eq('id',Number(activeFileId)).eq('business_id',Number(activeFile.business_id));
-    if(error)return alert(error.message); setActiveFileId(''); await loadFiles('');
+    if(error)return alert(error.message); setActiveFileId(''); setAttachments([]); await loadFiles('');
   }
   const received=entries.filter(x=>x.entry_type==='income').reduce((a,x)=>a+Number(x.amount||0),0);
   const spent=entries.filter(x=>x.entry_type==='expense').reduce((a,x)=>a+Number(x.amount||0),0);
@@ -501,6 +567,15 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
     <div style={{...panel,display:'flex',gap:10,alignItems:'end',flexWrap:'wrap'}}><label style={{flex:'1 1 220px'}}>Open Notebook File<select style={{...input,marginTop:5}} value={activeFileId} onChange={e=>setActiveFileId(e.target.value)}><option value="">Select file</option>{files.map(f=><option key={f.id} value={f.id}>{f.file_name} ({f.currency})</option>)}</select></label>{activeFile&&isAdmin&&<button onClick={deleteFile} style={{...primaryStyle,width:'auto',background:'#b91c1c'}}>Delete File</button>}</div>
     {activeFile&&<>
       <div style={{...panel,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}><div><small>Received Amount</small><h2 style={{margin:'5px 0',color:'#047857'}}>{fmt(received)}</h2></div><div><small>Total Expenses</small><h2 style={{margin:'5px 0',color:'#b91c1c'}}>{fmt(spent)}</h2></div><div><small>Remaining Balance</small><h2 style={{margin:'5px 0',color:balance<0?'#b91c1c':'#1d4ed8'}}>{fmt(balance)}</h2></div></div>
+      <div style={panel}>
+        <h3 style={{marginTop:0}}>📎 Documents / Attachments</h3>
+        {isAdmin&&<form onSubmit={uploadNotebookAttachment} style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',marginBottom:12}}>
+          <input id="naveed-doc-attachment-input" type="file" onChange={e=>setSelectedAttachment(e.target.files?.[0]||null)} style={{...input,flex:'1 1 220px'}} />
+          <button type="submit" disabled={uploadingAttachment||!selectedAttachment} style={{...primaryStyle,width:'auto',opacity:uploadingAttachment||!selectedAttachment?0.6:1}}>{uploadingAttachment?'Uploading...':'⬆ Upload File'}</button>
+          <small style={{width:'100%',color:'#64748b'}}>PDF, Word, Excel, images ya doosri file types · Maximum 50 MB per file</small>
+        </form>}
+        {attachmentLoading?<div style={{color:'#64748b'}}>Documents load ho rahe hain...</div>:attachments.length?<div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['File Name','Type','Size','Upload Date','Actions'].map(h=><th key={h} style={{padding:8,borderBottom:'1px solid #cbd5e1',textAlign:'left'}}>{h}</th>)}</tr></thead><tbody>{attachments.map(row=><tr key={row.id}><td style={{padding:8,borderBottom:'1px solid #eee',overflowWrap:'anywhere'}}>{row.file_name}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{row.mime_type||'Unknown'}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{(Number(row.file_size||0)/1024/1024).toFixed(2)} MB</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{row.created_at?new Date(row.created_at).toLocaleString(): '—'}</td><td style={{padding:8,borderBottom:'1px solid #eee',whiteSpace:'nowrap'}}><button type="button" onClick={()=>openNotebookAttachment(row)} style={{marginRight:6}}>Open / Download</button>{isAdmin&&<button type="button" onClick={()=>deleteNotebookAttachment(row)} style={{color:'#b91c1c'}}>Delete</button>}</td></tr>)}</tbody></table></div>:<div style={{color:'#64748b'}}>Is account file ke saath abhi koi document upload nahi hua.</div>}
+      </div>
       {isAdmin&&<form onSubmit={addEntry} style={panel}><h3 style={{marginTop:0}}>＋ New Amount / Expense</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={entryDate} onChange={e=>setEntryDate(e.target.value)} required/></label><label>Entry Type<select style={input} value={entryType} onChange={e=>setEntryType(e.target.value)}><option value="income">Received / Income (+)</option><option value="expense">Expense (-)</option></select></label><label>Amount<input type="number" min="0.01" step="0.01" style={input} value={entryAmount} onChange={e=>setEntryAmount(e.target.value)} required/></label><label>Details<input style={input} value={entryDetails} onChange={e=>setEntryDetails(e.target.value)} placeholder="Material bill / payment received" required/></label><label>Remarks<input style={input} value={entryNotes} onChange={e=>setEntryNotes(e.target.value)} placeholder="Optional notes"/></label></div><button style={{...primaryStyle,marginTop:10}}>Save Entry</button></form>}
       <div style={panel}><h3 style={{marginTop:0}}>{activeFile.file_name} · Entry History</h3><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Date','Details','Income (+)','Expense (-)','Balance','Remarks',...(isAdmin?['Actions']:[])].map(h=><th key={h} style={{padding:8,borderBottom:'1px solid #cbd5e1',textAlign:'left'}}>{h}</th>)}</tr></thead><tbody>{[...entries].reverse().map((r,i)=>{const running=[...entries].reverse().slice(0,i+1).reduce((a,x)=>a+(x.entry_type==='income'?1:-1)*Number(x.amount||0),0);return <tr key={r.id}><td style={{padding:8,borderBottom:'1px solid #eee'}}>{r.entry_date}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{r.details}</td><td style={{padding:8,color:'#047857'}}>{r.entry_type==='income'?fmt(r.amount):'—'}</td><td style={{padding:8,color:'#b91c1c'}}>{r.entry_type==='expense'?fmt(r.amount):'—'}</td><td style={{padding:8,fontWeight:700}}>{fmt(running)}</td><td style={{padding:8}}>{r.notes||'—'}</td>{isAdmin&&<td style={{padding:8,whiteSpace:'nowrap'}}><button onClick={()=>editEntry(r)} style={{marginRight:5}}>Edit</button><button onClick={()=>deleteEntry(r)} style={{color:'#b91c1c'}}>Delete</button></td>}</tr>})}{!entries.length&&<tr><td colSpan={isAdmin?7:6} style={{padding:12}}>Is file mein abhi koi entry nahi.</td></tr>}</tbody></table></div></div>
     </>}
