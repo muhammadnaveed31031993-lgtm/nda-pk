@@ -2282,6 +2282,10 @@ const [newDesignation, setNewDesignation] = useState('');
   const [targetPassword, setTargetPassword] = useState('');
   const [targetDept, setTargetDept] = useState('All');
   const [targetSite, setTargetSite] = useState('Sharjah Mamzar');
+  const [targetDesignations, setTargetDesignations] = useState([]);
+  const [targetAllDesignations, setTargetAllDesignations] = useState(true);
+  const [renameDeptOld, setRenameDeptOld] = useState('');
+  const [renameDeptNew, setRenameDeptNew] = useState('');
   
   const [permDashboard, setPermDashboard] = useState(true);
   const [permBulk, setPermBulk] = useState(false);
@@ -2737,8 +2741,7 @@ const [newDesignation, setNewDesignation] = useState('');
 
  useEffect(() => {
   if (session) {
-    fetchWorkers();
-    fetchAttendance();
+    fetchWorkers().then(() => fetchAttendance());
     fetchPermissionsList();
     fetchPersonalDocs();
     fetchAnnualLeaves();
@@ -2892,7 +2895,13 @@ const [newDesignation, setNewDesignation] = useState('');
   }
 
   async function fetchAnnualLeaves() {
-    const { data, error } = await supabase.from('annual_leaves').select('*').order('id', { ascending: false });
+    let query = supabase.from('annual_leaves').select('*').order('id', { ascending: false });
+    if (!userRole.is_admin) {
+      const ids = filteredWorkers.map(w => String(w.id));
+      if (!ids.length) query = query.eq('worker_id', '__NO_MATCH__');
+      else query = query.in('worker_id', ids);
+    }
+    const { data, error } = await query;
     if (error) {
       console.error('Error fetching annual leaves:', error.message);
     } else if (data) {
@@ -2925,7 +2934,13 @@ const [newDesignation, setNewDesignation] = useState('');
   }
 
   async function fetchLeaveSalaryRecords() {
-    const { data, error } = await supabase.from('worker_leave_salary_records').select('*').order('leave_salary_last_date', { ascending: false });
+    let query = supabase.from('worker_leave_salary_records').select('*').order('leave_salary_last_date', { ascending: false });
+    if (!userRole.is_admin) {
+      const ids = filteredWorkers.map(w => String(w.id));
+      if (!ids.length) query = query.eq('worker_id', '__NO_MATCH__');
+      else query = query.in('worker_id', ids);
+    }
+    const { data, error } = await query;
     if (error) { console.warn('Leave salary records table not ready:', error.message); return; }
     setLeaveSalaryRecords(data || []);
   }
@@ -3309,6 +3324,11 @@ async function handleDeleteDesignation() {
       const site = String(userRole.assigned_site || 'All').trim();
       if (dept !== 'All') query = query.eq('department', dept);
       if (site !== 'All') query = query.eq('work_site', site);
+      if (userRole.all_designations === false) {
+        const allowed = Array.isArray(userRole.assigned_designations) ? userRole.assigned_designations : [];
+        if (!allowed.length) query = query.eq('id', -1);
+        else query = query.in('designation', allowed);
+      }
     }
     const { data, error } = await query;
     if (error) console.error('Workers load error:', error.message);
@@ -3341,6 +3361,14 @@ async function fetchAttendance() {
         const site = String(userRole.assigned_site || 'All').trim();
         if (dept !== 'All') query = query.eq('department', dept);
         if (site !== 'All') query = query.eq('work_site', site);
+        if (userRole.all_designations === false) {
+          const allowedIds = (workers || []).filter(w => {
+            const allowed = Array.isArray(userRole.assigned_designations) ? userRole.assigned_designations : [];
+            return allowed.some(d => String(d).trim().toLowerCase() === String(w.designation || '').trim().toLowerCase());
+          }).map(w => w.id);
+          if (!allowedIds.length) query = query.eq('worker_id', -1);
+          else query = query.in('worker_id', allowedIds);
+        }
       }
 
       const { data, error } = await query;
@@ -3619,6 +3647,42 @@ async function handleToggleHolidayDate() {
     setNewDeptInput('');
     void logActivity('Department added', value);
     alert(`Department '${value}' saved successfully!`);
+  }
+
+  async function handleRenameDepartment(oldName, newName) {
+    if (!requireHrEditMode('Department rename')) return;
+    if (!userRole.is_admin) return alert('Sirf Admin department rename kar sakta hai.');
+    const from = String(oldName || '').trim();
+    const to = String(newName || '').trim();
+    if (!from || !to) return alert('Purana aur naya department name enter karein.');
+    if (from.toLowerCase() === to.toLowerCase()) return alert('Naya naam purane naam se mukhtalif hona chahiye.');
+    if (uniqueDepartments.some(d => d.toLowerCase() === to.toLowerCase())) return alert('Yeh department pehle se mojood hai.');
+    if (!window.confirm(`Department '${from}' ko '${to}' rename karna hai? Workers aur attendance ke sirf department fields update honge; dates, status, hours, OT aur salary amounts change nahi honge.`)) return;
+    // Each update changes only the department label; all numeric/date/history fields remain untouched.
+    const steps = [
+      ['workers', 'department'],
+      ['attendance', 'department'],
+      ['daily_work_details', 'work_department'],
+      ['user_permissions', 'assigned_department']
+    ];
+    for (const [table, column] of steps) {
+      const { error } = await supabase.from(table).update({ [column]: to }).ilike(column, from);
+      if (error) return alert(`Rename ruk gaya: ${table}.${column} update nahi hua. ${error.message}\nPehle wali tables update ho chuki ho sakti hain; data check karke dobara continue karein.`);
+    }
+    const { data: listRows, error: listError } = await supabase.from('system_lists').update({ name: to }).eq('list_type', 'department').ilike('name', from).select('id');
+    if (listError) return alert('Department records update ho gaye, lekin department list rename nahi hui: ' + listError.message);
+    if (!listRows?.length) {
+      const { error } = await supabase.from('system_lists').insert([{ list_type: 'department', name: to, is_active: true }]);
+      if (error) return alert('References update ho gaye, lekin naya department list item create nahi hua: ' + error.message);
+    }
+    await fetchSystemLists();
+    await fetchWorkers();
+    await fetchAttendance();
+    if (selectedDeptFilter.toLowerCase() === from.toLowerCase()) setSelectedDeptFilter(to);
+    if (department.toLowerCase() === from.toLowerCase()) setDepartment(to);
+    void logActivity('Department renamed', `${from} → ${to}`);
+    setRenameDeptOld(''); setRenameDeptNew('');
+    alert(`Department '${from}' successfully '${to}' rename ho gaya. Historical dates, hours, OT aur salary values ko touch nahi kiya.`);
   }
 
   async function handleDeleteDepartment(deptToDelete) {
@@ -4039,6 +4103,8 @@ async function handleToggleHolidayDate() {
         staff_id: resolvedAccount.staff_id || '',
         assigned_department: String(resolvedAccount.assigned_department || '').trim() || 'Unassigned',
         assigned_site: resolvedAccount.assigned_site || 'All',
+        assigned_designations: Array.isArray(resolvedAccount.assigned_designations) ? resolvedAccount.assigned_designations : [],
+        all_designations: resolvedAccount.all_designations !== false,
         can_view_dashboard: resolvedAccount.can_view_dashboard ?? true,
         can_use_bulk: resolvedAccount.can_use_bulk ?? false,
         can_view_workers: resolvedAccount.can_view_workers ?? true,
@@ -4220,6 +4286,13 @@ async function handleToggleHolidayDate() {
           alert('Worker update database se verify nahi hua. Selected Worker ID: ' + (workerData.worker_id ?? 'blank') + ', Database Worker ID: ' + (savedWorker.worker_id ?? 'blank') + '. Supabase column / RLS check karein.');
           await fetchWorkers();
         } else {
+          const previousWorker = workers.find(w => String(w.id) === String(targetWorkerId));
+          if (previousWorker && String(previousWorker.department || '').trim().toLowerCase() !== String(workerData.department || '').trim().toLowerCase()) {
+            const { error: attendanceDepartmentError } = await supabase.from('attendance').update({ department: workerData.department }).eq('worker_id', targetWorkerId);
+            if (attendanceDepartmentError) {
+              alert('Worker department update ho gaya, lekin historical attendance department update nahi hua: ' + attendanceDepartmentError.message + '\nDates, status, hours aur OT values unchanged hain. Attendance department ko Admin se dobara update karwayein.');
+            }
+          }
           setWorkers(prev => prev.map(w => String(w.id) === String(targetWorkerId) ? { ...w, ...workerData } : w));
           alert('Worker details aur Worker ID successfully update ho gaye. New Worker ID: ' + (savedWorker.worker_id ?? savedWorker.id));
           void logActivity('Worker updated', `Worker #${targetWorkerId}: ${workerData.name}, ${workerData.department}, designation ${workerData.designation}`);
@@ -5077,6 +5150,7 @@ const otHours = Number(
     e.preventDefault();
     if (!userRole.is_admin) return alert('Sirf admin staff permissions change kar sakta hai.');
     if (!targetEmail || !targetPassword) return alert('Staff email aur password enter karein.');
+    if (!targetAllDesignations && targetDesignations.length === 0) return alert('Kam az kam ek designation select karein ya All Designations choose karein.');
     if (targetEmail.trim().toLowerCase() === session?.user?.email?.toLowerCase()) return alert('Admin apna account staff permission form se edit nahi kar sakta.');
 
     const permData = {
@@ -5085,6 +5159,8 @@ const otHours = Number(
       user_password: targetPassword.trim(),
       assigned_department: targetDept,
       assigned_site: targetSite,
+      assigned_designations: targetAllDesignations ? [] : targetDesignations,
+      all_designations: targetAllDesignations,
       can_view_dashboard: permDashboard,
       can_use_bulk: permBulk,
       can_view_workers: permViewWorkers,
@@ -5107,6 +5183,8 @@ const otHours = Number(
       setTargetEmail('');
       setTargetPassword('');
       setTargetDept('All');
+      setTargetDesignations([]);
+      setTargetAllDesignations(true);
       fetchPermissionsList();
     }
   }
@@ -5127,7 +5205,10 @@ const otHours = Number(
   // to daily attendance / overtime records, never to the Workers Dictionary.
   const filteredWorkers = workers.filter(w => {
     const userDeptScope = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
-    return !userDeptScope || userDeptScope === 'All' || String(w.department || '').trim().toLowerCase() === String(userDeptScope).trim().toLowerCase();
+    const departmentMatches = !userDeptScope || userDeptScope === 'All' || String(w.department || '').trim().toLowerCase() === String(userDeptScope).trim().toLowerCase();
+    const allowedDesignations = Array.isArray(userRole.assigned_designations) ? userRole.assigned_designations : [];
+    const designationMatches = userRole.is_admin || userRole.all_designations !== false || allowedDesignations.some(d => String(d).trim().toLowerCase() === String(w.designation || '').trim().toLowerCase());
+    return departmentMatches && designationMatches;
   });
 
   // Annual Leave records follow the worker's department scope.
@@ -7416,6 +7497,15 @@ const workerSite = record.site || record.work_site || '';
               <input type="text" value={newDeptInput} onChange={e => setNewDeptInput(e.target.value)} placeholder="e.g. Mechanical" style={{ flex: 1, padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required />
               <button type="submit" style={{ padding: '8px 15px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Add Dept</button>
             </form>
+            <div style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: 12, marginBottom: 18, background: '#fffbeb' }}>
+              <h4 style={{ margin: '0 0 10px' }}>Rename Department (all HR records)</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8 }}>
+                <select value={renameDeptOld} onChange={e => setRenameDeptOld(e.target.value)} style={{ padding: 8, minWidth: 0 }}><option value=''>Select old department</option>{uniqueDepartments.map(d => <option key={d} value={d}>{d}</option>)}</select>
+                <input value={renameDeptNew} onChange={e => setRenameDeptNew(e.target.value)} placeholder='New department name' style={{ padding: 8, minWidth: 0 }} />
+                <button type='button' onClick={() => handleRenameDepartment(renameDeptOld, renameDeptNew)} style={{ padding: '8px 12px', background: '#0369a1', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer' }}>Rename</button>
+              </div>
+              <small style={{ display: 'block', marginTop: 7, color: '#92400e' }}>Sirf department text update hoga. Dates, attendance status, hours, OT aur salary amounts preserve rahenge.</small>
+            </div>
             <h4>Current Active Departments:</h4>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {uniqueDepartments.map((dept, index) => (
@@ -7475,6 +7565,8 @@ const workerSite = record.site || record.work_site || '';
                     setTargetPassword('');
                     setTargetDept('All');
                     setTargetSite('All');
+                    setTargetDesignations([]);
+                    setTargetAllDesignations(true);
                     setPermDashboard(true);
                     setPermBulk(false);
                     setPermViewWorkers(true);
@@ -7516,6 +7608,11 @@ const workerSite = record.site || record.work_site || '';
                     {sitesList.map((s, idx) => <option key={idx} value={s}>{s}</option>)}
                   </select>
                 </div>
+              </div>
+              <div style={{ margin: '0 0 18px', padding: 12, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 7 }}>
+                <strong style={{ display: 'block', marginBottom: 8 }}>Assigned Designations (selected department only)</strong>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9, fontWeight: 700 }}><input type='checkbox' checked={targetAllDesignations} onChange={e => setTargetAllDesignations(e.target.checked)} /> All Designations in this Department</label>
+                {!targetAllDesignations && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 8 }}>{designationsList.map(d => <label key={d} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13 }}><input type='checkbox' checked={targetDesignations.includes(d)} onChange={e => setTargetDesignations(prev => e.target.checked ? [...prev, d] : prev.filter(x => x !== d))} />{d}</label>)}</div>}
               </div>
 
               {/* Checkboxes Permissions */}
@@ -7589,7 +7686,8 @@ const workerSite = record.site || record.work_site || '';
                         </td>
                         <td style={{ padding: '10px' }}>
                           Dept: <strong>{p.assigned_department}</strong><br/>
-                          Site: <strong>{p.assigned_site}</strong>
+                          Site: <strong>{p.assigned_site}</strong><br/>
+                          Designations: <strong>{p.all_designations === false ? ((p.assigned_designations || []).join(', ') || 'None') : 'All'}</strong>
                         </td>
                         <td style={{ padding: '10px', maxWidth: '300px' }}>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
@@ -7606,6 +7704,8 @@ const workerSite = record.site || record.work_site || '';
                               setTargetPassword(p.user_password || '');
                               setTargetDept(p.assigned_department || 'All');
                               setTargetSite(p.assigned_site || 'All');
+                              setTargetDesignations(Array.isArray(p.assigned_designations) ? p.assigned_designations : []);
+                              setTargetAllDesignations(p.all_designations !== false);
                               setPermDashboard(p.can_view_dashboard ?? true);
                               setPermBulk(p.can_use_bulk ?? false);
                               setPermViewWorkers(p.can_view_workers ?? true);
