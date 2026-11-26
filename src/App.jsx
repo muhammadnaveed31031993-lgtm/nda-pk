@@ -152,7 +152,7 @@ function shiftPayrollDateOneMonth(dateText) {
   return `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
 }
 
-function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDelete, canViewDaily, canViewMonthly }) {
+function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDelete, canViewDaily, canViewMonthly, onStaffActivity }) {
   const today = new Date().toISOString().slice(0, 10);
   const [customers, setCustomers] = useState([]);
   const [sales, setSales] = useState([]);
@@ -264,6 +264,7 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDe
       ? await supabase.from('water_customers').update(payload).eq('id',editingCustomer.id).eq('business_id',businessId)
       : await supabase.from('water_customers').insert([{...payload,business_id:Number(businessId),active:true,created_by:session?.user?.email||''}]);
     if(result.error) return alert((editingCustomer?'Customer update':'Customer save')+' nahi hua: '+result.error.message);
+    if (!isAdmin) void onStaffActivity?.(editingCustomer ? 'Water customer updated' : 'Water customer added', `${payload.customer_name}, room ${payload.room_no || '—'}`);
     setName('');setRoom('');setRate('6');setCustomerRemarks('');setCustomerFloor('Ground Floor');setEditingCustomer(null);await refresh();
   }
   function startEditCustomer(c) {
@@ -281,6 +282,7 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDe
     if(qty>currentStock) return alert(`Stock kam hai. Available stock sirf ${currentStock} bottles hai.`);
     const {error}=await supabase.from('water_sales').insert([{business_id:Number(businessId),customer_id:c.id,sale_date:day,bottles:qty,rate:r,total_amount:bill,cash_received:cash,payment_mode:salePaymentType,remarks:saleRemarks.trim(),created_by:session?.user?.email||''}]);
     if(error)return alert('Daily water entry save nahi hui: '+error.message);
+    if (!isAdmin) void onStaffActivity?.('Water sale entry added', `${day}: ${c.customer_name}, ${qty} bottles, ${fmt(bill)}`);
     setBottles('');setSaleRemarks('');await refresh();alert(`Daily entry save ho gayi. ${salePaymentType==='Cash'?'Cash received':'Credit added'}: ${fmt(bill)}`);
   }
   async function addPayment(e) {
@@ -291,6 +293,7 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDe
     if(amount>customerStats(c).balance)return alert(`Customer ka outstanding balance ${fmt(customerStats(c).balance)} hai.`);
     const {error}=await supabase.from('water_payments').insert([{business_id:Number(businessId),customer_id:c.id,payment_date:day,amount,currency,remarks:payRemarks.trim(),received_by:session?.user?.email||''}]);
     if(error)return alert('Customer credit payment save nahi hui: '+error.message);
+    if (!isAdmin) void onStaffActivity?.('Water credit payment received', `${day}: ${c.customer_name}, ${fmt(amount)}`);
     setPayAmount('');setPayRemarks('');await refresh();alert('Customer ka purana credit receive ho gaya.');
   }
   function editWaterSale(row) {
@@ -307,6 +310,7 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDe
     if (qty > availableAfterUndo) return alert(`Stock kam hai. Is entry ko adjust karne ke baad available stock ${availableAfterUndo} bottles hai.`);
     const { error } = await supabase.from('water_sales').update({ customer_id: customer.id, sale_date: row.sale_date, bottles: qty, rate: rateValue, total_amount: total, cash_received: row.payment_mode === 'Cash' ? total : 0, payment_mode: row.payment_mode, remarks: String(row.remarks || '').trim() }).eq('id', row.id).eq('business_id', Number(businessId));
     if (error) return alert('Daily water entry update nahi hui: ' + error.message);
+    if (!isAdmin) void onStaffActivity?.('Water sale entry edited', `${row.sale_date}: ${customer.customer_name}, ${qty} bottles`);
     setDay(row.sale_date); setEditingWaterSale(null); await refresh();
   }
   async function deleteWaterSale(row) {
@@ -314,6 +318,7 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDe
     if(!window.confirm('Kya aap ye daily water entry permanently delete karna chahte hain?'))return;
     const {error}=await supabase.from('water_sales').delete().eq('id',row.id).eq('business_id',Number(businessId));
     if(error)return alert('Daily water entry delete nahi hui: '+error.message);
+    if (!isAdmin) void onStaffActivity?.('Water sale entry deleted', `Entry #${row.id}, ${row.sale_date || ''}`);
     await refresh();
   }
   async function addDelivery(e) {
@@ -346,17 +351,21 @@ function WaterSupplyPanel({ session, businessId, isAdmin, canAdd, canEdit, canDe
       if(!window.confirm(`${c.customer_name} (Room ${c.room_no}) ki ${history} sales/payment history mojood hai. Purana hisaab safe rakhne ke liye customer ko sirf inactive kiya jayega. Continue?`))return;
       const {error}=await supabase.from('water_customers').update({active:false}).eq('id',c.id).eq('business_id',businessId);
       if(error)return alert('Customer inactive nahi hua: '+error.message);
+      if (!isAdmin) void onStaffActivity?.('Water customer inactivated', `${c.customer_name || c.id}`);
     } else {
       if(!window.confirm(`${c.customer_name} (Room ${c.room_no}) ka koi purana record nahi. Permanently delete karna hai?`))return;
       const {error}=await supabase.from('water_customers').delete().eq('id',c.id).eq('business_id',businessId);
       if(error)return alert('Customer delete nahi hua: '+error.message);
+      if (!isAdmin) void onStaffActivity?.('Water customer deleted', `${c.customer_name || c.id}`);
     }
     await refresh();
   }
   async function toggleCustomer(c) {
     if(!canDelete)return alert('Customer status change karne ki permission nahi hai.');
     const {error}=await supabase.from('water_customers').update({active:!c.active}).eq('id',c.id).eq('business_id',businessId);
-    if(error)return alert('Status update nahi hua: '+error.message); await refresh();
+    if(error)return alert('Status update nahi hua: '+error.message);
+    if (!isAdmin) void onStaffActivity?.('Water customer status changed', `${c.customer_name || c.id}: ${c.active ? 'deactivated' : 'activated'}`);
+    await refresh();
   }
   const panelCard={background:'#fff',border:'1px solid #e2e8f0',borderRadius:12,padding:14,marginBottom:12};
   const input={width:'100%',boxSizing:'border-box',padding:10,border:'1px solid #cbd5e1',borderRadius:8};
@@ -584,7 +593,11 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
   </section>;
 }
 
-function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
+function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem, onStaffActivity }) {
+  const [businessNotifications, setBusinessNotifications] = useState([]);
+  const [businessNotificationOpen, setBusinessNotificationOpen] = useState(false);
+  const [businessNotificationError, setBusinessNotificationError] = useState('');
+  const admin = !!userRole?.is_admin;
   const [businesses, setBusinesses] = useState([]);
   const [businessId, setBusinessId] = useState(() => { try { return localStorage.getItem('nda_business_selected_id') || sessionStorage.getItem('nda_business_selected_id') || ''; } catch { return ''; } });
   const [activeVehicleId, setActiveVehicleId] = useState('');
@@ -652,7 +665,38 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
   const [editingAccessRow, setEditingAccessRow] = useState(null);
   const [currency, setCurrency] = useState('AED');
 
-  const admin = !!userRole?.is_admin;
+  async function fetchBusinessNotifications() {
+    if (!admin || !session?.user?.email) return;
+    const { data, error } = await supabase.from('activity_notifications')
+      .select('id,actor_email,actor_name,action,details,created_at,is_read')
+      .eq('system_scope', 'business').eq('actor_is_admin', false)
+      .order('created_at', { ascending: false }).limit(50);
+    if (error) { setBusinessNotificationError(error.message); return; }
+    setBusinessNotificationError('');
+    setBusinessNotifications(data || []);
+  }
+
+  async function markBusinessNotificationsRead() {
+    const unread = businessNotifications.filter(n => !n.is_read).map(n => n.id);
+    if (!unread.length) return;
+    const { error } = await supabase.from('activity_notifications').update({ is_read: true }).in('id', unread);
+    if (error) { setBusinessNotificationError(error.message); return; }
+    setBusinessNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+  }
+
+  async function recordBusinessActivity(action, details = '') {
+    if (admin || !session?.user?.email) return false;
+    if (typeof onStaffActivity === 'function') return onStaffActivity(action, details, 'business');
+    return false;
+  }
+
+  useEffect(() => {
+    if (!admin || !session) return;
+    void fetchBusinessNotifications();
+    const timer = setInterval(fetchBusinessNotifications, 12000);
+    return () => clearInterval(timer);
+  }, [admin, session?.user?.email]);
+
   const permissionEnabled = value => value === true || value === 'true' || value === 1 || value === '1';
   const can = (key) => admin || permissionEnabled(access?.[key]);
   const hasAnyBusinessPermission = row => ['can_view','can_view_daily','can_add','can_edit','can_delete','can_view_vehicles','can_manage_vehicles','can_view_workers','can_manage_workers','can_view_monthly','can_manage_access'].some(key => permissionEnabled(row?.[key]));
@@ -916,6 +960,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     if (notes === null) return;
     const { error } = await supabase.from('business_vehicles').update({ plate_number: plate.trim().toUpperCase(), vehicle_name: name.trim(), notes: notes.trim() }).eq('id', v.id).eq('business_id', Number(businessId));
     if (error) return alert('Vehicle update nahi hui: ' + error.message);
+    void recordBusinessActivity('Vehicle file updated', `${plate.trim().toUpperCase()}`);
     await loadBusinessData();
   }
 
@@ -926,11 +971,11 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     if(Number(count||0)>0){
       if(!window.confirm(`${v.plate_number} ke ${count} purane entry record(s) mojood hain. Purana data safe rakhne ke liye vehicle ko sirf inactive karna hai. Continue?`))return;
       const {error}=await supabase.from('business_vehicles').update({active:false}).eq('id',v.id).eq('business_id',Number(businessId));
-      if(error)return alert(error.message); alert('Vehicle inactive ho gaya; purani entries safe hain.');
+      if(error)return alert(error.message); if (!admin) void recordBusinessActivity('Vehicle inactivated', `${v.plate_number}`); alert('Vehicle inactive ho gaya; purani entries safe hain.');
     } else {
       if(!window.confirm(`${v.plate_number} ko permanently delete karna hai?`))return;
       const {error}=await supabase.from('business_vehicles').delete().eq('id',v.id).eq('business_id',Number(businessId));
-      if(error)return alert('Vehicle delete nahi hua: '+error.message); alert('Vehicle file delete ho gayi.');
+      if(error)return alert('Vehicle delete nahi hua: '+error.message); if (!admin) void recordBusinessActivity('Vehicle deleted', `${v.plate_number}`); alert('Vehicle file delete ho gayi.');
     }
     if(String(activeVehicleId)===String(v.id)){setActiveVehicleId('');setVehicleId('');}
     await loadBusinessData();
@@ -976,6 +1021,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
       active: true
     }]);
     if (error) return alert('Could not save vehicle file: ' + error.message);
+    void recordBusinessActivity('Vehicle file added', `${vehiclePlate.trim().toUpperCase()} — ${vehicleName.trim()}`);
     setVehiclePlate('');
     setVehicleName('');
     setVehicleNotes('');
@@ -1006,6 +1052,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     }
     const { error } = await supabase.from('business_people').insert([payload]);
     if (error) return alert('Could not save driver/staff: ' + error.message);
+    void recordBusinessActivity('Driver/staff added', `${payload.person_name} — ${payload.job_title}`);
     setPersonName('');
     setPersonPhone('');
     setPayAmount('');
@@ -1066,6 +1113,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     };
     const { error } = await supabase.from('business_entries').insert([payload]);
     if (error) return alert('Could not save daily entry: ' + error.message);
+    void recordBusinessActivity('Daily entry added', `${payload.entry_date}: ${payload.entry_kind} ${payload.category}, ${payload.amount} ${currentBusiness?.name || ''}`);
 
     setAmount('');
     setDescription('');
@@ -1080,6 +1128,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     if (!window.confirm('Delete this entry permanently?')) return;
     const { error } = await supabase.from('business_entries').delete().eq('id', row.id).eq('business_id', Number(businessId));
     if (error) return alert(error.message);
+    void recordBusinessActivity('Daily entry deleted', `Entry #${row.id}, ${row.entry_date || ''}, ${row.category || ''}`);
     await loadBusinessData();
   }
 
@@ -1096,6 +1145,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
     if (r.entry_kind === 'income' && isMaintenanceEntry) return alert('Maintenance / Garage day par Income entry nahi ho sakti.');
     const { error } = await supabase.from('business_entries').update({ entry_date:r.entry_date, entry_kind:r.entry_kind, category:String(r.category).trim(), amount:value, payment_mode:r.payment_mode, vehicle_id:r.vehicle_id?Number(r.vehicle_id):null, driver_id:r.driver_id?Number(r.driver_id):null, description:String(r.description||'').trim(), remarks:String(r.remarks||'').trim() }).eq('id',r.id).eq('business_id',Number(businessId));
     if (error) return alert('Could not update entry: ' + error.message);
+    void recordBusinessActivity('Daily entry edited', `Entry #${r.id}, ${r.entry_date}, ${r.category}, ${value}`);
     setEntryDate(r.entry_date); setEditingDailyEntry(null); await loadBusinessData();
   }
 
@@ -1369,7 +1419,18 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {admin && <div style={{ position: 'relative' }}>
+            <button type="button" onClick={() => { setBusinessNotificationOpen(v => !v); if (!businessNotificationOpen) void markBusinessNotificationsRead(); }} style={{ ...btn, background: businessNotificationOpen ? '#ecfdf5' : 'rgba(255,255,255,.16)', color: businessNotificationOpen ? '#065f46' : '#fff', border: '1px solid #ffffff66' }}>
+              🔔 Staff Notifications {businessNotifications.filter(n => !n.is_read).length ? `(${businessNotifications.filter(n => !n.is_read).length})` : ''}
+            </button>
+            {businessNotificationOpen && <div style={{ position: 'absolute', right: 0, top: '48px', width: 'min(390px,88vw)', maxHeight: 420, overflowY: 'auto', background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 12px 30px rgba(0,0,0,.25)', zIndex: 10001, padding: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}><b>Business Staff Activity</b><button type="button" onClick={() => void fetchBusinessNotifications()} style={{ border: 0, background: '#e2e8f0', borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}>Refresh</button></div>
+              {businessNotificationError && <div style={{ padding: 9, color: '#991b1b', background: '#fee2e2', borderRadius: 6, fontSize: 12 }}>{businessNotificationError}</div>}
+              {!businessNotifications.length && !businessNotificationError && <p style={{ fontSize: 13, color: '#64748b' }}>Abhi kisi staff ki activity notification nahi hai.</p>}
+              {businessNotifications.map(n => <div key={n.id} style={{ padding: '9px 4px', borderBottom: '1px solid #e2e8f0', background: n.is_read ? '#fff' : '#ecfdf5' }}><div style={{ fontWeight: 800, fontSize: 12 }}>{n.actor_name || n.actor_email} — {n.action}</div><div style={{ fontSize: 12, marginTop: 3 }}>{n.details || ''}</div><div style={{ fontSize: 10, color: '#64748b', marginTop: 4 }}>{n.actor_email} · {n.created_at ? new Date(n.created_at).toLocaleString() : ''}</div></div>)}
+            </div>}
+          </div>}
           {!waterOnlyStaff && <button onClick={onSwitchSystem} style={{ ...btn, background: '#fff', color: '#065f46' }}>← Switch System</button>}
           <button onClick={onLogout} style={{ ...btn, background: '#b91c1c' }}>Logout</button>
         </div>
@@ -1385,7 +1446,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => { if (tab.id === 'dashboard') { setWorkspaceSection('dashboard'); setView('dashboard'); } else if (tab.id === 'notebook') { setWorkspaceSection('notebook'); setView('notebook'); } else if (tab.id === 'access') { setWorkspaceSection('access'); setView('access'); } else setView(tab.id); }}
+                  onClick={() => { if (!admin) void recordBusinessActivity('Viewed module', tab.label); if (tab.id === 'dashboard') { setWorkspaceSection('dashboard'); setView('dashboard'); } else if (tab.id === 'notebook') { setWorkspaceSection('notebook'); setView('notebook'); } else if (tab.id === 'access') { setWorkspaceSection('access'); setView('access'); } else setView(tab.id); }}
                   style={{
                     ...btn,
                     padding: '13px 12px',
@@ -2025,7 +2086,7 @@ function BusinessWorkspace({ session, userRole, onLogout, onSwitchSystem }) {
 
               {/* WATER SUPPLY CUSTOMER KHATA — BUSINESS SYSTEM ONLY */}
               {view === 'water' && (admin || access?.can_view || access?.can_view_daily || can('can_add') || can('can_edit') || can('can_delete') || can('can_view_monthly')) && (
-                <WaterSupplyPanel session={session} businessId={businessId} isAdmin={admin} canAdd={admin || can('can_add')} canEdit={admin || can('can_edit')} canDelete={admin || can('can_delete')} canViewDaily={admin || can('can_view') || can('can_view_daily') || can('can_add') || can('can_edit') || can('can_delete')} canViewMonthly={admin || can('can_view_monthly')} />
+                <WaterSupplyPanel session={session} businessId={businessId} isAdmin={admin} canAdd={admin || can('can_add')} canEdit={admin || can('can_edit')} canDelete={admin || can('can_delete')} canViewDaily={admin || can('can_view') || can('can_view_daily') || can('can_add') || can('can_edit') || can('can_delete')} canViewMonthly={admin || can('can_view_monthly')} onStaffActivity={recordBusinessActivity} />
               )}
 
               {view === 'notebook' && admin && (
@@ -2504,7 +2565,7 @@ const [newDesignation, setNewDesignation] = useState('');
     };
     const { error } = await supabase.from('business_transactions').insert([payload]);
     if (error) return alert('Entry save nahi hui: ' + error.message + '\nBusiness SQL setup run kiya hai?');
-    void logActivity('Business entry', `${payload.transaction_date}: ${payload.transaction_kind} ${payload.category}, ${payload.amount} ${payload.currency}${payload.vehicle_number ? ', vehicle ' + payload.vehicle_number : ''}`);
+    if (!userRole.is_admin) void logActivity('Business entry', `${payload.transaction_date}: ${payload.transaction_kind} ${payload.category}, ${payload.amount} ${payload.currency}${payload.vehicle_number ? ', vehicle ' + payload.vehicle_number : ''}`);
     setBusinessTxnAmount(''); setBusinessTxnDescription(''); setBusinessTxnRemarks(''); setBusinessTxnVehicle('');
     await fetchBusinessData();
     alert('Business entry save ho gayi.');
@@ -2547,6 +2608,7 @@ const [newDesignation, setNewDesignation] = useState('');
     if (!worker || !businessSalaryDate || !Number.isFinite(amount) || amount <= 0) return alert('Worker, date aur salary amount sahi select karein.');
     const { error } = await supabase.from('business_salary_payments').insert([{ business_type: businessType === 'other' ? 'dairy' : businessType, worker_id: worker.id, payment_date: businessSalaryDate, amount, currency: businessCurrency, payment_mode: businessSalaryPaymentMode, notes: 'Salary payment' }]);
     if (error) return alert('Salary payment save nahi hui: ' + error.message);
+    void recordBusinessActivity('Driver salary payment added', `${worker.worker_name}, ${businessSalaryDate}, ${amount} ${businessCurrency}`);
     setBusinessSalaryAmount(''); await fetchBusinessData(); alert('Salary payment save ho gayi.');
   }
 
@@ -3502,8 +3564,11 @@ async function fetchHolidayDates() {
 // Staff activity notifications are stored in Supabase so the admin can see events
 // even when they were created on another device. Configure the SQL table/policies
 // supplied with this code before relying on notifications.
-async function logActivity(action, details = '', actorEmailOverride = '') {
+async function logActivity(action, details = '', actorEmailOverride = '', systemScope = 'hr', actorIsAdminOverride = null) {
   const actorEmail = String(actorEmailOverride || session?.user?.email || email || 'unknown').trim().toLowerCase();
+  const actorIsAdmin = actorIsAdminOverride === null ? Boolean(userRole?.is_admin || session?.role?.is_admin) : Boolean(actorIsAdminOverride);
+  // Admin activity is intentionally never written to the staff notification feed.
+  if (actorIsAdmin) return false;
   if (!actorEmail || actorEmail === 'unknown') {
     const message = 'Login email nahi mil rahi; notification insert se pehle session/email check karein.';
     setNotificationSaveError(message);
@@ -3513,6 +3578,8 @@ async function logActivity(action, details = '', actorEmailOverride = '') {
   const { error } = await supabase.from('activity_notifications').insert([{
     actor_email: actorEmail,
     actor_name: actorEmail.split('@')[0],
+    system_scope: systemScope === 'business' ? 'business' : 'hr',
+    actor_is_admin: false,
     action: String(action || 'Activity').slice(0, 100),
     details: String(details || '').slice(0, 500),
     is_read: false
@@ -3527,22 +3594,11 @@ async function logActivity(action, details = '', actorEmailOverride = '') {
   return true;
 }
 
-async function testActivityNotification() {
-  if (!userRole.is_admin) return;
-  setNotificationSaveError('');
-  const saved = await logActivity('Notification test', 'Admin ne notification system test kiya.');
-  if (!saved) {
-    alert('Test notification save nahi hui. Neeche Staff Activity panel mein exact Supabase error diya gaya hai.');
-    return;
-  }
-  await fetchActivityNotifications();
-  alert('Test notification save ho gayi. Staff Activity list check karein.');
-}
-
 async function fetchActivityNotifications() {
   if (!userRole.is_admin || !session) return;
   const { data, error } = await supabase.from('activity_notifications')
     .select('id,actor_email,actor_name,action,details,created_at,is_read')
+    .eq('system_scope', 'hr').eq('actor_is_admin', false)
     .order('created_at', { ascending: false }).limit(50);
   if (error) {
     setNotificationLoadError(error.message);
@@ -4066,7 +4122,7 @@ async function handleToggleHolidayDate() {
         setUserRole(businessRole);
         setSelectedSystem('business');
         setBusinessType('transport');
-        void logActivity('Login', 'Business system login', cleanEmail);
+        if (!isAdminForBusiness) void logActivity('Login', 'Business system login', cleanEmail, 'business', false);
         return;
       }
 
@@ -4170,7 +4226,7 @@ async function handleToggleHolidayDate() {
         const sessionObj = { user: { email: cleanEmail }, role: adminRole };
         setSession(sessionObj);
         setUserRole(adminRole);
-        void logActivity('Login', 'Administrator login', cleanEmail);
+        // Admin login is intentionally excluded from staff activity notifications.
         setActiveTab('dashboard');
         return;
       }
@@ -4196,7 +4252,7 @@ async function handleToggleHolidayDate() {
       const sessionObj = { user: { email: cleanEmail }, role: staffRole };
       setSession(sessionObj);
       setUserRole(staffRole);
-      void logActivity('Login', `Staff login — ${staffRole.assigned_department} / ${staffRole.assigned_site}`, cleanEmail);
+      if (!staffRole.is_admin) void logActivity('Login', `Staff login — ${staffRole.assigned_department} / ${staffRole.assigned_site}`, cleanEmail, 'hr', false);
       if (staffRole.assigned_department !== 'All') {
         setSelectedDeptFilter(staffRole.assigned_department);
         setBulkDepartment(staffRole.assigned_department);
@@ -5628,7 +5684,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
   }
 
   if (selectedSystem === 'business') {
-    return <BusinessWorkspace session={session} userRole={userRole} onLogout={handleLogout} onSwitchSystem={() => setSelectedSystem(null)} />;
+    return <BusinessWorkspace session={session} userRole={userRole} onLogout={handleLogout} onSwitchSystem={() => setSelectedSystem(null)} onStaffActivity={(action, details, scope = 'business') => logActivity(action, details, session?.user?.email || '', scope, false)} />;
   }
 
   return (
@@ -5656,7 +5712,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
           {userRole.is_admin && selectedSystem === 'hr' && <div style={{ position: 'relative' }}>
             <button type="button" onClick={() => { setNotificationPanelOpen(v => !v); if (!notificationPanelOpen) void markActivityNotificationsRead(); }} style={{ position: 'relative', padding: '8px 11px', background: notificationPanelOpen ? '#f8fafc' : 'rgba(255,255,255,.14)', color: notificationPanelOpen ? '#0f172a' : '#fff', border: '1px solid rgba(255,255,255,.35)', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 800 }} title="Staff activity notifications">🔔 Notifications {activityNotifications.filter(n => !n.is_read).length > 0 ? `(${activityNotifications.filter(n => !n.is_read).length})` : ''}</button>
             {notificationPanelOpen && <div style={{ position: 'absolute', right: 0, top: '44px', width: 'min(390px, 88vw)', maxHeight: 420, overflowY: 'auto', background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 12px 30px rgba(0,0,0,.25)', zIndex: 10001, padding: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}><b>Staff Activity</b><div style={{display:'flex',gap:6}}><button type="button" onClick={() => void testActivityNotification()} style={{ border: 0, background: '#dbeafe', color:'#1d4ed8', borderRadius: 6, padding: '5px 8px', cursor: 'pointer', fontWeight:700 }}>Test</button><button type="button" onClick={() => fetchActivityNotifications()} style={{ border: 0, background: '#e2e8f0', borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}>Refresh</button></div></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}><b>Staff Activity</b><div style={{display:'flex',gap:6}}><button type="button" onClick={() => fetchActivityNotifications()} style={{ border: 0, background: '#e2e8f0', borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}>Refresh</button></div></div>
               {notificationLoadError && <div style={{ padding: 9, color: '#991b1b', background: '#fee2e2', borderRadius: 6, fontSize: 12 }}>Notifications database setup required: {notificationLoadError}</div>}
               {notificationSaveError && <div style={{ padding: 9, color: '#991b1b', background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 6, fontSize: 12, marginTop: 6 }}><b>Notification INSERT error:</b><br/>{notificationSaveError}</div>}
               {!!activityNotifications.length && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '7px 0', borderBottom: '1px solid #e2e8f0', marginBottom: 4 }}><label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700 }}><input type="checkbox" checked={activityNotifications.length > 0 && activityNotifications.every(n => selectedNotificationIds.includes(n.id))} onChange={e => setSelectedNotificationIds(e.target.checked ? activityNotifications.map(n => n.id) : [])} /> Select All</label><button type="button" disabled={!selectedNotificationIds.length} onClick={deleteSelectedActivityNotifications} style={{ border: 0, background: selectedNotificationIds.length ? '#dc2626' : '#e2e8f0', color: selectedNotificationIds.length ? '#fff' : '#64748b', borderRadius: 6, padding: '6px 9px', cursor: selectedNotificationIds.length ? 'pointer' : 'not-allowed', fontWeight: 700 }}>Delete Selected ({selectedNotificationIds.length})</button></div>}
