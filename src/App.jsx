@@ -2361,6 +2361,12 @@ export default function App() {
   const [selectedDeptFilter, setSelectedDeptFilter] = useState('All');
   const [selectedSiteFilter, setSelectedSiteFilter] = useState('All');
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [payrollView, setPayrollView] = useState('monthly');
+  const [officeOtRows, setOfficeOtRows] = useState({});
+  const [officeOtLoading, setOfficeOtLoading] = useState(false);
+  const [officeOtSaving, setOfficeOtSaving] = useState(false);
+  const [officeOtError, setOfficeOtError] = useState('');
+  const [officeOtSaveMessage, setOfficeOtSaveMessage] = useState('');
   const [workerDirectoryFilter, setWorkerDirectoryFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [modalDepartment, setModalDepartment] = useState(null);
@@ -2372,6 +2378,53 @@ export default function App() {
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const [notificationLoadError, setNotificationLoadError] = useState('');
   const [notificationSaveError, setNotificationSaveError] = useState('');
+  useEffect(() => {
+    if (activeTab !== 'payroll' || payrollView !== 'office-ot' || !payrollStartDate || !payrollEndDate) return;
+    let cancelled = false;
+    async function loadOfficeOtRows() {
+      setOfficeOtLoading(true);
+      setOfficeOtError('');
+      setOfficeOtSaveMessage('');
+      const { data, error } = await supabase.from('hr_office_ot_comparisons').select('*')
+        .eq('period_start', payrollStartDate).eq('period_end', payrollEndDate);
+      if (cancelled) return;
+      if (error) {
+        setOfficeOtRows({});
+        setOfficeOtError(`Office OT data load nahi hua: ${error.message}. Pehle provided SQL migration Supabase mein run karein.`);
+      } else {
+        const next = {};
+        (data || []).forEach(row => { next[String(row.worker_id)] = row.office_ot == null ? '' : String(row.office_ot); });
+        setOfficeOtRows(next);
+      }
+      setOfficeOtLoading(false);
+    }
+    void loadOfficeOtRows();
+    return () => { cancelled = true; };
+  }, [activeTab, payrollView, payrollStartDate, payrollEndDate]);
+
+  async function saveOfficeOtComparison() {
+    if (!userRole.is_admin) return alert('Office OT list edit sirf Admin kar sakta hai.');
+    if (!payrollStartDate || !payrollEndDate) return alert('Payroll period select karein.');
+    setOfficeOtSaving(true); setOfficeOtError(''); setOfficeOtSaveMessage('');
+    const rows = salaryData.map(worker => {
+      const raw = officeOtRows[String(worker.id)];
+      return {
+        worker_id: String(worker.id), worker_code: String(worker.worker_id || worker.id),
+        worker_name: String(worker.name || ''), department: String(worker.department || ''),
+        period_start: payrollStartDate, period_end: payrollEndDate,
+        office_ot: raw === undefined || String(raw).trim() === '' ? null : Number(raw),
+        updated_by: session?.user?.email || '', updated_at: new Date().toISOString()
+      };
+    });
+    if (!rows.length) { setOfficeOtSaving(false); return alert('Is payroll period mein workers nahi hain.'); }
+    const invalid = rows.find(row => row.office_ot !== null && (!Number.isFinite(row.office_ot) || row.office_ot < 0));
+    if (invalid) { setOfficeOtSaving(false); return alert(`ID ${invalid.worker_code} ka Office OT valid positive number ya zero hona chahiye.`); }
+    const { error } = await supabase.from('hr_office_ot_comparisons').upsert(rows, { onConflict: 'worker_id,period_start,period_end' });
+    if (error) setOfficeOtError(`Office OT save nahi hua: ${error.message}`);
+    else setOfficeOtSaveMessage('Office OT list save ho gayi.');
+    setOfficeOtSaving(false);
+  }
+
   const isHolidayDate = dateStr => Boolean(dateStr && (new Date(`${String(dateStr).slice(0, 10)}T12:00:00`).getDay() === 0 || holidayDates.some(h => String(h.holiday_date || '').slice(0, 10) === String(dateStr).slice(0, 10))));
   // Admin Edit Mode has been removed. Existing role-based permission checks remain active.
   function requireHrEditMode(_actionLabel = 'change') { return true; }
@@ -7413,6 +7466,12 @@ const workerSite = record.site || record.work_site || '';
        
 {/* TAB 5: MONTHLY SHEET */}
 {activeTab === 'payroll' && (userRole.is_admin || userRole.can_view_payroll) && (
+  <>
+    <div className="no-print" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+      <button type="button" onClick={() => setPayrollView('monthly')} style={{ padding: '10px 15px', border: 0, borderRadius: 8, background: payrollView === 'monthly' ? '#0b2d5c' : '#e2e8f0', color: payrollView === 'monthly' ? '#fff' : '#0f172a', fontWeight: 800, cursor: 'pointer' }}>Monthly Payroll</button>
+      <button type="button" onClick={() => setPayrollView('office-ot')} style={{ padding: '10px 15px', border: 0, borderRadius: 8, background: payrollView === 'office-ot' ? '#0b2d5c' : '#e2e8f0', color: payrollView === 'office-ot' ? '#fff' : '#0f172a', fontWeight: 800, cursor: 'pointer' }}>Office OT Comparison</button>
+    </div>
+    {payrollView === 'monthly' && (
   <div
     id="hr-payroll-print"
     style={{
@@ -7612,6 +7671,77 @@ const workerSite = record.site || record.work_site || '';
       </table>
     </div>
   </div>
+    )}
+    {payrollView === 'office-ot' && (
+      <div id="hr-office-ot-print" style={{ background: '#fff', padding: 20, borderRadius: 10, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <style>{`@media print { #hr-office-ot-print .office-ot-print-value { display: inline !important; } }`}</style>
+        <div className="nda-page-print-brand"><img src="/nda-naveed-logo.png" alt="Logo"/></div>
+        <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+          <div>
+            <h3 style={{ margin: '0 0 5px', color: '#0f172a' }}>Office OT Comparison & Final Salary</h3>
+            <div style={{ fontSize: 12, color: '#475569' }}>Salary Month: {salaryMonthLabel} · OT Period: {payrollPeriodStartDate} to {payrollPeriodEndDate}</div>
+            <div style={{ fontSize: 12, color: '#475569', marginTop: 3 }}>Office OT manually enter karein. Khali chhorne par system OT use hoga.</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <label style={{ fontSize: 13, fontWeight: 700 }}>Payroll Month <input type="month" value={payrollMonth} onChange={handlePayrollMonthChange} style={{ padding: 8, border: '1px solid #cbd5e1', borderRadius: 6, marginLeft: 5 }}/></label>
+            {userRole.is_admin && <button type="button" disabled={officeOtSaving || officeOtLoading} onClick={saveOfficeOtComparison} style={{ padding: '10px 14px', background: '#047857', color: '#fff', border: 0, borderRadius: 7, fontWeight: 800, cursor: 'pointer', opacity: officeOtSaving ? 0.65 : 1 }}>{officeOtSaving ? 'Saving…' : 'Save Office List'}</button>}
+            {userRole.is_admin && <button type="button" onClick={() => printNdaPage('hr-office-ot-print', userRole.is_admin)} style={{ padding: '10px 14px', background: '#2563eb', color: '#fff', border: 0, borderRadius: 7, fontWeight: 800, cursor: 'pointer' }}>Print / Save PDF</button>}
+          </div>
+        </div>
+        {officeOtError && <div className="no-print" style={{ padding: 10, marginBottom: 10, borderRadius: 7, background: '#fef2f2', color: '#991b1b', fontSize: 13 }}>{officeOtError}</div>}
+        {officeOtSaveMessage && <div className="no-print" style={{ padding: 10, marginBottom: 10, borderRadius: 7, background: '#ecfdf5', color: '#065f46', fontSize: 13 }}>{officeOtSaveMessage}</div>}
+        {officeOtLoading && <div className="no-print" style={{ padding: 8, color: '#64748b' }}>Office OT list loading...</div>}
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', minWidth: 1120, borderCollapse: 'collapse', textAlign: 'center', fontSize: 12 }}>
+            <thead><tr style={{ background: '#e2e8f0' }}>
+              {['S.No','ID No','Worker Name','Monthly Salary','System OT','Extra OT','Office OT','Difference','Total OT','Salary Pay','OT Pay','Final Salary'].map((label, i) => <th key={label} style={{ border: '1px solid #94a3b8', padding: 8, whiteSpace: 'nowrap', background: i === 7 ? '#fef3c7' : undefined }}>{label}</th>)}
+            </tr></thead>
+            <tbody>
+              {salaryData.map((worker, index) => {
+                const systemOT = Number(worker.normalOT || 0) + Number(worker.contractOT || 0);
+                const extraOT = Number(worker.extraOT || 0);
+                const rawOfficeOT = officeOtRows[String(worker.id)];
+                const officeEntered = rawOfficeOT !== undefined && String(rawOfficeOT).trim() !== '';
+                const officeOT = officeEntered ? Number(rawOfficeOT) : systemOT;
+                const difference = officeEntered ? officeOT - systemOT : 0;
+                const totalOT = officeOT + extraOT;
+                const salaryPay = Number(worker.baseSalary || 0);
+                const hourlyRate = (Number(worker.monthlySal || 0) / Math.max(1, salaryMonthDays)) / 8;
+                const otPay = totalOT * hourlyRate * 1.25;
+                const finalSalary = salaryPay + otPay;
+                const money = value => `${Math.round(Number(value) || 0).toLocaleString('en-US')} ${selectedCurrency}`;
+                return <tr key={worker.id}>
+                  <td style={{ border: '1px solid #cbd5e1', padding: 7 }}>{index + 1}</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: 7, fontWeight: 700 }}>{worker.worker_id || worker.id}</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: 7, textAlign: 'left' }}>{worker.name}</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: 7 }}>{money(worker.monthlySal)}</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: 7 }}>{systemOT} hrs</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: 7, color: '#b45309', fontWeight: 700 }}>{extraOT} hrs</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: 5 }}>
+                    {userRole.is_admin ? <><input className="no-print" aria-label={`Office OT for ${worker.name}`} type="number" min="0" step="0.25" value={rawOfficeOT ?? ''} onChange={e => { setOfficeOtRows(prev => ({ ...prev, [String(worker.id)]: e.target.value })); setOfficeOtSaveMessage(''); }} placeholder={String(systemOT)} style={{ width: 82, padding: 6, border: '1px solid #94a3b8', borderRadius: 5, textAlign: 'center' }}/><span className="office-ot-print-value" style={{ display: 'none' }}>{officeOT} hrs</span></> : (officeEntered ? officeOT : systemOT) + ' hrs'}
+                  </td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: 7, background: '#fef3c7', color: difference < 0 ? '#b91c1c' : difference > 0 ? '#047857' : '#78350f', fontWeight: 900 }}>{difference > 0 ? '+' : ''}{difference} hrs</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: 7, fontWeight: 800 }}>{totalOT} hrs</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: 7 }}>{money(salaryPay)}</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: 7 }}>{money(otPay)}</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: 7, fontWeight: 900, fontSize: 13 }}>{money(finalSalary)}</td>
+                </tr>;
+              })}
+              {!salaryData.length && <tr><td colSpan="12" style={{ padding: 15, textAlign: 'center' }}>Is payroll period mein koi worker nahi mila.</td></tr>}
+            </tbody>
+            <tfoot><tr style={{ background: '#f1f5f9', fontWeight: 800 }}>
+              <td colSpan="8" style={{ border: '1px solid #94a3b8', padding: 9, textAlign: 'right' }}>GRAND TOTAL</td>
+              <td style={{ border: '1px solid #94a3b8', padding: 9 }}>{salaryData.reduce((sum, worker) => { const sys = Number(worker.normalOT || 0) + Number(worker.contractOT || 0); const raw = officeOtRows[String(worker.id)]; return sum + (raw !== undefined && String(raw).trim() !== '' ? Number(raw) : sys) + Number(worker.extraOT || 0); }, 0)} hrs</td>
+              <td style={{ border: '1px solid #94a3b8', padding: 9 }}>{salaryData.reduce((sum, worker) => sum + Number(worker.baseSalary || 0), 0).toLocaleString('en-US')} {selectedCurrency}</td>
+              <td style={{ border: '1px solid #94a3b8', padding: 9 }}>{salaryData.reduce((sum, worker) => { const sys = Number(worker.normalOT || 0) + Number(worker.contractOT || 0); const raw = officeOtRows[String(worker.id)]; const total = (raw !== undefined && String(raw).trim() !== '' ? Number(raw) : sys) + Number(worker.extraOT || 0); return sum + total * (Number(worker.monthlySal || 0) / Math.max(1, salaryMonthDays) / 8) * 1.25; }, 0).toLocaleString('en-US')} {selectedCurrency}</td>
+              <td style={{ border: '1px solid #94a3b8', padding: 9, fontWeight: 900 }}>{salaryData.reduce((sum, worker) => { const sys = Number(worker.normalOT || 0) + Number(worker.contractOT || 0); const raw = officeOtRows[String(worker.id)]; const total = (raw !== undefined && String(raw).trim() !== '' ? Number(raw) : sys) + Number(worker.extraOT || 0); const ot = total * (Number(worker.monthlySal || 0) / Math.max(1, salaryMonthDays) / 8) * 1.25; return sum + Number(worker.baseSalary || 0) + ot; }, 0).toLocaleString('en-US')} {selectedCurrency}</td>
+            </tr></tfoot>
+          </table>
+        </div>
+        <div style={{ marginTop: 10, color: '#64748b', fontSize: 11 }}>Difference = Office OT − System OT. Total OT = Office OT (blank ho to System OT) + Extra OT. Salary Pay existing attendance/absence calculation ke mutabiq hai; OT Pay existing 1.25 rate se calculate hoti hai.</div>
+      </div>
+    )}
+  </>
 )}
         {/* TAB 6: CHANGE LOGIN DETAILS */}
         {activeTab === 'changepass' && userRole.is_admin && (
