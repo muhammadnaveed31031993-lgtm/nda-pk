@@ -3054,9 +3054,11 @@ async function fetchDesignations() {
 }
 
 async function fetchSystemLists() {
+  // Seed only the starter site list. Departments are fully admin-managed;
+  // re-seeding hard-coded department names here caused renamed departments
+  // (for example Drivers) to reappear after refresh.
   const defaults = {
-    site: ['Sharjah Mamzar', 'Ajman Aaliya', 'Dubai Downtown'],
-    department: ['Plumbing', 'Electrical', 'Civil', 'Mustafa', 'Drivers']
+    site: ['Sharjah Mamzar', 'Ajman Aaliya', 'Dubai Downtown']
   };
   const { data: rows, error } = await supabase.from('system_lists').select('id,list_type,name,is_active').order('name', { ascending: true });
   if (error) {
