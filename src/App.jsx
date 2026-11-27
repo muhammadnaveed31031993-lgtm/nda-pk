@@ -2402,7 +2402,40 @@ export default function App() {
     return () => { cancelled = true; };
   }, [activeTab, payrollView, payrollStartDate, payrollEndDate]);
 
-  async function saveOfficeOtComparison() {
+  
+  async function saveOfficeOtRow(worker, rawValue) {
+    const trimmed = String(rawValue ?? '').trim();
+    if (trimmed !== '' && (!Number.isFinite(Number(trimmed)) || Number(trimmed) < 0)) {
+      setOfficeOtSaveMessage('Please enter a valid non-negative OT value.');
+      return;
+    }
+
+    setOfficeOtSaveMessage('Saving automatically...');
+    const payload = {
+      worker_id: String(worker.id),
+      worker_code: String(worker.worker_id || worker.id),
+      worker_name: String(worker.name || ''),
+      department: String(worker.department || ''),
+      period_start: payrollStartDate,
+      period_end: payrollEndDate,
+      office_ot: trimmed === '' ? null : Number(trimmed),
+      updated_by: session?.user?.email || '',
+      updated_at: new Date().toISOString()
+    };
+
+    const { error } = await supabase
+      .from('hr_office_ot_comparisons')
+      .upsert([payload], { onConflict: 'worker_id,period_start,period_end' });
+
+    if (error) {
+      console.error('Office OT auto-save failed:', error);
+      setOfficeOtSaveMessage(`Auto-save failed: ${error.message || 'Please try again.'}`);
+      return;
+    }
+    setOfficeOtSaveMessage('Office OT saved automatically.');
+  }
+
+async function saveOfficeOtComparison() {
     if (!userRole.is_admin) return alert('Office OT list edit sirf Admin kar sakta hai.');
     if (!payrollStartDate || !payrollEndDate) return alert('Payroll period select karein.');
     setOfficeOtSaving(true); setOfficeOtError(''); setOfficeOtSaveMessage('');
@@ -7718,7 +7751,7 @@ const workerSite = record.site || record.work_site || '';
                   <td style={{ border: '1px solid #cbd5e1', padding: 7 }}>{systemOT} hrs</td>
                   <td style={{ border: '1px solid #cbd5e1', padding: 7, color: '#b45309', fontWeight: 700 }}>{extraOT} hrs</td>
                   <td style={{ border: '1px solid #cbd5e1', padding: 5 }}>
-                    {userRole.is_admin ? <><input className="no-print" aria-label={`Office OT for ${worker.name}`} type="number" min="0" step="0.25" value={rawOfficeOT ?? ''} onChange={e => { setOfficeOtRows(prev => ({ ...prev, [String(worker.id)]: e.target.value })); setOfficeOtSaveMessage(''); }} placeholder={String(systemOT)} style={{ width: 82, padding: 6, border: '1px solid #94a3b8', borderRadius: 5, textAlign: 'center' }}/><span className="office-ot-print-value" style={{ display: 'none' }}>{officeOT} hrs</span></> : (officeEntered ? officeOT : systemOT) + ' hrs'}
+                    {userRole.is_admin ? <><input className="no-print" aria-label={`Office OT for ${worker.name}`} type="number" min="0" step="0.25" value={rawOfficeOT ?? ''} onChange={e => { const value = e.target.value; setOfficeOtRows(prev = onBlur={(e) => void saveOfficeOtRow(worker, e.target.value)}> ({ ...prev, [String(worker.id)]: value })); void saveOfficeOtRow(worker, value); }} placeholder={String(systemOT)} style={{ width: 82, padding: 6, border: '1px solid #94a3b8', borderRadius: 5, textAlign: 'center' }}/><span className="office-ot-print-value" style={{ display: 'none' }}>{officeOT} hrs</span></> : (officeEntered ? officeOT : systemOT) + ' hrs'}
                   </td>
                   <td style={{ border: '1px solid #cbd5e1', padding: 7, background: '#fef3c7', color: difference < 0 ? '#b91c1c' : difference > 0 ? '#047857' : '#78350f', fontWeight: 900 }}>{difference > 0 ? '+' : ''}{difference} hrs</td>
                   <td style={{ border: '1px solid #cbd5e1', padding: 7, fontWeight: 800 }}>{totalOT} hrs</td>
