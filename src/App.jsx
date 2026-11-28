@@ -551,6 +551,46 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
     const {error}=await supabase.from('business_notebook_entries').delete().eq('id',row.id).eq('file_id',Number(activeFileId));
     if(error)return alert(error.message); await loadEntries();
   }
+  async function clearExpenseBill(row) {
+    if(!isAdmin || !row || row.entry_type !== 'expense') return;
+    if(String(row.bill_status || 'pending').toLowerCase() === 'cleared') return;
+    if(!window.confirm(`"${row.details}" ka ${fmt(row.amount)} expense bill Engineer ko diya gaya hai?`)) return;
+    const {error}=await supabase.from('business_notebook_entries').update({
+      bill_status:'cleared',
+      bill_cleared_at:new Date().toISOString(),
+      bill_cleared_by:session?.user?.email||''
+    }).eq('id',row.id).eq('file_id',Number(activeFileId));
+    if(error) return alert('Bill clear nahi hua: '+error.message+'\nAgar migration abhi run nahi ki to pehle SQL setup chalayein.');
+    await loadEntries();
+  }
+  function printEngineerCashCard() {
+    if(!activeFile) return;
+    const win=window.open('','_blank');
+    if(!win) return alert('Print window blocked. Browser mein pop-ups allow karein.');
+    const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const pending=entries.filter(x=>x.entry_type==='expense'&&String(x.bill_status||'pending').toLowerCase()!=='cleared');
+    const cleared=entries.filter(x=>x.entry_type==='expense'&&String(x.bill_status||'pending').toLowerCase()==='cleared');
+    const dateText=new Date().toLocaleDateString('en-GB');
+    win.document.open();
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Engineer Cash Statement</title><style>
+      @page{size:4in 6in;margin:0}*{box-sizing:border-box}body{margin:0;background:#fff;font-family:Arial,sans-serif;color:#172033}
+      .card{width:4in;min-height:6in;padding:.22in .24in;border:1px solid #cbd5e1;position:relative;overflow:hidden}
+      .top{background:#12345a;color:#fff;margin:-.22in -.24in 14px;padding:17px 15px 14px;text-align:center}
+      .top h1{font-size:17px;margin:0 0 4px;letter-spacing:.5px}.top p{font-size:9px;margin:0;color:#dbeafe}
+      .name{font-size:15px;font-weight:800;text-align:center;margin:8px 0 12px;overflow-wrap:anywhere}
+      .date{font-size:9px;color:#64748b;text-align:center;margin-bottom:10px}
+      .stats{display:grid;grid-template-columns:1fr 1fr;gap:7px}.stat{border:1px solid #dbe3ee;border-radius:7px;padding:9px 7px}.stat small{font-size:8px;color:#64748b;display:block;margin-bottom:4px}.stat b{font-size:12px}
+      .balance{margin-top:9px;background:#eaf4ff;border:1px solid #93c5fd;border-radius:8px;padding:12px;text-align:center}.balance small{font-size:9px;color:#1e40af;display:block}.balance strong{font-size:20px;color:#12345a;display:block;margin-top:4px}
+      .bills{display:flex;justify-content:space-between;font-size:9px;margin-top:12px;padding:8px 2px;border-bottom:1px solid #e2e8f0}.foot{font-size:8px;color:#64748b;text-align:center;margin-top:18px}
+      @media print{html,body{width:4in;height:6in}.card{border:0}}
+    </style></head><body><main class="card"><header class="top"><h1>ENGINEER CASH STATEMENT</h1><p>RECEIVED · EXPENSE · REMAINING CASH</p></header>
+      <div class="name">${esc(activeFile.file_name)}</div><div class="date">Statement Date: ${dateText}</div>
+      <div class="stats"><div class="stat"><small>TOTAL CASH RECEIVED</small><b>${esc(fmt(received))}</b></div><div class="stat"><small>TOTAL EXPENSES</small><b>${esc(fmt(spent))}</b></div><div class="stat"><small>BILLS GIVEN</small><b>${esc(fmt(cleared.reduce((a,x)=>a+Number(x.amount||0),0)))} · ${cleared.length}</b></div><div class="stat"><small>BILLS PENDING</small><b>${esc(fmt(pending.reduce((a,x)=>a+Number(x.amount||0),0)))} · ${pending.length}</b></div></div>
+      <div class="balance"><small>AVAILABLE CASH BALANCE</small><strong>${esc(fmt(balance))}</strong></div>
+      <div class="bills"><span>Bill status does not change cash balance.</span><b>Verified</b></div>
+      <div class="foot">Prepared from Naveed Docs · ${dateText}</div></main><script>window.onload=()=>setTimeout(()=>window.print(),250);<\/script></body></html>`);
+    win.document.close();
+  }
   async function deleteFile() {
     if(!isAdmin||!activeFile)return;
     if(!window.confirm(`"${activeFile.file_name}", iski tamam entries aur attached documents permanently delete karne hain?`))return;
@@ -575,7 +615,7 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
     {isAdmin&&<form onSubmit={createFile} style={{...panel,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:10}}><input style={input} value={newFileName} onChange={e=>setNewFileName(e.target.value)} placeholder="New file name (e.g. Engineer Account)" required/><select style={input} value={newFileCurrency} onChange={e=>setNewFileCurrency(e.target.value)}><option value="AED">AED</option><option value="PKR">PKR</option></select><button style={{...primaryStyle,background:'#1d4ed8'}}>＋ Create Notebook File</button></form>}
     <div style={{...panel,display:'flex',gap:10,alignItems:'end',flexWrap:'wrap'}}><label style={{flex:'1 1 220px'}}>Open Notebook File<select style={{...input,marginTop:5}} value={activeFileId} onChange={e=>setActiveFileId(e.target.value)}><option value="">Select file</option>{files.map(f=><option key={f.id} value={f.id}>{f.file_name} ({f.currency})</option>)}</select></label>{activeFile&&isAdmin&&<button onClick={deleteFile} style={{...primaryStyle,width:'auto',background:'#b91c1c'}}>Delete File</button>}</div>
     {activeFile&&<>
-      <div style={{...panel,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}><div><small>Received Amount</small><h2 style={{margin:'5px 0',color:'#047857'}}>{fmt(received)}</h2></div><div><small>Total Expenses</small><h2 style={{margin:'5px 0',color:'#b91c1c'}}>{fmt(spent)}</h2></div><div><small>Remaining Balance</small><h2 style={{margin:'5px 0',color:balance<0?'#b91c1c':'#1d4ed8'}}>{fmt(balance)}</h2></div></div>
+      <div style={{...panel,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10}}><div><small>Received Amount</small><h2 style={{margin:'5px 0',color:'#047857'}}>{fmt(received)}</h2></div><div><small>Total Expenses</small><h2 style={{margin:'5px 0',color:'#b91c1c'}}>{fmt(spent)}</h2></div><div><small>Remaining Balance</small><h2 style={{margin:'5px 0',color:balance<0?'#b91c1c':'#1d4ed8'}}>{fmt(balance)}</h2></div><div style={{gridColumn:'1/-1',display:'flex',justifyContent:'flex-end'}}><button type="button" onClick={printEngineerCashCard} style={{...primaryStyle,width:'auto',background:'#12345a'}}>🖨️ Print Engineer Card (4 × 6)</button></div></div>
       <div style={panel}>
         <h3 style={{marginTop:0}}>📎 Documents / Attachments</h3>
         {isAdmin&&<form onSubmit={uploadNotebookAttachment} style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',marginBottom:12}}>
@@ -586,7 +626,7 @@ function PersonalNotebookPanel({ session, businessId, isAdmin }) {
         {attachmentLoading?<div style={{color:'#64748b'}}>Documents load ho rahe hain...</div>:attachments.length?<div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['File Name','Type','Size','Upload Date','Actions'].map(h=><th key={h} style={{padding:8,borderBottom:'1px solid #cbd5e1',textAlign:'left'}}>{h}</th>)}</tr></thead><tbody>{attachments.map(row=><tr key={row.id}><td style={{padding:8,borderBottom:'1px solid #eee',overflowWrap:'anywhere'}}>{row.file_name}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{row.mime_type||'Unknown'}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{(Number(row.file_size||0)/1024/1024).toFixed(2)} MB</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{row.created_at?new Date(row.created_at).toLocaleString(): '—'}</td><td style={{padding:8,borderBottom:'1px solid #eee',whiteSpace:'nowrap'}}><button type="button" onClick={()=>openNotebookAttachment(row)} style={{marginRight:6}}>Open / Download</button>{isAdmin&&<button type="button" onClick={()=>deleteNotebookAttachment(row)} style={{color:'#b91c1c'}}>Delete</button>}</td></tr>)}</tbody></table></div>:<div style={{color:'#64748b'}}>Is account file ke saath abhi koi document upload nahi hua.</div>}
       </div>
       {isAdmin&&<form onSubmit={addEntry} style={panel}><h3 style={{marginTop:0}}>＋ New Amount / Expense</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:10}}><label>Date<input type="date" style={input} value={entryDate} onChange={e=>setEntryDate(e.target.value)} required/></label><label>Entry Type<select style={input} value={entryType} onChange={e=>setEntryType(e.target.value)}><option value="income">Received / Income (+)</option><option value="expense">Expense (-)</option></select></label><label>Amount<input type="number" min="0.01" step="0.01" style={input} value={entryAmount} onChange={e=>setEntryAmount(e.target.value)} required/></label><label>Details<input style={input} value={entryDetails} onChange={e=>setEntryDetails(e.target.value)} placeholder="Material bill / payment received" required/></label><label>Remarks<input style={input} value={entryNotes} onChange={e=>setEntryNotes(e.target.value)} placeholder="Optional notes"/></label></div><button style={{...primaryStyle,marginTop:10}}>Save Entry</button></form>}
-      <div style={panel}><h3 style={{marginTop:0}}>{activeFile.file_name} · Entry History</h3><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Date','Details','Income (+)','Expense (-)','Balance','Remarks',...(isAdmin?['Actions']:[])].map(h=><th key={h} style={{padding:8,borderBottom:'1px solid #cbd5e1',textAlign:'left'}}>{h}</th>)}</tr></thead><tbody>{[...entries].reverse().map((r,i)=>{const running=[...entries].reverse().slice(0,i+1).reduce((a,x)=>a+(x.entry_type==='income'?1:-1)*Number(x.amount||0),0);return <tr key={r.id}><td style={{padding:8,borderBottom:'1px solid #eee'}}>{r.entry_date}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{r.details}</td><td style={{padding:8,color:'#047857'}}>{r.entry_type==='income'?fmt(r.amount):'—'}</td><td style={{padding:8,color:'#b91c1c'}}>{r.entry_type==='expense'?fmt(r.amount):'—'}</td><td style={{padding:8,fontWeight:700}}>{fmt(running)}</td><td style={{padding:8}}>{r.notes||'—'}</td>{isAdmin&&<td style={{padding:8,whiteSpace:'nowrap'}}><button onClick={()=>editEntry(r)} style={{marginRight:5}}>Edit</button><button onClick={()=>deleteEntry(r)} style={{color:'#b91c1c'}}>Delete</button></td>}</tr>})}{!entries.length&&<tr><td colSpan={isAdmin?7:6} style={{padding:12}}>Is file mein abhi koi entry nahi.</td></tr>}</tbody></table></div></div>
+      <div style={panel}><h3 style={{marginTop:0}}>{activeFile.file_name} · Entry History</h3><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr>{['Date','Details','Income (+)','Expense (-)','Balance','Bill Status','Remarks',...(isAdmin?['Actions']:[])].map(h=><th key={h} style={{padding:8,borderBottom:'1px solid #cbd5e1',textAlign:'left'}}>{h}</th>)}</tr></thead><tbody>{[...entries].reverse().map((r,i)=>{const running=[...entries].reverse().slice(0,i+1).reduce((a,x)=>a+(x.entry_type==='income'?1:-1)*Number(x.amount||0),0);return <tr key={r.id}><td style={{padding:8,borderBottom:'1px solid #eee'}}>{r.entry_date}</td><td style={{padding:8,borderBottom:'1px solid #eee'}}>{r.details}</td><td style={{padding:8,color:'#047857'}}>{r.entry_type==='income'?fmt(r.amount):'—'}</td><td style={{padding:8,color:'#b91c1c'}}>{r.entry_type==='expense'?fmt(r.amount):'—'}</td><td style={{padding:8,fontWeight:700}}>{fmt(running)}</td><td style={{padding:8,whiteSpace:'nowrap'}}>{r.entry_type==='expense'?<><span style={{display:'inline-block',padding:'3px 7px',borderRadius:20,fontSize:11,fontWeight:800,background:String(r.bill_status||'pending').toLowerCase()==='cleared'?'#dcfce7':'#fff7ed',color:String(r.bill_status||'pending').toLowerCase()==='cleared'?'#166534':'#9a3412'}}>{String(r.bill_status||'pending').toLowerCase()==='cleared'?'Bill Given':'Pending'}</span>{isAdmin&&String(r.bill_status||'pending').toLowerCase()!=='cleared'&&<button type="button" onClick={()=>clearExpenseBill(r)} style={{display:'block',marginTop:5,padding:'5px 7px',border:0,borderRadius:6,background:'#047857',color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer'}}>Bill Given to Engineer</button>}</>:'—'}</td><td style={{padding:8}}>{r.notes||'—'}</td>{isAdmin&&<td style={{padding:8,whiteSpace:'nowrap'}}><button onClick={()=>editEntry(r)} style={{marginRight:5}}>Edit</button><button onClick={()=>deleteEntry(r)} style={{color:'#b91c1c'}}>Delete</button></td>}</tr>})}{!entries.length&&<tr><td colSpan={isAdmin?8:7} style={{padding:12}}>Is file mein abhi koi entry nahi.</td></tr>}</tbody></table></div></div>
     </>}
     {!files.length&&!loading&&!errorText&&<div style={panel}>Abhi koi notebook file nahi bani. Upar se pehli file create karein.</div>}
     {loading&&<div>Loading notebook...</div>}
@@ -3028,13 +3068,12 @@ const [newDesignation, setNewDesignation] = useState('');
       console.warn('Payroll date settings table is not ready yet. Run payroll_period_setup.sql:', error.message);
       return;
     }
-    if (data?.start_date && data?.end_date) {
-      const savedStart = String(data.start_date).slice(0, 10);
-      const savedEnd = String(data.end_date).slice(0, 10);
-      setPayrollStartDate(savedStart);
-      setPayrollEndDate(savedEnd);
-      setPayrollMonth(getPayrollMonthFromEndDate(savedEnd));
-    }
+    // Always open Payroll / Monthly OT on the current active 16th-to-15th period.
+    // Older saved settings (for example a stale 2027 date) must not override the current default.
+    const currentRange = getInitialPayrollRange();
+    setPayrollStartDate(currentRange.startDate);
+    setPayrollEndDate(currentRange.endDate);
+    setPayrollMonth(getPayrollMonthFromEndDate(currentRange.endDate));
   }
 
   async function savePayrollPeriodSettings(startDate = payrollStartDate, endDate = payrollEndDate, showMessage = true) {
@@ -3099,15 +3138,15 @@ const [newDesignation, setNewDesignation] = useState('');
     if (!userRole.is_admin) return alert('Sirf Admin salary month close kar sakta hai.');
     if (!payrollStartDate || !payrollEndDate || payrollStartDate > payrollEndDate) return alert('Pehle valid Start Date aur End Date select karein.');
     if (currentPayrollPeriodClosed) return alert('Yeh salary period pehle se close hai.');
-    const overlapsClosed = closedPayrollPeriods.some(period => period.status === 'closed' && payrollPeriodStartDate <= String(period.end_date).slice(0, 10) && payrollPeriodEndDate >= String(period.start_date).slice(0, 10));
+    const overlapsClosed = closedPayrollPeriods.some(period => period.status === 'closed' && payrollStartDate <= String(period.end_date).slice(0, 10) && payrollEndDate >= String(period.start_date).slice(0, 10));
     if (overlapsClosed) return alert('Selected date range kisi pehle se closed payroll period se overlap kar rahi hai. Pehle us closed period ko reopen karein, phir closing karein.');
-    const confirmed = window.confirm(`Salary period ${payrollPeriodStartDate} se ${payrollPeriodEndDate} tak close karna hai?\n\nIs period ki attendance / overtime entries app se edit nahi ho sakein gi. Close hone ke baad agla salary period khul jayega.`);
+    const confirmed = window.confirm(`Salary period ${payrollStartDate} se ${payrollEndDate} tak close karna hai?\n\nIs period ki attendance / overtime entries app se edit nahi ho sakein gi. Close hone ke baad agla salary period khul jayega.`);
     if (!confirmed) return;
     setClosingPayrollPeriod(true);
     try {
       const payload = {
-        start_date: payrollPeriodStartDate,
-        end_date: payrollPeriodEndDate,
+        start_date: payrollStartDate,
+        end_date: payrollEndDate,
         status: 'closed',
         closed_by: session?.user?.email || '',
         closed_at: new Date().toISOString()
@@ -3119,8 +3158,8 @@ const [newDesignation, setNewDesignation] = useState('');
         .single();
       if (error) throw error;
       setClosedPayrollPeriods(prev => [...prev.filter(x => !(x.start_date === payload.start_date && x.end_date === payload.end_date)), data || payload]);
-      const nextStartDate = shiftPayrollDateOneMonth(payrollPeriodStartDate);
-      const nextEndDate = shiftPayrollDateOneMonth(payrollPeriodEndDate);
+      const nextStartDate = shiftPayrollDateOneMonth(payrollStartDate);
+      const nextEndDate = shiftPayrollDateOneMonth(payrollEndDate);
       setPayrollStartDate(nextStartDate);
       setPayrollEndDate(nextEndDate);
       setPayrollMonth(getPayrollMonthFromEndDate(nextEndDate));
@@ -3139,13 +3178,13 @@ const [newDesignation, setNewDesignation] = useState('');
 
     if (!userRole.is_admin) return alert('Sirf Admin salary period reopen kar sakta hai.');
     if (!currentPayrollPeriodClosed) return;
-    const confirmed = window.confirm(`Kya ${payrollPeriodStartDate} se ${payrollPeriodEndDate} ka closed salary period dobara open karna hai?`);
+    const confirmed = window.confirm(`Kya ${payrollStartDate} se ${payrollEndDate} ka closed salary period dobara open karna hai?`);
     if (!confirmed) return;
     const { data, error } = await supabase
       .from('payroll_periods')
       .update({ status: 'open', reopened_by: session?.user?.email || '', reopened_at: new Date().toISOString() })
-      .eq('start_date', payrollPeriodStartDate)
-      .eq('end_date', payrollPeriodEndDate)
+      .eq('start_date', payrollStartDate)
+      .eq('end_date', payrollEndDate)
       .select()
       .single();
     if (error) return alert('Period reopen nahi hua: ' + error.message);
@@ -4592,7 +4631,7 @@ async function handleToggleHolidayDate() {
   }
 
    // Print Individual Worker Monthly Report
-  function handlePrintWorkerMonthlyReport(worker, selectedStartDate = payrollPeriodStartDate, selectedEndDate = payrollPeriodEndDate) {
+  function handlePrintWorkerMonthlyReport(worker, selectedStartDate = payrollStartDate, selectedEndDate = payrollEndDate) {
     if (!userRole.is_admin) { alert('Worker monthly report Print / PDF sirf Admin kar sakta hai.'); return; }
     const workerJoinDate = String(worker.joining_date || '').slice(0, 10);
     const reportAsOfDate = formatPayrollDate(new Date());
@@ -5721,7 +5760,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
         .footer{border-top:1px solid #cbd5e1;margin-top:28px;padding-top:9px;text-align:center;font-size:10px;color:#64748b}
       </style></head><body>
         <div class="brand"><img src="/nda-naveed-logo.png" alt="Company Logo"></div>
-        <div class="heading"><h2>SALARY SLIP</h2><div class="period"><b>Salary Month:</b> ${esc(salaryMonthLabel)}<br><b>OT Closing Period:</b> ${esc(payrollPeriodStartDate)} to ${esc(payrollPeriodEndDate)}</div></div>
+        <div class="heading"><h2>SALARY SLIP</h2><div class="period"><b>Salary Month:</b> ${esc(salaryMonthLabel)}<br><b>OT Closing Period:</b> ${esc(payrollStartDate)} to ${esc(payrollEndDate)}</div></div>
         <div class="employee">
           <div><b>Employee Name:</b> ${esc(worker.name || '—')}</div><div><b>Employee ID:</b> #${esc(worker.id)}</div>
           <div><b>Department:</b> ${esc(worker.department || '—')}</div><div><b>Designation:</b> ${esc(worker.designation || '—')}</div>
@@ -7608,12 +7647,12 @@ const workerSite = record.site || record.work_site || '';
     </div>
 
     <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 15, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
-      <div style={{ minWidth: 260, fontWeight: 'bold' }}>Monthly Salary & Overtime Sheet<br/><span style={{fontSize:12,color:'#475569'}}>Salary Month: {salaryMonthLabel} ({salaryMonthDays} days) · {salaryMonthStartDate} to {salaryMonthEndDate}</span><br/><span style={{fontSize:12,color:'#475569'}}>OT Closing Period: {payrollPeriodStartDate} to {payrollPeriodEndDate}</span><br/><span style={{fontSize:12,color:currentPayrollPeriodClosed?'#b91c1c':'#047857'}}>{currentPayrollPeriodClosed ? 'CLOSED — editing blocked' : 'OPEN — attendance and OT can be entered'}</span></div>
+      <div style={{ minWidth: 260, fontWeight: 'bold' }}>Monthly Salary & Overtime Sheet<br/><span style={{fontSize:12,color:'#475569'}}>Salary Month: {salaryMonthLabel} ({salaryMonthDays} days) · {salaryMonthStartDate} to {salaryMonthEndDate}</span><br/><span style={{fontSize:12,color:'#475569'}}>OT Closing Period: {payrollStartDate} to {payrollEndDate}</span><br/><span style={{fontSize:12,color:currentPayrollPeriodClosed?'#b91c1c':'#047857'}}>{currentPayrollPeriodClosed ? 'CLOSED — editing blocked' : 'OPEN — attendance and OT can be entered'}</span></div>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Payroll Month:
         <input type="month" value={payrollMonth} onChange={handlePayrollMonthChange} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 6 }} />
       </label>
       <div style={{fontSize:12,color:'#475569',padding:'8px 10px',background:'#fff',border:'1px solid #cbd5e1',borderRadius:6}}>
-        Selected Period: <b>{payrollPeriodStartDate} to {payrollPeriodEndDate}</b>
+        Selected Period: <b>{payrollStartDate} to {payrollEndDate}</b>
       </div>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>Department (Top Filter):
         <span style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', minWidth: 120 }}>{userRole.is_admin ? selectedDeptFilter : userRole.assigned_department}</span>
@@ -7726,7 +7765,7 @@ const workerSite = record.site || record.work_site || '';
         <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
           <div>
             <h3 style={{ margin: '0 0 5px', color: '#0f172a' }}>Office OT Comparison & Final Salary</h3>
-            <div style={{ fontSize: 12, color: '#475569' }}>Salary Month: {salaryMonthLabel} · OT Period: {payrollPeriodStartDate} to {payrollPeriodEndDate}</div>
+            <div style={{ fontSize: 12, color: '#475569' }}>Salary Month: {salaryMonthLabel} · OT Period: {payrollStartDate} to {payrollEndDate}</div>
             <div style={{ fontSize: 12, color: '#475569', marginTop: 3 }}>Office OT manually enter karein. Khali chhorne par system OT use hoga.</div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -8568,7 +8607,7 @@ accruedDays = balance.toFixed(1);
             />
           </div>
           <div style={{fontSize:12,color:'#475569',padding:'8px 10px',background:'#fff',border:'1px solid #cbd5e1',borderRadius:6}}>
-            Salary Period: <b>{payrollPeriodStartDate} to {payrollPeriodEndDate}</b>
+            Salary Period: <b>{payrollStartDate} to {payrollEndDate}</b>
             <span style={{display:'block',marginTop:3,fontWeight:700,color:currentPayrollPeriodClosed?'#b91c1c':'#047857'}}>{currentPayrollPeriodClosed?'CLOSED — view / print only':'OPEN — current period'}</span>
           </div>
         </div>
@@ -8706,7 +8745,7 @@ accruedDays = balance.toFixed(1);
         <div>
           <h2 style={{ margin: '0 0 5px 0', fontSize: '20px', fontWeight: 'bold' }}>📄 Monthly Timesheet Details</h2>
           <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
-            Worker: <b>#{viewingWorkerTimesheet.worker_id || viewingWorkerTimesheet.id} - {viewingWorkerTimesheet.name}</b> | Dept: {viewingWorkerTimesheet.department} | Salary Period: {payrollPeriodStartDate} to {payrollPeriodEndDate}
+            Worker: <b>#{viewingWorkerTimesheet.worker_id || viewingWorkerTimesheet.id} - {viewingWorkerTimesheet.name}</b> | Dept: {viewingWorkerTimesheet.department} | Salary Period: {payrollStartDate} to {payrollEndDate}
           </p>
         </div>
         <button 
@@ -8745,18 +8784,18 @@ accruedDays = balance.toFixed(1);
             {(() => {
         const timesheetJoinDate = String(viewingWorkerTimesheet.joining_date || '').slice(0, 10);
 const timesheetAsOfDate = formatPayrollDate(new Date());
-const timesheetEndDate = payrollPeriodEndDate < timesheetAsOfDate ? payrollPeriodEndDate : timesheetAsOfDate;
+const timesheetEndDate = payrollEndDate < timesheetAsOfDate ? payrollEndDate : timesheetAsOfDate;
 const workerAttendanceByDate = new Map();
 attendance.forEach(a => {
   const recordDate = String(a.date || '').slice(0, 10);
-  if (String(a.worker_id) === String(viewingWorkerTimesheet.id) && recordDate >= payrollPeriodStartDate && recordDate <= timesheetEndDate && (!timesheetJoinDate || recordDate >= timesheetJoinDate)) workerAttendanceByDate.set(recordDate, a);
+  if (String(a.worker_id) === String(viewingWorkerTimesheet.id) && recordDate >= payrollStartDate && recordDate <= timesheetEndDate && (!timesheetJoinDate || recordDate >= timesheetJoinDate)) workerAttendanceByDate.set(recordDate, a);
 });
 const workerAttendance = Array.from(workerAttendanceByDate.values());
 
 const attendanceByDate = new Map(workerAttendance.map(att => [String(att.date || '').slice(0, 10), att]));
 const allPeriodDates = [];
-if (payrollPeriodStartDate && payrollPeriodEndDate && payrollPeriodStartDate <= payrollPeriodEndDate) {
-  const cursor = new Date(`${payrollPeriodStartDate}T12:00:00`);
+if (payrollStartDate && payrollEndDate && payrollStartDate <= payrollEndDate) {
+  const cursor = new Date(`${payrollStartDate}T12:00:00`);
   const end = new Date(`${timesheetEndDate}T12:00:00`);
   while (cursor <= end && allPeriodDates.length < 400) {
     allPeriodDates.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`);
