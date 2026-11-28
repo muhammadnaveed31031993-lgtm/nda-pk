@@ -2286,6 +2286,20 @@ export default function App() {
   const [payrollEndDate, setPayrollEndDate] = useState(() => getInitialPayrollRange().endDate);
   const [payrollMonth, setPayrollMonth] = useState(() => getPayrollMonthFromEndDate(payrollEndDate));
 
+  // Monthly Timesheet has an independent month filter that defaults to the current calendar month.
+  const [monthlyTimesheetMonth, setMonthlyTimesheetMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [monthlyTimesheetStartDate, setMonthlyTimesheetStartDate] = useState(() => {
+    const now = new Date();
+    return getPayrollRangeFromMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`).startDate;
+  });
+  const [monthlyTimesheetEndDate, setMonthlyTimesheetEndDate] = useState(() => {
+    const now = new Date();
+    return getPayrollRangeFromMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`).endDate;
+  });
+
   function handlePayrollMonthChange(e) {
     const val = e.target.value;
     setPayrollMonth(val);
@@ -4578,19 +4592,19 @@ async function handleToggleHolidayDate() {
   }
 
    // Print Individual Worker Monthly Report
-  function handlePrintWorkerMonthlyReport(worker) {
+  function handlePrintWorkerMonthlyReport(worker, selectedStartDate = payrollPeriodStartDate, selectedEndDate = payrollPeriodEndDate) {
     if (!userRole.is_admin) { alert('Worker monthly report Print / PDF sirf Admin kar sakta hai.'); return; }
     const workerJoinDate = String(worker.joining_date || '').slice(0, 10);
     const reportAsOfDate = formatPayrollDate(new Date());
-    const reportEndDate = payrollPeriodEndDate < reportAsOfDate ? payrollPeriodEndDate : reportAsOfDate;
+    const reportEndDate = selectedEndDate < reportAsOfDate ? selectedEndDate : reportAsOfDate;
     const existingRows = attendance.filter(a => {
       const d = String(a.date || '').slice(0, 10);
-      return String(a.worker_id) === String(worker.id) && d >= payrollPeriodStartDate && d <= reportEndDate && (!workerJoinDate || d >= workerJoinDate);
+      return String(a.worker_id) === String(worker.id) && d >= selectedStartDate && d <= reportEndDate && (!workerJoinDate || d >= workerJoinDate);
     });
     const attendanceByDate = new Map(existingRows.map(a => [String(a.date || '').slice(0, 10), a]));
     const reportDates = [];
-    if (payrollPeriodStartDate && reportEndDate && payrollPeriodStartDate <= reportEndDate) {
-      const cursor = new Date(`${payrollPeriodStartDate}T12:00:00`);
+    if (selectedStartDate && reportEndDate && selectedStartDate <= reportEndDate) {
+      const cursor = new Date(`${selectedStartDate}T12:00:00`);
       const end = new Date(`${reportEndDate}T12:00:00`);
       while (cursor <= end && reportDates.length < 400) {
         reportDates.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`);
@@ -5546,10 +5560,10 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
 
   // Global HR payroll period is selected by Admin from the Dashboard.
   const formatPayrollDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const payrollPeriodStartDate = String(payrollStartDate || '').slice(0, 10);
-  const payrollPeriodEndDate = String(payrollEndDate || '').slice(0, 10);
-  const payrollPeriodStart = payrollPeriodStartDate ? new Date(`${payrollPeriodStartDate}T12:00:00`) : new Date();
-  const payrollPeriodEnd = payrollPeriodEndDate ? new Date(`${payrollPeriodEndDate}T12:00:00`) : new Date();
+  const selectedStartDate = String(payrollStartDate || '').slice(0, 10);
+  const selectedEndDate = String(payrollEndDate || '').slice(0, 10);
+  const payrollPeriodStart = selectedStartDate ? new Date(`${selectedStartDate}T12:00:00`) : new Date();
+  const payrollPeriodEnd = selectedEndDate ? new Date(`${selectedEndDate}T12:00:00`) : new Date();
   // Salary is always calculated for the calendar month containing the OT closing date.
   // The configured 16th-to-15th dates remain the separate OT / attendance closing window.
   const salaryMonthStart = new Date(payrollPeriodEnd.getFullYear(), payrollPeriodEnd.getMonth(), 1, 12, 0, 0);
@@ -5558,7 +5572,7 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
   const salaryMonthEndDate = formatPayrollDate(salaryMonthEnd);
   const salaryMonthDays = salaryMonthEnd.getDate();
   const salaryMonthLabel = salaryMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const currentPayrollPeriodClosed = closedPayrollPeriods.some(period => period.status === 'closed' && String(period.start_date).slice(0, 10) === payrollPeriodStartDate && String(period.end_date).slice(0, 10) === payrollPeriodEndDate);
+  const currentPayrollPeriodClosed = closedPayrollPeriods.some(period => period.status === 'closed' && String(period.start_date).slice(0, 10) === selectedStartDate && String(period.end_date).slice(0, 10) === selectedEndDate);
 
   // Admin ko tamam sites ke workers dikhayein
   // Staff ko sirf apni permitted workers list dikhayein
@@ -5574,8 +5588,8 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
     // closing period, because workers can move between sites day by day.
     const siteAttendanceMatch = siteScope === 'all' || attendance.some(a =>
       String(a.worker_id) === String(worker.id) &&
-      String(a.date || '').slice(0, 10) >= payrollPeriodStartDate &&
-      String(a.date || '').slice(0, 10) <= payrollPeriodEndDate &&
+      String(a.date || '').slice(0, 10) >= selectedStartDate &&
+      String(a.date || '').slice(0, 10) <= selectedEndDate &&
       String(a.work_site || a.site || '').trim().toLowerCase() === siteScope
     );
     return payrollDeptMatch && staffDeptMatch && siteAttendanceMatch;
@@ -5584,14 +5598,14 @@ const absentCountForDate = Object.values(latestAttendanceMap).filter(
   payrollWorkers.forEach(worker => {
     const workerJoinDate = String(worker.joining_date || '').slice(0, 10);
     const payrollAsOfDate = formatPayrollDate(new Date());
-    const effectiveOTEndDate = payrollPeriodEndDate < payrollAsOfDate ? payrollPeriodEndDate : payrollAsOfDate;
+    const effectiveOTEndDate = selectedEndDate < payrollAsOfDate ? selectedEndDate : payrollAsOfDate;
 
     // The existing 16th-to-15th closing range is used for absence deductions
     // as well as all overtime categories. Only explicit Absent records deduct days.
     const otRecordsByDate = new Map();
     attendance.forEach(a => {
       const recordDate = String(a.date || '').slice(0, 10);
-      if (String(a.worker_id) === String(worker.id) && recordDate >= payrollPeriodStartDate && recordDate <= effectiveOTEndDate && (!workerJoinDate || recordDate >= workerJoinDate)) {
+      if (String(a.worker_id) === String(worker.id) && recordDate >= selectedStartDate && recordDate <= effectiveOTEndDate && (!workerJoinDate || recordDate >= workerJoinDate)) {
         otRecordsByDate.set(recordDate, a);
       }
     });
@@ -8540,7 +8554,18 @@ accruedDays = balance.toFixed(1);
 
           <div>
             <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>Payroll Month</label>
-            <input type="month" value={payrollMonth} onChange={handlePayrollMonthChange} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+            <input
+              type="month"
+              value={monthlyTimesheetMonth}
+              onChange={e => {
+                const selectedMonth = e.target.value;
+                setMonthlyTimesheetMonth(selectedMonth);
+                const selectedRange = getPayrollRangeFromMonth(selectedMonth);
+                setMonthlyTimesheetStartDate(selectedRange.startDate);
+                setMonthlyTimesheetEndDate(selectedRange.endDate);
+              }}
+              style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+            />
           </div>
           <div style={{fontSize:12,color:'#475569',padding:'8px 10px',background:'#fff',border:'1px solid #cbd5e1',borderRadius:6}}>
             Salary Period: <b>{payrollPeriodStartDate} to {payrollPeriodEndDate}</b>
@@ -8570,7 +8595,7 @@ accruedDays = balance.toFixed(1);
                 const reportDepartment = userRole.is_admin ? selectedDeptFilter : userRole.assigned_department;
                 const reportSite = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
                 const matchesDept = reportDepartment === 'All' || !reportDepartment || String(w.department || '').trim().toLowerCase() === String(reportDepartment).trim().toLowerCase();
-                const workerSiteRows = attendance.filter(a => String(a.worker_id) === String(w.id) && String(a.date || '').slice(0,10) >= payrollStartDate && String(a.date || '').slice(0,10) <= payrollEndDate);
+                const workerSiteRows = attendance.filter(a => String(a.worker_id) === String(w.id) && String(a.date || '').slice(0,10) >= monthlyTimesheetStartDate && String(a.date || '').slice(0,10) <= monthlyTimesheetEndDate);
                 const matchesSite = reportSite === 'All' || !reportSite || workerSiteRows.some(a => String(a.work_site || a.site || '').trim().toLowerCase() === String(reportSite).trim().toLowerCase());
                 const matchesSearch = !timesheetSearchQuery || 
                   String(w.id).toLowerCase().includes(timesheetSearchQuery.toLowerCase()) || 
@@ -8582,10 +8607,10 @@ accruedDays = balance.toFixed(1);
                 <td style={{ padding: '10px', fontWeight: 700, color: '#475569' }}>{index + 1}</td>
                 <td style={{ padding: '10px', fontWeight: 'bold' }}>#{w.worker_id || w.id} - {w.name}</td>
                 <td style={{ padding: '10px' }}>{w.department}</td>
-                <td style={{ padding: '10px' }}>{[...new Set(attendance.filter(a => String(a.worker_id) === String(w.id) && String(a.date || '').slice(0,10) >= payrollStartDate && String(a.date || '').slice(0,10) <= payrollEndDate).map(a => a.work_site || a.site).filter(Boolean))].join(', ') || '—'}</td>
+                <td style={{ padding: '10px' }}>{[...new Set(attendance.filter(a => String(a.worker_id) === String(w.id) && String(a.date || '').slice(0,10) >= monthlyTimesheetStartDate && String(a.date || '').slice(0,10) <= monthlyTimesheetEndDate).map(a => a.work_site || a.site).filter(Boolean))].join(', ') || '—'}</td>
                 <td style={{ padding: '10px', minWidth: 180 }}>
                   {(() => {
-                    const extraRows = attendance.filter(a => String(a.worker_id) === String(w.id) && String(a.date || '').slice(0,10) >= payrollStartDate && String(a.date || '').slice(0,10) <= payrollEndDate && (Number(a.extra_ot_hours) || 0) > 0);
+                    const extraRows = attendance.filter(a => String(a.worker_id) === String(w.id) && String(a.date || '').slice(0,10) >= monthlyTimesheetStartDate && String(a.date || '').slice(0,10) <= monthlyTimesheetEndDate && (Number(a.extra_ot_hours) || 0) > 0);
                     return extraRows.length ? extraRows.map(a => <div key={`${a.date}-${a.id || a.worker_id}`} style={{ marginBottom: 4, padding: '4px 6px', borderRadius: 5, background: '#f5f3ff', color: '#5b21b6', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{a.date}: {Number(a.extra_ot_hours) || 0}h · {a.extra_ot_site || a.work_site || 'Site N/A'}</div>) : <span style={{ color: '#94a3b8' }}>—</span>;
                   })()}
                 </td>
@@ -8601,7 +8626,7 @@ accruedDays = balance.toFixed(1);
 
                   {/* Print / PDF Button */}
                   <button 
-                    onClick={() => handlePrintWorkerMonthlyReport(w)} 
+                    onClick={() => handlePrintWorkerMonthlyReport(w, monthlyTimesheetStartDate, monthlyTimesheetEndDate)} 
                     style={{ padding: '6px 10px', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
                   >
                     📄 Print / PDF
@@ -8627,7 +8652,7 @@ accruedDays = balance.toFixed(1);
         const reportSite = userRole.is_admin ? selectedSiteFilter : userRole.assigned_site;
         const reportWorkers = (userRole.is_admin ? workers : filteredWorkers).filter(w => {
           const matchesDept = reportDepartment === 'All' || !reportDepartment || String(w.department || '').trim().toLowerCase() === String(reportDepartment).trim().toLowerCase();
-          const matchesSite = reportSite === 'All' || !reportSite || attendance.some(a => String(a.worker_id) === String(w.id) && String(a.date || '').slice(0,10) >= payrollStartDate && String(a.date || '').slice(0,10) <= payrollEndDate && String(a.work_site || a.site || '').trim().toLowerCase() === String(reportSite).trim().toLowerCase());
+          const matchesSite = reportSite === 'All' || !reportSite || attendance.some(a => String(a.worker_id) === String(w.id) && String(a.date || '').slice(0,10) >= monthlyTimesheetStartDate && String(a.date || '').slice(0,10) <= monthlyTimesheetEndDate && String(a.work_site || a.site || '').trim().toLowerCase() === String(reportSite).trim().toLowerCase());
           const matchesSearch = !timesheetSearchQuery || String(w.id).toLowerCase().includes(timesheetSearchQuery.toLowerCase()) || String(w.name || '').toLowerCase().includes(timesheetSearchQuery.toLowerCase());
           return matchesDept && matchesSite && matchesSearch;
         });
@@ -8637,7 +8662,7 @@ accruedDays = balance.toFixed(1);
           const workerId = String(a.worker_id);
           const date = String(a.date || '').slice(0, 10);
           const worker = workerMap.get(workerId);
-          if (!worker || date < payrollStartDate || date > payrollEndDate) return;
+          if (!worker || date < monthlyTimesheetStartDate || date > monthlyTimesheetEndDate) return;
           const joinDate = String(worker.joining_date || '').slice(0, 10);
           if (joinDate && date < joinDate) return;
           uniqueRows.set(`${workerId}-${date}`, a);
@@ -8662,7 +8687,7 @@ accruedDays = balance.toFixed(1);
               <div style={{ fontSize: 10, color: '#64748b', marginTop: 6 }}>{item.note}</div>
             </div>)}
           </div>
-          <div style={{ fontSize: 10, color: '#64748b', marginTop: 9 }}>Report Period: {payrollStartDate} to {payrollEndDate} · Workers included: {reportWorkers.length}</div>
+          <div style={{ fontSize: 10, color: '#64748b', marginTop: 9 }}>Report Period: {monthlyTimesheetStartDate} to {monthlyTimesheetEndDate} · Workers included: {reportWorkers.length}</div>
         </div>;
       })()}
 
